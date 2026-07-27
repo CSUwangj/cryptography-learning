@@ -1,0 +1,67 @@
+name: Build
+
+on: [push, pull_request]
+
+# Both halves build on every push, as independent jobs rather than one job with
+# two toolchains, so a frontend failure still tells you whether the backend
+# compiles.
+#
+# There are deliberately no `paths` filters. The two are coupled through the
+# GraphQL schema, so "only the frontend changed" is not a safe reason to skip the
+# backend. The check that makes that coupling explicit is
+# CSUAuroraLab/cryptography-learning-infra#6; this workflow only establishes that
+# both build.
+#
+# Each job installs from its lockfile — `cargo --locked` and `npm ci` — so a
+# transitive release cannot change what CI built. The publish path needs the same
+# treatment and is CSUAuroraLab/cryptography-learning-infra#5.
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+
+      - name: Test
+        run: cargo test --locked
+
+      - name: Build
+        run: cargo build --locked --release
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # react-scripts 3.4.3 does not run on current Node, so the version is
+          # pinned. It lives in .nvmrc so CI and a local checkout read one pin.
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install from the lockfile
+        run: npm ci
+
+      - name: Build
+        # REACT_APP_FEEDBACK_URL is baked into the bundle at build time, so it has
+        # to be set here to produce the bundle the site actually ships.
+        run: npm run build
+        env:
+          REACT_APP_FEEDBACK_URL: https://github.com/CSUAuroraLab/ISSUE-COLLECTOR/issues/new/choose
+          GENERATE_SOURCEMAP: 'false'

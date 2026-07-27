@@ -1,0 +1,55 @@
+fragment Endpoint on Endpoint {
+  host
+  port
+}
+
+fragment LabWithEndpoint on Lab {
+  id
+  wsEndpoints {
+    ...Endpoint
+  }
+  tcpEndpoints {
+    ...Endpoint
+  }
+  resources {
+    ...ResourceWithTranslation
+  }
+}
+
+fragment LabCategory on LabCategory {
+  id
+  name {
+    ...Translation
+  }
+  labs {
+    ...LabWithEndpoint
+  }
+}
+
+fragment Practice on Practice {
+  labCategories {
+    ...LabCategory
+  }
+}
+
+fragment LabInstance on LabInstance {
+  lang
+  name
+  content
+  wsEndpoints {
+    ...Endpoint
+  }
+  tcpEndpoints {
+    ...Endpoint
+  }
+}
+
+fragment ResourceWithTranslation on ResourceWithTranslation {
+  lang
+  name
+}
+
+fragment Translation on Translation {
+  lang
+  text
+}

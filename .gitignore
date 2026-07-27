@@ -1,0 +1,18 @@
+# Repository-wide rules only.
+#
+# backend/.gitignore and frontend/.gitignore came across unchanged with the copy
+# and still own their own build output. Git applies a .gitignore to its own
+# subtree, so their root-anchored rules — /target/, /node_modules, /build — resolve
+# against their subdirectory and keep meaning exactly what they meant before. They
+# are deliberately not merged up here: re-anchoring them by hand would risk
+# silently changing what they match.
+#
+# What is left is what neither of them can cover from inside its own subtree.
+
+.DS_Store
+.vscode
+
+# Environment files at the repo root. Each subdirectory ignores its own already.
+/.env
+/.env.local
+/.env.*.local

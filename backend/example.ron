@@ -1,0 +1,51 @@
+Configuration(
+  practice: (
+    lab_categories: [
+      (
+        id: "classical",
+        name: [
+          (
+            language: "en-US",
+            text: "Classical"
+          ),
+          (
+            language: "zh-CN",
+            text: "古典密码学"
+          )
+        ],
+        labs: [
+          (
+            id: "affine",
+            resources: [
+              (
+                language: "zh-CN",
+                name: "仿射加密",
+                resource: "practice/classical/affine/zh.md"
+              )
+            ],
+            ws_endpoints: [
+              (
+                host: "localhost",
+                port: 10020
+              ),
+              (
+                host: "192.168.16.128",
+                port: 10020
+              ),
+            ],
+            tcp_endpoints: [
+              (
+                host: "localhost",
+                port: 10000
+              ),
+              (
+                host: "192.168.16.128",
+                port: 10000
+              ),
+            ]
+          )
+        ]
+      )
+    ]
+  )
+)         
