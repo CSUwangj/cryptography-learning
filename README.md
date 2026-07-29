@@ -13,9 +13,19 @@ Challenge, either from a terminal embedded in the page or with their own tooling
 | `frontend/` | React client, and the GraphQL schema copy it generates types from |
 
 The Challenges themselves, the Lab Descriptions and the Lab Registry live in the
-private content repo, not here. The Deployment definition and the deploy pipeline
-live in the private infra repo. Per ADR-0002 the split is on who may read a thing,
-not on which component it belongs to — this repo is the public half.
+private content repo, not here. Deploy from the private infra repo:
+
+```bash
+python3 $INFRA/tools/deploy.py up \
+  --role web-and-labs \
+  --hostname localhost \
+  --code-dir /path/to/cryptography-learning \
+  --content-dir /path/to/cryptography-learning-content
+```
+
+See [cryptography-learning-infra](https://github.com/CSUAuroraLab/cryptography-learning-infra)
+for Host roles, verification and cutover docs. Per ADR-0002 the split is on who may
+read a thing, not on which component it belongs to — this repo is the public half.
 
 ## Building
 
@@ -59,8 +69,8 @@ when the copy drifts (`backend/tests/schema_parity.rs`).
 ## How this repo was assembled
 
 A flat copy of two repositories into a fresh tree, per ADR-0008, so **history begins
-here.** To trace why any file looks the way it does, go to the originals, which are
-kept and must not be deleted:
+here.** To trace why any file looks the way it does, go to the archived originals
+(readable, not deleted):
 
 - `CSUAuroraLab/cryptography-learning-backend`
 - `CSUAuroraLab/cryptography-learning-frontend`
@@ -75,24 +85,17 @@ scaffolding:
   release-shaped parts of the two build workflows: the backend's four-target matrix
   (Windows, macOS, armv7) and its musl static-build job, and the artifact uploads
   from both. All of it produced loose per-platform artifacts for a `deploy.sh` that
-  fetched `releases/latest`. ADR-0007 replaces that with a single Linux web image, so
-  CI here only proves both halves build; publishing the image is
-  `CSUAuroraLab/cryptography-learning-infra#5`. The originals remain in the archived
-  repos.
+  fetched `releases/latest`. ADR-0007 replaces that with a single Linux web image; the
+  Host builds that image locally via the infra repo's `deploy.py`.
 - **`frontend/.nvmrc` is new.** The build job needs an exact Node pin, and a file
   both CI and a local checkout read is better than a value repeated per workflow.
-  Reproducibility of the *publish* path is a separate concern and belongs to
-  `CSUAuroraLab/cryptography-learning-infra#5`.
 - **`frontend/schema/README.md` is new,** documenting where the schema copy comes
   from.
 - **The two `.gitignore` files were left where they are,** and the new root one holds
-  only what neither subdirectory can cover from inside its own subtree. Git applies a
-  `.gitignore` to its own subtree, so merging them upward would have meant
-  re-anchoring every rule by hand for no gain.
+  only what neither subdirectory can cover from inside its own subtree.
 
-Everything else was left alone on purpose, including `frontend/docker/` — an unused
-container stack that never worked, whose deletion belongs to
-`CSUAuroraLab/cryptography-learning-infra#5`.
+`frontend/docker/` is an unused container stack that never worked; the live web tier
+is the root `Dockerfile` built by Compose.
 
 ## Licensing needs a decision
 
