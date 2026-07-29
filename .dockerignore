@@ -1,0 +1,4 @@
+backend/target
+.dockerignore
+.git
+.gitignore

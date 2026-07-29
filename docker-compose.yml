@@ -1,0 +1,17 @@
+services:
+  web-tier:
+    build:
+      context: .
+    image: cryptography-learning-web-tier:local
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mounted private content repo (Lab Descriptions, resources, config.ron)
+      - ${CONTENT_DIR:-../cryptography-learning-content}:/content:ro
+    environment:
+      CONTENT_DIR: /content
+      STATIC_DIR: /www
+      # CONFIG_PATH can be overridden for testing, but defaults to /content/config.ron.
+      CONFIG_PATH: /content/config.ron
+      ACCESS_POINT: 0.0.0.0:8000
+
