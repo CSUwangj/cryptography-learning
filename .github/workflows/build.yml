@@ -8,9 +8,7 @@ on: [push, pull_request]
 #
 # There are deliberately no `paths` filters. The two are coupled through the
 # GraphQL schema, so "only the frontend changed" is not a safe reason to skip the
-# backend. The check that makes that coupling explicit is
-# CSUAuroraLab/cryptography-learning-infra#6; this workflow only establishes that
-# both build.
+# backend. The schema parity gate below enforces that coupling on every push.
 #
 # Each job installs from its lockfile — `cargo --locked` and `npm ci` — so a
 # transitive release cannot change what CI built. The publish path needs the same
@@ -33,7 +31,8 @@ jobs:
           workspaces: backend
 
       - name: Test
-        run: cargo test --locked
+        # Includes schema_parity: backend SDL vs frontend/schema/schema.gql.
+        run: cargo test --locked -- --nocapture
 
       - name: Build
         run: cargo build --locked --release

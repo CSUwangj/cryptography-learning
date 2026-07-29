@@ -1,25 +1,20 @@
-extern crate thiserror;
-
 use async_graphql::http::{playground_source, GraphQLPlaygroundConfig};
 use async_graphql::{EmptyMutation, EmptySubscription, Schema};
 use async_graphql_warp::GraphQLResponse;
+use cryptography_learning_backend::model::{Configuration, Query, Storage};
+use cryptography_learning_backend::opts::Opt;
 use dotenv::dotenv;
 use log::debug;
+use std::convert::Infallible;
 use std::net::SocketAddr;
-use std::{convert::Infallible, path::Path};
+use std::path::Path;
 use structopt::StructOpt;
 use warp::{http::Response as HttpResponse, Filter};
-
-mod errors;
-mod model;
-mod opts;
-
-use crate::model::{Configuration, Query, Storage};
 
 #[tokio::main]
 async fn main() {
     dotenv().ok();
-    let opt = opts::Opt::from_args();
+    let opt = Opt::from_args();
     std::env::set_var("RUST_LOG", "trace");
     match opt.log_level {
         0 => std::env::set_var("RUST_LOG", "error"),

@@ -51,10 +51,10 @@ directory.
 ## The schema contract
 
 `frontend/schema/schema.gql` is a hand-maintained copy of the schema `async-graphql`
-derives from the Rust types in `backend/src/model.rs`, and nothing verifies the copy
-matches. Joining the two halves here is what makes that check possible; see
-`frontend/schema/README.md` for the full chain and
-`CSUAuroraLab/cryptography-learning-infra#6` for the gate itself.
+derives from the Rust types in `backend/src/model.rs` — `#[Object] impl Query` for
+the root, and the `SimpleObject` structs for everything else — and serves it from
+the running process. `schema.gql` here is a human transcription of that. CI fails
+when the copy drifts (`backend/tests/schema_parity.rs`).
 
 ## How this repo was assembled
 

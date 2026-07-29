@@ -1,9 +1,8 @@
 # Where these files come from
 
-`schema.gql` is **a hand-maintained copy, not generated output.** Nothing currently
-checks it against the backend. Joining the two halves into this repo is what makes
-that check possible; adding it is tracked as
-`CSUAuroraLab/cryptography-learning-infra#6`.
+`schema.gql` is **a hand-maintained copy, not generated output.** CI compares it
+against the SDL `async-graphql` derives from `backend/src/model.rs` on every push
+(`backend/tests/schema_parity.rs`).
 
 ## The chain
 
