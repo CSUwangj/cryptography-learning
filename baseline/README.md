@@ -33,7 +33,7 @@ against the loaded image without a second rebuild.
 | Stable GraphQL response fixtures | `fixtures/graphql/*.json` |
 | Terminal WS connection path | `tests/test_terminal.py` + `terminal/fixture.py` |
 | Known terminal defects registry | `terminal/known_defects.md` |
-| Schema SDL parity | existing `backend/tests/schema_parity.rs` (CI Backend job) |
+| Schema SDL parity | existing `backend/apps/web-server/tests/schema_parity.rs` (CI Backend job) |
 
 ## Fixture content
 

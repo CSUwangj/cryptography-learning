@@ -8,7 +8,7 @@ FROM rust:1.76 AS backend-builder
 WORKDIR /src
 
 COPY backend/Cargo.toml backend/Cargo.lock ./backend/
-COPY backend ./backend/
+COPY backend/apps ./backend/apps
 RUN cargo build --release --locked --manifest-path backend/Cargo.toml
 
 ###

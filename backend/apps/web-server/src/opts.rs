@@ -13,7 +13,13 @@ pub struct Opt {
     pub log_level: u32,
 
     /// configuration file's, check example for more details
-    #[structopt(short, long, default_value = "config.ron", env = "CONFIG", parse(from_os_str))]
+    #[structopt(
+        short,
+        long,
+        default_value = "config.ron",
+        env = "CONFIG",
+        parse(from_os_str)
+    )]
     pub config: PathBuf,
 
     /// static file path to be serve

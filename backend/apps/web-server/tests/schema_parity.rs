@@ -5,7 +5,7 @@ use cryptography_learning_backend::schema::{backend_schema_sdl, normalize_schema
 
 fn frontend_schema_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
+        .join("../../..")
         .join("frontend")
         .join("schema")
         .join("schema.gql")

@@ -15,9 +15,11 @@
 
 - `backend/` is Rust; `frontend/` is React/TypeScript. Read a subtree's own `AGENTS.md`
   before changing files there.
-- The GraphQL schema is a cross-tree contract. Rust types in `backend/src/model.rs` are
-  authoritative, while `frontend/schema/schema.gql` is the hand-maintained client copy.
-  Keep both sides synchronized; `backend/tests/schema_parity.rs` enforces parity.
+- The GraphQL schema is a cross-tree contract. Rust GraphQL adapters in
+  `backend/apps/web-server/src/model.rs` are authoritative, while
+  `frontend/schema/schema.gql` is the hand-maintained client copy.
+  Keep both sides synchronized; `backend/apps/web-server/tests/schema_parity.rs`
+  enforces parity.
 - Preserve the pinned toolchains unless a modernization ticket changes them: Rust
   1.64 and the Node version in `frontend/.nvmrc`. Use lockfile-respecting commands
   (`--locked`, `npm ci`).

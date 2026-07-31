@@ -70,17 +70,17 @@ cd backend
 cargo run -- --static ../frontend/dist -vv config.ron
 ```
 
-`config.ron` is Host-local and deliberately not committed; `backend/example.ron` is
+`config.ron` is Host-local and deliberately not committed; `backend/apps/web-server/example.ron` is
 the sample. Lab Description paths inside it resolve relative to the working
 directory.
 
 ## The schema contract
 
 `frontend/schema/schema.gql` is a hand-maintained copy of the schema `async-graphql`
-derives from the Rust types in `backend/src/model.rs` — `#[Object] impl Query` for
+derives from the Rust types in `backend/apps/web-server/src/model.rs` — `#[Object] impl Query` for
 the root, and the `SimpleObject` structs for everything else — and serves it from
 the running process. `schema.gql` here is a human transcription of that. CI fails
-when the copy drifts (`backend/tests/schema_parity.rs`).
+when the copy drifts (`backend/apps/web-server/tests/schema_parity.rs`).
 
 ## How this repo was assembled
 

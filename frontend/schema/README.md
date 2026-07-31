@@ -1,15 +1,17 @@
 # Where these files come from
 
 `schema.gql` is **a hand-maintained copy, not generated output.** CI compares it
-against the SDL `async-graphql` derives from `backend/src/model.rs` on every push
-(`backend/tests/schema_parity.rs`).
+against the SDL `async-graphql` derives from
+`backend/apps/web-server/src/model.rs` on every push
+(`backend/apps/web-server/tests/schema_parity.rs`).
 
 ## The chain
 
 The backend never writes a schema file. `async-graphql` derives the schema at
-runtime from the Rust types in `backend/src/model.rs` — `#[Object] impl Query` for
-the root, and the `SimpleObject` structs for everything else — and serves it from
-the running process. `schema.gql` here is a human transcription of that.
+runtime from the Rust types in `backend/apps/web-server/src/model.rs` —
+`#[Object] impl Query` for the root, and the `SimpleObject` structs for
+everything else — and serves it from the running process. `schema.gql` here is a
+human transcription of that.
 
 Feature modules own their GraphQL operation documents. `graphql-codegen` reads
 `schema.gql` together with those documents (see `../.codegen.yml`) and writes the
@@ -53,6 +55,7 @@ account for it rather than treat it as drift.
 ## Verified correspondence
 
 Checked by hand at the time this repo was assembled: every type and field in
-`schema.gql` corresponds to `backend/src/model.rs`, and the only Rust field absent
-is the skipped `resource`. This is a point-in-time statement, which is exactly why
-it needs to become a CI gate.
+`schema.gql` corresponds to `backend/apps/web-server/src/model.rs`, and Lab
+Description filesystem paths stay behind the Practice Catalog rather than the
+GraphQL schema. This is a point-in-time statement, which is exactly why it needs
+to become a CI gate.
