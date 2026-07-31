@@ -1,0 +1,11 @@
+{
+  "data": {
+    "lab": {
+      "lang": "en-US",
+      "name": "Affine Cipher",
+      "content": "# Affine Cipher\n\nBaseline Lab Description for characterization tests.\n\nCiphertext: `baseline-affine-en`\n",
+      "wsEndpoints": [{"host": "127.0.0.1", "port": 19020}],
+      "tcpEndpoints": [{"host": "127.0.0.1", "port": 19000}]
+    }
+  }
+}

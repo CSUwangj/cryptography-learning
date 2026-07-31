@@ -1,0 +1,102 @@
+Configuration(
+  practice: (
+    lab_categories: [
+      (
+        id: "classical",
+        name: [
+          (
+            language: "en-US",
+            text: "Classical"
+          ),
+          (
+            language: "zh-CN",
+            text: "古典密码学"
+          )
+        ],
+        labs: [
+          (
+            id: "affine",
+            resources: [
+              (
+                language: "zh-CN",
+                name: "仿射加密",
+                resource: "practice/classical/affine/zh-CN.md"
+              ),
+              (
+                language: "en-US",
+                name: "Affine Cipher",
+                resource: "practice/classical/affine/en-US.md"
+              )
+            ],
+            ws_endpoints: [
+              (
+                host: "127.0.0.1",
+                port: 19020
+              )
+            ],
+            tcp_endpoints: [
+              (
+                host: "127.0.0.1",
+                port: 19000
+              )
+            ]
+          ),
+          (
+            id: "caesar",
+            resources: [
+              (
+                language: "zh-CN",
+                name: "凯撒加密",
+                resource: "practice/classical/caesar/zh-CN.md"
+              )
+            ],
+            ws_endpoints: [
+              (
+                host: "127.0.0.1",
+                port: 19021
+              )
+            ],
+            tcp_endpoints: [
+              (
+                host: "127.0.0.1",
+                port: 19001
+              )
+            ]
+          )
+        ]
+      ),
+      (
+        id: "modern",
+        name: [
+          (
+            language: "en-US",
+            text: "Modern"
+          ),
+          (
+            language: "zh-CN",
+            text: "现代密码学"
+          )
+        ],
+        labs: [
+          (
+            id: "rsa-factor",
+            resources: [
+              (
+                language: "en-US",
+                name: "RSA Factorization",
+                resource: "practice/modern/rsa-factor/en-US.md"
+              )
+            ],
+            ws_endpoints: [],
+            tcp_endpoints: [
+              (
+                host: "127.0.0.1",
+                port: 19010
+              )
+            ]
+          )
+        ]
+      )
+    ]
+  )
+)

@@ -16,3 +16,6 @@
 /.env
 /.env.local
 /.env.*.local
+
+# Characterization baseline bytecode
+baseline/**/__pycache__/

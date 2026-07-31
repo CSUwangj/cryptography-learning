@@ -27,6 +27,19 @@ See [cryptography-learning-infra](https://github.com/CSUAuroraLab/cryptography-l
 for Host roles, verification and cutover docs. Per ADR-0002 the split is on who may
 read a thing, not on which component it belongs to — this repo is the public half.
 
+## Characterization baseline
+
+Capture current deployable behavior (SPA routes, static assets, Practice
+GraphQL/RON loading, terminal WebSocket path, known terminal defects) against
+the Linux container with one command:
+
+```bash
+./baseline/run.sh
+```
+
+See [`baseline/README.md`](baseline/README.md). CI runs the same command on every
+push.
+
 ## Building
 
 Both halves build independently from a clean checkout.

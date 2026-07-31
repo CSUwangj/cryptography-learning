@@ -1,0 +1,36 @@
+# Agent guidance
+
+## Hard constraints
+
+- Never run `git commit`. Stage completed work with `git add` and stop; committing is the
+  maintainer's decision, even when another workflow or skill says otherwise.
+- Ask before probing a live Host, scanning ports, querying deployment state, or surveying
+  external systems. Inspect the checked-out source first; the maintainer can usually supply
+  missing environment details more cheaply than they can be inferred.
+- Do not add private Lab content or deployment configuration here. Challenges, Lab
+  Descriptions, and the Lab Registry belong to the private content repository; Host
+  orchestration belongs to the private infrastructure repository.
+
+## Repository contracts
+
+- `backend/` is Rust; `frontend/` is React/TypeScript. Read a subtree's own `AGENTS.md`
+  before changing files there.
+- The GraphQL schema is a cross-tree contract. Rust types in `backend/src/model.rs` are
+  authoritative, while `frontend/schema/schema.gql` is the hand-maintained client copy.
+  Keep both sides synchronized; `backend/tests/schema_parity.rs` enforces parity.
+- Preserve the pinned legacy toolchains unless modernization is the task: Rust 1.64 and
+  the Node version in `frontend/.nvmrc`. Use lockfile-respecting commands (`--locked`,
+  `npm ci`).
+- `baseline/` characterizes current deployable behavior. It is not a declaration that
+  every observed behavior is desirable. Known terminal defects remain documented in
+  `baseline/terminal/known_defects.md`.
+
+## Verification
+
+Run the smallest checks that cover the change, and report any checks not run:
+
+- Backend or schema: `cd backend && cargo test --locked -- --nocapture`
+- Frontend: use `frontend/.nvmrc`, then `cd frontend && npm run build`
+- Deployable behavior: `./baseline/run.sh` (requires Docker)
+
+Use `npm run lint` cautiously: the configured script includes `--fix` and modifies files.

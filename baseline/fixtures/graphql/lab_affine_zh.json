@@ -1,0 +1,11 @@
+{
+  "data": {
+    "lab": {
+      "lang": "zh-CN",
+      "name": "仿射加密",
+      "content": "# 仿射加密\n\nBaseline Lab Description for characterization tests.\n\nCiphertext: `baseline-affine-zh`\n",
+      "wsEndpoints": [{"host": "127.0.0.1", "port": 19020}],
+      "tcpEndpoints": [{"host": "127.0.0.1", "port": 19000}]
+    }
+  }
+}

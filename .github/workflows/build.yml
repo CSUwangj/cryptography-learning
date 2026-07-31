@@ -2,11 +2,12 @@ name: Build
 
 on: [push, pull_request]
 
-# Both halves build on every push, as independent jobs rather than one job with
-# two toolchains, so a frontend failure still tells you whether the backend
-# compiles.
+# Backend and frontend build on every push as independent jobs, plus a
+# characterization baseline against the Linux web-tier image. Jobs stay
+# separate so a frontend failure still tells you whether the backend compiles
+# and whether the container baseline still holds.
 #
-# There are deliberately no `paths` filters. The two are coupled through the
+# There are deliberately no `paths` filters. The two halves are coupled through the
 # GraphQL schema, so "only the frontend changed" is not a safe reason to skip the
 # backend. The schema parity gate below enforces that coupling on every push.
 #
@@ -64,3 +65,14 @@ jobs:
         env:
           REACT_APP_FEEDBACK_URL: https://github.com/CSUAuroraLab/ISSUE-COLLECTOR/issues/new/choose
           GENERATE_SOURCEMAP: 'false'
+
+  baseline:
+    name: Characterization baseline
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Capture current deployable behavior
+        # Builds the Linux web-tier image, starts it with baseline/content, and
+        # runs HTTP/GraphQL/terminal characterization checks (issue #12).
+        run: ./baseline/run.sh

@@ -1,0 +1,51 @@
+{
+  "data": {
+    "practice": {
+      "labCategories": [
+        {
+          "id": "classical",
+          "name": [
+            {"lang": "en-US", "text": "Classical"},
+            {"lang": "zh-CN", "text": "古典密码学"}
+          ],
+          "labs": [
+            {
+              "id": "affine",
+              "wsEndpoints": [{"host": "127.0.0.1", "port": 19020}],
+              "tcpEndpoints": [{"host": "127.0.0.1", "port": 19000}],
+              "resources": [
+                {"lang": "zh-CN", "name": "仿射加密"},
+                {"lang": "en-US", "name": "Affine Cipher"}
+              ]
+            },
+            {
+              "id": "caesar",
+              "wsEndpoints": [{"host": "127.0.0.1", "port": 19021}],
+              "tcpEndpoints": [{"host": "127.0.0.1", "port": 19001}],
+              "resources": [
+                {"lang": "zh-CN", "name": "凯撒加密"}
+              ]
+            }
+          ]
+        },
+        {
+          "id": "modern",
+          "name": [
+            {"lang": "en-US", "text": "Modern"},
+            {"lang": "zh-CN", "text": "现代密码学"}
+          ],
+          "labs": [
+            {
+              "id": "rsa-factor",
+              "wsEndpoints": [],
+              "tcpEndpoints": [{"host": "127.0.0.1", "port": 19010}],
+              "resources": [
+                {"lang": "en-US", "name": "RSA Factorization"}
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
