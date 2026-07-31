@@ -107,9 +107,15 @@ export const LabPage: React.FC = () => {
     <Container>
       { content }
       {
-        terminals.map((endpoint, idx) => <BlockWrapper key={idx}>
+        terminals.map((endpoint, idx) => <BlockWrapper key={`${endpoint.host}:${endpoint.port}:${idx}`}>
           <H3>{endpoint.host}</H3>
-          <Terminal {...endpoint} id={'terminal' + endpoint.host + ':' + endpoint.port } key={idx}/>
+          <Terminal
+            {...endpoint}
+            id={'terminal' + endpoint.host + ':' + endpoint.port}
+            onExit={() => {
+              setTermianls((open) => open.filter((term) => !sameEndpoint(term, endpoint)))
+            }}
+          />
         </BlockWrapper>)
       }
     </Container>
