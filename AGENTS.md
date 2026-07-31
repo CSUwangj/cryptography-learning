@@ -21,8 +21,8 @@
   Keep both sides synchronized; `backend/apps/web-server/tests/schema_parity.rs`
   enforces parity.
 - Preserve the pinned toolchains unless a modernization ticket changes them: Rust
-  1.64 and the Node version in `frontend/.nvmrc`. Use lockfile-respecting commands
-  (`--locked`, `npm ci`).
+  1.97 (see `rust-toolchain.toml`) and the Node version in `frontend/.nvmrc`. Use
+  lockfile-respecting commands (`--locked`, `npm ci`).
 - `baseline/` characterizes current deployable behavior. It is not a declaration that
   every observed behavior is desirable. Known terminal defects remain documented in
   `baseline/terminal/known_defects.md`.

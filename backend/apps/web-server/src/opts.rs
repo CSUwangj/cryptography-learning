@@ -1,32 +1,35 @@
 use std::path::PathBuf;
-use structopt::StructOpt;
 
-#[derive(Debug, StructOpt)]
-#[structopt(
+use clap::Parser;
+
+#[derive(Debug, Parser)]
+#[command(
     name = "Cryptography Learning",
     about = "Using for cryptography learning"
 )]
 pub struct Opt {
-    /// logging level by number of `v', default logging level is error,
-    /// 1, 2, 3, 4 correspond to warn, info, debug, trace respectively
-    #[structopt(short = "v", parse(from_occurrences))]
-    pub log_level: u32,
+    /// Logging level by number of `v`; default is error.
+    /// 1, 2, 3, 4 correspond to warn, info, debug, trace respectively.
+    #[arg(short = 'v', action = clap::ArgAction::Count)]
+    pub log_level: u8,
 
-    /// configuration file's, check example for more details
-    #[structopt(
-        short,
-        long,
-        default_value = "config.ron",
-        env = "CONFIG",
-        parse(from_os_str)
-    )]
+    /// Configuration file path.
+    #[arg(short, long, default_value = "config.ron", env = "CONFIG")]
     pub config: PathBuf,
 
-    /// static file path to be serve
-    #[structopt(short, long = "static", env = "STATIC")]
-    pub static_file_path: String,
+    /// Static file path to serve.
+    #[arg(short, long = "static", env = "STATIC")]
+    pub static_file_path: PathBuf,
 
-    /// serve host
-    #[structopt(short, long, default_value = "0.0.0.0:8000")]
+    /// Listen address.
+    #[arg(short, long, default_value = "0.0.0.0:8000")]
     pub access_point: String,
+
+    /// Build commit identity logged at startup.
+    #[arg(long, env = "BUILD_COMMIT", default_value = "unknown")]
+    pub build_commit: String,
+
+    /// Image identity logged at startup.
+    #[arg(long, env = "IMAGE_ID", default_value = "unknown")]
+    pub image_id: String,
 }

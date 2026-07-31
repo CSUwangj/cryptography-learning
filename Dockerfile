@@ -3,7 +3,7 @@
 ###
 # Build backend (Rust) using Cargo.lock
 ###
-FROM rust:1.76 AS backend-builder
+FROM rust:1.97.0 AS backend-builder
 
 WORKDIR /src
 

@@ -1,4 +1,4 @@
-use async_graphql::{ErrorExtensions, FieldError};
+use async_graphql::{Error, ErrorExtensionValues, ErrorExtensions};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -11,10 +11,9 @@ pub enum QueryError {
 }
 
 impl ErrorExtensions for QueryError {
-    // lets define our base extensions
-    fn extend(&self) -> FieldError {
-        self.extend_with(|err, e| match err {
-            QueryError::NotFoundError(resource) => e.set("code", format!("{} not found", resource)),
+    fn extend(&self) -> Error {
+        self.extend_with(|err, e: &mut ErrorExtensionValues| match err {
+            QueryError::NotFoundError(resource) => e.set("code", format!("{resource} not found")),
             QueryError::ServerError(reason) => e.set("reason", reason.to_string()),
         })
     }
