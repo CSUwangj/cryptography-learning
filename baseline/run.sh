@@ -35,8 +35,15 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "==> Building and starting Linux web-tier container on host port ${WEB_HTTP_PORT}"
-"${COMPOSE[@]}" up --build -d
+# CI builds and loads the image with Buildx (and a GHA BuildKit cache scope)
+# before invoking this script. Local runs keep the one-command build-and-test path.
+if [[ "${BASELINE_SKIP_BUILD:-}" == "1" ]]; then
+  echo "==> Starting prebuilt Linux web-tier container on host port ${WEB_HTTP_PORT}"
+  "${COMPOSE[@]}" up -d --no-build
+else
+  echo "==> Building and starting Linux web-tier container on host port ${WEB_HTTP_PORT}"
+  "${COMPOSE[@]}" up --build -d
+fi
 
 echo "==> Waiting for web tier at ${BASELINE_BASE_URL}"
 python3 - <<'PY'

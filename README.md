@@ -37,8 +37,9 @@ the Linux container with one command:
 ./baseline/run.sh
 ```
 
-See [`baseline/README.md`](baseline/README.md). CI runs the same command on every
-push.
+See [`baseline/README.md`](baseline/README.md). Locally that remains a
+one-command build-and-test. CI builds the image with Buildx (cached BuildKit
+layers) and then runs the same script without rebuilding.
 
 ## Building
 

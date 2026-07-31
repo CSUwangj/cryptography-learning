@@ -16,6 +16,11 @@ From a fresh checkout with Docker available:
 That builds the root `Dockerfile`, starts Compose with `baseline/content` as
 `CONTENT_DIR`, waits for HTTP readiness, and runs the characterization suite.
 
+CI builds and loads the same image with Docker Buildx (BuildKit layers restored
+and exported under the `baseline-web-tier` GitHub Actions cache scope), then
+invokes this script with `BASELINE_SKIP_BUILD=1` so characterization runs
+against the loaded image without a second rebuild.
+
 ## What is covered
 
 | Seam | Location |
@@ -43,3 +48,4 @@ tiny `img/` asset. Production Hosts continue to mount the private content repo.
 | `CONTENT_DIR` | `baseline/content` | RON + Lab Descriptions mounted into the container |
 | `WEB_HTTP_PORT` | `8000` (or `18000` if busy) | Host port published by Compose |
 | `BASELINE_BASE_URL` | `http://127.0.0.1:$WEB_HTTP_PORT` | Web tier URL under test |
+| `BASELINE_SKIP_BUILD` | unset | When `1`, start Compose with `--no-build` (CI after Buildx load) |

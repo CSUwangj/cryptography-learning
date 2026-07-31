@@ -34,3 +34,20 @@ Run the smallest checks that cover the change, and report any checks not run:
 - Deployable behavior: `./baseline/run.sh` (requires Docker)
 
 Use `npm run lint` cautiously: the configured script includes `--fix` and modifies files.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs for the public web tier live as GitHub issues in
+`CSUWangj/cryptography-learning`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical triage roles use the default label strings. See
+`docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This is a single-context repository: use `CONTEXT.md` and `docs/adr/` at the repository root.
+See `docs/agents/domain.md`.

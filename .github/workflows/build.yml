@@ -89,7 +89,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and load web-tier image
+        # Restore/export BuildKit layers via a dedicated GHA cache scope so cold
+        # and warm runs share intermediate stages. Host-side node_modules, the
+        # frontend bundle, and GraphQL codegen output are not path-cached here —
+        # only opaque BuildKit layers (issue #34).
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          load: true
+          tags: cryptography-learning-web-tier:local
+          cache-from: type=gha,scope=baseline-web-tier
+          cache-to: type=gha,mode=max,scope=baseline-web-tier
+
       - name: Capture current deployable behavior
-        # Builds the Linux web-tier image, starts it with baseline/content, and
-        # runs HTTP/GraphQL/terminal characterization checks (issue #12).
+        # Starts Compose against the Buildx-loaded image (no rebuild) with
+        # baseline/content and runs HTTP/GraphQL/terminal characterization
+        # checks (issue #12).
         run: ./baseline/run.sh
+        env:
+          BASELINE_SKIP_BUILD: "1"
