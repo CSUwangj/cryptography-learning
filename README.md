@@ -52,19 +52,21 @@ cargo build --locked --release
 ```bash
 cd frontend
 npm ci
+npm run typecheck
+npm test
 npm run build
 ```
 
-The frontend needs the Node version in `frontend/.nvmrc`; `react-scripts` 3.4.3
-does not run on current Node. `REACT_APP_FEEDBACK_URL` is baked into the bundle at
-build time, so set it to get a working feedback link — CI passes the value the
-deployed site uses.
+The frontend needs the Node version in `frontend/.nvmrc` (Node 24 / npm 11).
+`VITE_FEEDBACK_URL` is baked into the bundle at build time, so set it to get a
+working feedback link — CI passes the value the deployed site uses. Do not put
+secrets in `VITE_*` variables; they are public to the browser bundle.
 
 Running the backend needs a `config.ron` and a directory of static files:
 
 ```bash
 cd backend
-cargo run -- --static ../frontend/build -vv config.ron
+cargo run -- --static ../frontend/dist -vv config.ron
 ```
 
 `config.ron` is Host-local and deliberately not committed; `backend/example.ron` is

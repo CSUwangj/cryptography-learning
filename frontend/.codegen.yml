@@ -14,7 +14,7 @@ generates:
       withComponent: false
       withHOC: false
       withHooks: true
-      gqlImport: graphql.macro#gql
+      gqlImport: graphql-tag#gql
       apolloReactCommonImportFrom: "@apollo/client"
       apolloReactHooksImportFrom: "@apollo/client"
   src/transport/generated/fragmentTypes.json:

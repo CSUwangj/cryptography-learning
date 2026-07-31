@@ -7,7 +7,7 @@ import AdmonitionsPlugin from "remark-containers"
 import { Callout } from './Callout'
 import { IconName, Intent } from '@blueprintjs/core'
 import 'katex/dist/katex.min.css'
-import styled from '@emotion/styled/macro'
+import styled from '@emotion/styled'
 
 const getIcon = (name: string) => {
   const names = [

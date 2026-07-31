@@ -1,6 +1,6 @@
 import React from 'react'
 import { H3, Icon, IconName } from '@blueprintjs/core'
-import styled from '@emotion/styled/macro'
+import styled from '@emotion/styled'
 import { useTranslation } from 'react-i18next'
 
 type FeatureProps = {

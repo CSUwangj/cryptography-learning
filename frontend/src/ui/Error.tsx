@@ -17,8 +17,8 @@ export const useError = (errContext?: ErrorContext) => {
     return (async (...args: any[]) => {
       try {
         await callback(...args)
-      } catch (e) {
-        setError(e)
+      } catch (e: unknown) {
+        setError(e as ErrorType)
       }
     }) as any
   }

@@ -49,8 +49,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          # react-scripts 3.4.3 does not run on current Node, so the version is
-          # pinned. It lives in .nvmrc so CI and a local checkout read one pin.
+          # Node is exact-pinned in frontend/.nvmrc (and package.json engines);
+          # npm 11 ships with that Node release and is also listed under engines.
           node-version-file: frontend/.nvmrc
           cache: npm
           cache-dependency-path: frontend/package-lock.json
@@ -58,13 +58,18 @@ jobs:
       - name: Install from the lockfile
         run: npm ci
 
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
       - name: Build
-        # REACT_APP_FEEDBACK_URL is baked into the bundle at build time, so it has
+        # VITE_FEEDBACK_URL is baked into the bundle at build time, so it has
         # to be set here to produce the bundle the site actually ships.
         run: npm run build
         env:
-          REACT_APP_FEEDBACK_URL: https://github.com/CSUAuroraLab/ISSUE-COLLECTOR/issues/new/choose
-          GENERATE_SOURCEMAP: 'false'
+          VITE_FEEDBACK_URL: https://github.com/CSUAuroraLab/ISSUE-COLLECTOR/issues/new/choose
 
   baseline:
     name: Characterization baseline

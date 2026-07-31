@@ -2,7 +2,7 @@ import React from 'react'
 import './App.css'
 import { Providers } from './Providers'
 import { Routes } from './routes'
-import styled from '@emotion/styled/macro'
+import styled from '@emotion/styled'
 
 const Div = styled.div`
   height: 100%;

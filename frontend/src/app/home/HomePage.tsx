@@ -1,7 +1,7 @@
 import React from 'react'
 import logo from '../assets/BigLogo.png'
 import { useTranslation } from 'react-i18next'
-import styled from '@emotion/styled/macro'
+import styled from '@emotion/styled'
 import { Div } from 'ui'
 import { H1, H3, H5, Button, Intent, Text } from '@blueprintjs/core'
 // eslint-disable-next-line @typescript-eslint/no-unused-vars

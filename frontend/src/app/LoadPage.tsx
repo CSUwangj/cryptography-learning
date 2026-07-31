@@ -16,12 +16,14 @@ export const LoadPage: React.FC<{ lazy: React.LazyExoticComponent<React.FC>}> = 
   </Suspense>
 }
 
-const getKey = (path: string | string[] | undefined) => {
-  if (Array.isArray(path)) {
-    return path.join(',')
-  } else {
+const getKey = (path: RouteProps['path']): string | undefined => {
+  if (path == null) {
+    return undefined
+  }
+  if (typeof path === 'string') {
     return path
   }
+  return Array.from(path).join(',')
 }
 
 const Cache = new Map<LoadPageProps['page'], React.LazyExoticComponent<React.FC<{}>>>()

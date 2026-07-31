@@ -14,19 +14,18 @@ RUN cargo build --release --locked --manifest-path backend/Cargo.toml
 ###
 # Build frontend (React) using the checked-in Node pin
 ###
-FROM node:14.10.1 AS frontend-builder
+FROM node:24.18.1 AS frontend-builder
 
 WORKDIR /src
 
-ARG REACT_APP_FEEDBACK_URL="https://github.com/CSUAuroraLab/ISSUE-COLLECTOR/issues/new/choose"
+ARG VITE_FEEDBACK_URL="https://github.com/CSUAuroraLab/ISSUE-COLLECTOR/issues/new/choose"
 
 COPY frontend/package.json frontend/package-lock.json ./frontend/
 RUN cd frontend && npm ci
 
 COPY frontend ./frontend/
 RUN cd frontend \
-  && REACT_APP_FEEDBACK_URL="${REACT_APP_FEEDBACK_URL}" \
-     GENERATE_SOURCEMAP=false \
+  && VITE_FEEDBACK_URL="${VITE_FEEDBACK_URL}" \
      npm run build
 
 ###
@@ -44,7 +43,7 @@ WORKDIR /app
 COPY --from=backend-builder /src/backend/target/release/cryptography-learning-backend ./backend
 
 # Prebuilt frontend bundle
-COPY --from=frontend-builder /src/frontend/build /www
+COPY --from=frontend-builder /src/frontend/dist /www
 
 COPY start-web-tier.sh /app/start-web-tier.sh
 RUN chmod +x /app/start-web-tier.sh
@@ -52,4 +51,3 @@ RUN chmod +x /app/start-web-tier.sh
 EXPOSE 8000
 
 ENTRYPOINT ["/app/start-web-tier.sh"]
-

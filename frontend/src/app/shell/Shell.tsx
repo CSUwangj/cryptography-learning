@@ -14,7 +14,7 @@ import { Select, IItemModifiers } from "@blueprintjs/select"
 import { useHistory } from 'react-router-dom'
 import { Body, Footer, Header, Layout } from '../Layout'
 import { navbarHeight } from 'ui'
-import styled from '@emotion/styled/macro'
+import styled from '@emotion/styled'
 import { IconNames } from '@blueprintjs/icons'
 
 const I18nSelect = Select.ofType<string>()
@@ -61,7 +61,7 @@ export const Shell: React.FC = ({ children }) => {
   // const items = Object.keys(i18n.services.resourceStore.data)
   const [ dark, setDark ] = useState(false)
   const history = useHistory()
-  const feedbackURL = process.env.REACT_APP_FEEDBACK_URL
+  const feedbackURL = import.meta.env.VITE_FEEDBACK_URL
   const handleOpenFeedback = feedbackURL ? () => window.open(feedbackURL) : () => history.push('/feedback')
 
   return <Layout className={dark ? 'bp3-dark' : ''}>

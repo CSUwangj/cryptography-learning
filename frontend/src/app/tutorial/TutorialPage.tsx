@@ -1,5 +1,5 @@
 import React from 'react'
-import styled from '@emotion/styled/macro'
+import styled from '@emotion/styled'
 import { Div, navbarHeight } from 'ui'
 import { WIP } from '../Wip'
 

@@ -49,8 +49,8 @@ class HttpSpaBaselineTest(unittest.TestCase):
     def test_bundled_static_js_referenced_by_index_is_served(self):
         _, _, index = http_get("/")
         text = index.decode("utf-8", errors="replace")
-        match = re.search(r'src="(/static/js/[^"]+)"', text)
-        self.assertIsNotNone(match, "expected CRA bundle script in index.html")
+        match = re.search(r'src="(/assets/[^"]+\.js)"', text)
+        self.assertIsNotNone(match, "expected Vite bundle script in index.html")
         status, headers, body = http_get(match.group(1))
         self.assertEqual(status, 200)
         self.assertTrue(body)

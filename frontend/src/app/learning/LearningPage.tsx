@@ -2,7 +2,7 @@ import React, {useEffect} from 'react'
 import { useTranslation } from 'react-i18next'
 import { WIP } from '../Wip'
 import { Div, navbarHeight } from 'ui'
-import styled from '@emotion/styled/macro'
+import styled from '@emotion/styled'
 
 const Wrapper = styled(Div)`
   min-height: calc(100vh - ${navbarHeight}px);
