@@ -11,18 +11,25 @@ runtime from the Rust types in `backend/src/model.rs` — `#[Object] impl Query`
 the root, and the `SimpleObject` structs for everything else — and serves it from
 the running process. `schema.gql` here is a human transcription of that.
 
-`graphql-codegen` then reads `schema.gql` together with the operations in
-`query.gql` and `fragment.gql`, per `../.codegen.yml`, and writes:
+Feature modules own their GraphQL operation documents. `graphql-codegen` reads
+`schema.gql` together with those documents (see `../.codegen.yml`) and writes:
 
-- `../src/generated/graphql.tsx` — typed hooks the components import
-- `../src/generated/fragmentTypes.json` — the Apollo fragment matcher
+- `../src/transport/generated/graphql.tsx` — typed hooks used inside feature
+  mapping layers
+- `../src/transport/generated/fragmentTypes.json` — the Apollo fragment matcher
+
+Practice documents live under `../src/practice/graphql/`. Transport-owned smoke
+documents (for example `Hello`) live under `../src/transport/graphql/`. Generated
+GraphQL types must not become cross-module domain types; feature modules map
+results into local domain shapes.
 
 So the frontend's types are derived from *this file*, not from the backend. If this
 file drifts from the Rust types, the generated types are wrong in a way that
 compiles cleanly and fails at runtime. That is the failure ADR-0002 exists to
 prevent.
 
-Regenerate the client types after editing any of these files:
+Regenerate the client types after editing the schema or any module GraphQL
+document:
 
 ```bash
 cd frontend && npm run gen

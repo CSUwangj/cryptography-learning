@@ -1,6 +1,6 @@
 # Known terminal defects (characterization baseline)
 
-These are **current** problems in `frontend/src/components/Terminal.tsx`.
+These are **current** problems in `frontend/src/terminal/Terminal.tsx`.
 They are recorded here so modernization (issue #17) can fix them without the
 baseline accidentally treating them as required behavior.
 

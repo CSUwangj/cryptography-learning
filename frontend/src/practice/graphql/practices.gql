@@ -1,0 +1,5 @@
+query Practices {
+  practice {
+    ...Practice
+  }
+}
