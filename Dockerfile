@@ -34,8 +34,15 @@ RUN cd frontend \
 FROM debian:bookworm-slim
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates \
+  && apt-get install -y --no-install-recommends ca-certificates wget \
   && rm -rf /var/lib/apt/lists/*
+
+ARG BUILD_COMMIT=unknown
+ARG IMAGE_VERSION=dev
+LABEL org.opencontainers.image.title="Cryptography Learning web tier" \
+      org.opencontainers.image.description="Immutable Practice web tier" \
+      org.opencontainers.image.revision="${BUILD_COMMIT}" \
+      org.opencontainers.image.version="${IMAGE_VERSION}"
 
 WORKDIR /app
 
@@ -49,5 +56,8 @@ COPY start-web-tier.sh /app/start-web-tier.sh
 RUN chmod +x /app/start-web-tier.sh
 
 EXPOSE 8000
+
+HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=6 \
+  CMD wget --quiet --output-document=- http://127.0.0.1:8000/health/ready >/dev/null || exit 1
 
 ENTRYPOINT ["/app/start-web-tier.sh"]

@@ -2,7 +2,7 @@ services:
   web-tier:
     build:
       context: .
-    image: cryptography-learning-web-tier:local
+    image: ${WEB_TIER_IMAGE:-cryptography-learning-web-tier:local}
     ports:
       - "${WEB_HTTP_PORT:-8000}:8000"
     volumes:
@@ -14,4 +14,9 @@ services:
       # CONFIG_PATH can be overridden for testing, but defaults to /content/config.ron.
       CONFIG_PATH: /content/config.ron
       ACCESS_POINT: 0.0.0.0:8000
-
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--output-document=-", "http://127.0.0.1:8000/health/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s

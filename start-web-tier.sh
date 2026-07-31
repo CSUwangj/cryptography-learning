@@ -11,8 +11,10 @@ IMAGE_ID="${IMAGE_ID:-unknown}"
 # The React bundle references /img/*; serve Lab assets from the mounted
 # content repo by linking it into the static bundle directory.
 if [ -d "${CONTENT_DIR}/img" ]; then
-  rm -rf "${STATIC_DIR}/img"
-  ln -s "${CONTENT_DIR}/img" "${STATIC_DIR}/img"
+  # Do not mutate or replace files baked into the image.
+  if [ ! -e "${STATIC_DIR}/img" ]; then
+    ln -s "${CONTENT_DIR}/img" "${STATIC_DIR}/img" || true
+  fi
 fi
 
 cd "${CONTENT_DIR}"
@@ -24,4 +26,3 @@ exec /app/backend \
   --access-point "${ACCESS_POINT}" \
   --build-commit "${BUILD_COMMIT}" \
   --image-id "${IMAGE_ID}"
-

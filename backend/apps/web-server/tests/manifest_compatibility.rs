@@ -64,7 +64,10 @@ fn previous_backend_can_read_the_versioned_manifest() {
     assert_eq!(lab.tcp_endpoints[0].port, 19000);
     assert_eq!(lab.resources[0].lang, "en-US");
     assert_eq!(lab.resources[0].name, "Affine Cipher");
-    assert_eq!(lab.resources[0].resource, "practice/classical/affine/en-US.md");
+    assert_eq!(
+        lab.resources[0].resource,
+        "practice/classical/affine/en-US.md"
+    );
     let current: RawConfiguration = ron::from_str(manifest).expect("current fixture");
     assert_eq!(
         current.schema_version,
