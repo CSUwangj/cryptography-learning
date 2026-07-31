@@ -18,3 +18,5 @@ test/*
 .vscode
 
 static
+
+!**/tests/fixtures/*

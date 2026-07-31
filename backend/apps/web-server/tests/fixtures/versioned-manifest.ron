@@ -1,0 +1,21 @@
+Configuration(
+    schema_version: 1,
+    practice: (
+        lab_categories: [
+            (
+                id: "classical",
+                name: [(language: "en-US", text: "Classical")],
+                labs: [(
+                    id: "affine",
+                    ws_endpoints: [(host: "127.0.0.1", port: 19020)],
+                    tcp_endpoints: [(host: "127.0.0.1", port: 19000)],
+                    resources: [(
+                        language: "en-US",
+                        name: "Affine Cipher",
+                        resource: "practice/classical/affine/en-US.md"
+                    )]
+                )]
+            )
+        ]
+    )
+)
