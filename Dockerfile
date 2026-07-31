@@ -20,7 +20,7 @@ WORKDIR /src
 
 ARG VITE_FEEDBACK_URL="https://github.com/CSUAuroraLab/ISSUE-COLLECTOR/issues/new/choose"
 
-COPY frontend/package.json frontend/package-lock.json ./frontend/
+COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./frontend/
 RUN cd frontend && npm ci
 
 COPY frontend ./frontend/

@@ -13,16 +13,20 @@
     "strict": true,
     "forceConsistentCasingInFileNames": true,
     "module": "esnext",
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "jsx": "react",
-    "baseUrl": "src",
-    "typeRoots": [
-      "./node_modules/@types",
-      "./typings"
-    ]
+    "jsx": "react-jsx",
+    "jsxImportSource": "@emotion/react",
+    "rootDir": "./src",
+    "paths": {
+      "app": ["./src/app"],
+      "practice": ["./src/practice"],
+      "terminal": ["./src/terminal"],
+      "transport": ["./src/transport"],
+      "ui": ["./src/ui"]
+    }
   },
   "include": [
     "src"

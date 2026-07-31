@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Divider, H1, Menu } from '@blueprintjs/core'
+import { Divider, H1, Menu, MenuDivider, MenuItem } from '@blueprintjs/core'
 import { Route, Switch, useHistory } from 'react-router-dom'
 import styled from '@emotion/styled'
 import { Div, contentWidth, menuWidth, navbarHeight } from 'ui'
@@ -45,14 +45,14 @@ const useMenu = (language: string) => {
   return usePracticeMenu(language, (categories) => {
     const menuItems = categories.map((category, categoryIndex) => {
       const categoryItems = category.labs.map((lab, labIndex) => {
-        return <Menu.Item
+        return <MenuItem
           key={categoryIndex+'.'+labIndex}
           onClick={() => history.push(labPath({category: category.id, lab: lab.id}))}
           text={lab.name}
         />
       })
       return <>
-        <Menu.Divider title={category.name} key={categoryIndex.toString()}/>
+        <MenuDivider title={category.name} key={categoryIndex.toString()}/>
         {categoryItems}
       </>
     })

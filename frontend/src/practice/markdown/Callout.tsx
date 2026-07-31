@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useState, type PropsWithChildren } from 'react'
 import classNames from 'classnames'
-import { Classes, Intent, IconName, MaybeElement, Icon, H4 } from '@blueprintjs/core'
+import { Classes, Intent, IconName, MaybeElement, Icon, IconSize, H4 } from '@blueprintjs/core'
 import styled from '@emotion/styled'
 import { getIconName } from './getIconName'
 
@@ -36,7 +36,7 @@ type CalloutProps = {
   icon?: IconName | MaybeElement
 }
 
-export const Callout: React.FC<CalloutProps> = ({alwaysOpen, title, intent, icon, children}) => {
+export const Callout: React.FC<PropsWithChildren<CalloutProps>> = ({alwaysOpen, title, intent, icon, children}) => {
   const iconName = getIconName(icon, intent)
   const classes  = classNames(
     Classes.CALLOUT,
@@ -47,7 +47,7 @@ export const Callout: React.FC<CalloutProps> = ({alwaysOpen, title, intent, icon
   const toggleIcon = useMemo(() => isOpen ? 'caret-down' : 'caret-right', [isOpen])
 
   return <TransitionDiv className={classes}>
-    {iconName && <Icon icon={iconName} iconSize={Icon.SIZE_LARGE} />}
+    {iconName && <Icon icon={iconName} size={IconSize.LARGE} />}
     {title && alwaysOpen ? <H4>{title}</H4> : <Button onClick={() => setOpen(!isOpen)}>
       <H4>{title}</H4>
       <RightIconWrapper>

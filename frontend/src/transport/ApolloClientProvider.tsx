@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type PropsWithChildren } from 'react'
 import { SubscriptionClient } from 'subscriptions-transport-ws'
 import { createHttpLink, ApolloClient, InMemoryCache, ApolloProvider } from '@apollo/client'
 import { HyperLink } from './hyperLink'
@@ -26,7 +26,7 @@ function getLink() {
   return link
 }
 
-export const ApolloClientProvider: React.FC = ({ children }) => {
+export const ApolloClientProvider: React.FC<PropsWithChildren> = ({ children }) => {
   const client = new ApolloClient({
     link: getLink(),
     cache: new InMemoryCache(),

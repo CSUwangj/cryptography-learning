@@ -34,5 +34,9 @@ Anything exposed this way is visible in the browser bundle — never put secrets
 Use the Node version in `.nvmrc` (exact `engines.node` / bundled npm in
 `engines.npm`) and install with `npm ci` so the lockfile is respected.
 `engine-strict` rejects other Node/npm versions. `legacy-peer-deps` is required
-while the React 16 / Apollo 3.4 graph still has conflicting optional peers;
-issue #15/#16 will refresh that graph.
+while Apollo Client 3.4 still has conflicting optional peers with React 19;
+issue #16 will refresh that GraphQL client graph.
+
+The SPA runtime is React 19 / Blueprint 6 / Emotion 11 / TypeScript 6. Deprecated
+`ReactDOM.render` usage was cleared in a React 18.3 diagnostic pass before the
+19.x upgrade; Blueprint overlays run under `OverlaysProvider`.

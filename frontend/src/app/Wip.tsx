@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 export const WIP: React.FC = () => {
   const { t } = useTranslation()
   return <div>
-    <Icon icon='outdated' iconSize={200} />
+    <Icon icon='outdated' size={200} />
     <H1>{t('wip')}</H1>
   </div>
 }

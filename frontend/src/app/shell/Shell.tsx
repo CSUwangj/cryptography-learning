@@ -1,7 +1,8 @@
-import React, { useState } from 'react'
+import React, { useState, type PropsWithChildren } from 'react'
 import {
   Alignment,
   Button,
+  Classes,
   Navbar,
   NavbarDivider,
   NavbarGroup,
@@ -10,19 +11,17 @@ import {
 } from '@blueprintjs/core'
 import { useTranslation } from 'react-i18next'
 import { Unselectable } from '../Unselectable'
-import { Select, IItemModifiers } from "@blueprintjs/select"
+import { Select, type ItemModifiers } from '@blueprintjs/select'
 import { useHistory } from 'react-router-dom'
 import { Body, Footer, Header, Layout } from '../Layout'
 import { navbarHeight } from 'ui'
 import styled from '@emotion/styled'
 import { IconNames } from '@blueprintjs/icons'
 
-const I18nSelect = Select.ofType<string>()
-
 type I18nRenderProps = {
   s: string
-  handleClick: (event: React.MouseEvent<HTMLElement, MouseEvent>) => void
-  modifiers: IItemModifiers
+  handleClick: (event: React.MouseEvent<HTMLElement>) => void
+  modifiers: ItemModifiers
   query?: string
 }
 
@@ -39,6 +38,7 @@ const I18nRender: React.FC<I18nRenderProps> = ({ s, handleClick, modifiers }) =>
       key={s}
       onClick={handleClick}
       text={t('i18n.'+s)}
+      roleStructure="listoption"
     />
   )
 }
@@ -52,7 +52,7 @@ const NavMenu = styled(Navbar)`
   font-size: 20px;
 `
 
-export const Shell: React.FC = ({ children }) => {
+export const Shell: React.FC<PropsWithChildren> = ({ children }) => {
   const { t, i18n } = useTranslation()
   // i18n.languages is list of fallback languages
   const items = i18n.languages
@@ -64,9 +64,9 @@ export const Shell: React.FC = ({ children }) => {
   const feedbackURL = import.meta.env.VITE_FEEDBACK_URL
   const handleOpenFeedback = feedbackURL ? () => window.open(feedbackURL) : () => history.push('/feedback')
 
-  return <Layout className={dark ? 'bp3-dark' : ''}>
+  return <Layout className={dark ? Classes.DARK : undefined}>
     <Header>
-      <NavMenu className='bp3-dark'>
+      <NavMenu className={Classes.DARK}>
         <NavbarGroup align={Alignment.LEFT}>
           <Unselectable>
             <NavbarHeading><Button minimal large icon={IconNames.HOME} text={t('nav.home')} onClick={() => history.push('/')}/></NavbarHeading>
@@ -87,14 +87,14 @@ export const Shell: React.FC = ({ children }) => {
             onClick={() => {setDark(!dark)}}
           />
           <NavbarDivider />
-          <I18nSelect
+          <Select<string>
             items={items}
+            filterable={false}
             itemRenderer={(s, {handleClick, modifiers}) => <I18nRender s={s} handleClick={handleClick} modifiers={modifiers} />}
             onItemSelect={(i) => {i18n.changeLanguage(i)}}
-            noResults={<MenuItem disabled={true} text="No results." />}
           >
             <Button text={t('i18n.'+i18n.language)} rightIcon="double-caret-vertical" />
-          </I18nSelect>
+          </Select>
         </NavbarGroup>
       </NavMenu>
     </Header>

@@ -7,13 +7,18 @@ import react from '@vitejs/plugin-react'
 const rootDir = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react({
+      jsxImportSource: '@emotion/react',
+      babel: {
+        plugins: ['@emotion/babel-plugin'],
+      },
+    }),
+  ],
   base: '/',
   build: {
     outDir: 'dist',
     sourcemap: false,
-    // Blueprint 3 ships selectors lightningcss rejects (e.g. `::after.bp3-active`).
-    cssMinify: false,
   },
   resolve: {
     alias: {

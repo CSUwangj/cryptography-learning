@@ -29,6 +29,8 @@ type MarkdownCalloutProps = {
   children: React.ReactElement
 }
 
+type AdmonitionRendererProps = Omit<MarkdownCalloutProps, 'intent'>
+
 const MarkdownCallout: React.FC<MarkdownCalloutProps> = ({intent, data, children}) => {
   const dataList = data.hProperties.className.split(' ')
   const alwaysOpen = dataList.length > 1 && dataList[0]
@@ -67,7 +69,7 @@ const Code = styled.code`
   white-space: pre;
 `
 
-const InlineCode: React.FC = ({ children }) => {
+const InlineCode: React.FC<React.PropsWithChildren> = ({ children }) => {
   return <Code>{children}</Code>
 }
 
@@ -89,13 +91,13 @@ export const Markdown: React.FC<MarkdownProps> = ({ source }) => {
     renderers={{
       code: CodeBlock,
       inlineCode: InlineCode,
-      math: ({ value }) => <TeX block>{value}</TeX>,
-      inlineMath: ({ value }) => <TeX>{value}</TeX>,
-      none: (props) => <MarkdownCallout intent='none' {...props} />,
-      primary: (props) => <MarkdownCallout intent='primary' {...props} />,
-      success: (props) => <MarkdownCallout intent='success' {...props} />,
-      warning: (props) => <MarkdownCallout intent='warning' {...props} />,
-      danger: (props) => <MarkdownCallout intent='danger' {...props} />,
+      math: ({ value }: { value: string }) => <TeX block>{value}</TeX>,
+      inlineMath: ({ value }: { value: string }) => <TeX>{value}</TeX>,
+      none: (props: AdmonitionRendererProps) => <MarkdownCallout intent='none' {...props} />,
+      primary: (props: AdmonitionRendererProps) => <MarkdownCallout intent='primary' {...props} />,
+      success: (props: AdmonitionRendererProps) => <MarkdownCallout intent='success' {...props} />,
+      warning: (props: AdmonitionRendererProps) => <MarkdownCallout intent='warning' {...props} />,
+      danger: (props: AdmonitionRendererProps) => <MarkdownCallout intent='danger' {...props} />,
     }}
   />
 }

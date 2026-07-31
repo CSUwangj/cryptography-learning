@@ -20,7 +20,7 @@ const Container = styled.div<ContainerProps>`
 export const Feature: React.FC<FeatureProps> = ({icon, feature, size}) => {
   const { t } = useTranslation()
   return <div>
-    <Icon icon={icon} iconSize={size}></Icon>
+    <Icon icon={icon} size={size}></Icon>
     <Container width={size}><H3>{t('feature.' + feature)}</H3></Container>
   </div>
 }
