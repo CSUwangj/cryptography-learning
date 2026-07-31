@@ -1,4 +1,4 @@
-import {
+import type {
   PracticesQuery,
   LabQuery,
 } from '../transport/generated/graphql'

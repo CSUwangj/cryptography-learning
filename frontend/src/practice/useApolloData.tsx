@@ -1,24 +1,29 @@
 import React, { useCallback, useEffect } from 'react'
-import { QueryResult, OperationVariables, ApolloError } from '@apollo/client'
+import type { ErrorLike } from '@apollo/client'
 import { Loading, ShowError } from 'ui'
 
+type QueryDataResult<TData> = {
+  data: TData | undefined
+  error?: ErrorLike
+  loading: boolean
+  refetch: () => Promise<unknown>
+  stopPolling: () => void
+}
+
 // Add pollInterval to useQuery options when stop polling is need
-export const useApolloData = <TData, TVariables extends OperationVariables>(
-  res: QueryResult<TData, TVariables>,
+export const useApolloData = <TData,>(
+  res: QueryDataResult<TData>,
   render: (data: TData) => React.ReactElement,
-  renderError?: (error: ApolloError) => React.ReactElement,
+  renderError?: (error: ErrorLike) => React.ReactElement,
   stopPollingWhen?: (data: TData) => boolean
 ): React.ReactElement => {
-  const { data, error, loading, refetch, called, stopPolling } = res
-  const onRefetch = useCallback(() => refetch(), [ refetch ])
+  const { data, error, loading, refetch, stopPolling } = res
+  const onRefetch = useCallback(() => { void refetch() }, [refetch])
   useEffect(() => {
     if (stopPollingWhen && data && stopPollingWhen(data)) {
       stopPolling()
     }
   }, [data, stopPollingWhen, stopPolling])
-  if (!called) {
-    return React.createElement(React.Fragment)
-  }
   if (loading) {
     return React.createElement(Loading)
   }
@@ -29,7 +34,7 @@ export const useApolloData = <TData, TVariables extends OperationVariables>(
       return React.createElement(
         ShowError,
         {
-          error,
+          error: error instanceof Error ? error : new Error(error.message),
           onRefetch
         }
       )

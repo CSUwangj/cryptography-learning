@@ -12,11 +12,9 @@ the root, and the `SimpleObject` structs for everything else — and serves it f
 the running process. `schema.gql` here is a human transcription of that.
 
 Feature modules own their GraphQL operation documents. `graphql-codegen` reads
-`schema.gql` together with those documents (see `../.codegen.yml`) and writes:
-
-- `../src/transport/generated/graphql.tsx` — typed hooks used inside feature
-  mapping layers
-- `../src/transport/generated/fragmentTypes.json` — the Apollo fragment matcher
+`schema.gql` together with those documents (see `../.codegen.yml`) and writes the
+GraphQL Code Generator client preset under `../src/transport/generated/` — typed
+documents and operation result types used inside feature mapping layers.
 
 Practice documents live under `../src/practice/graphql/`. Transport-owned smoke
 documents (for example `Hello`) live under `../src/transport/graphql/`. Generated
@@ -34,6 +32,9 @@ document:
 ```bash
 cd frontend && npm run gen
 ```
+
+CI runs generation and fails if the tree is dirty, so committed generated output
+must stay in sync.
 
 ## Reading it against the Rust types
 

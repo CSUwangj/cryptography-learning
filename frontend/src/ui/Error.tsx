@@ -1,7 +1,7 @@
 import React, { useEffect, useCallback, Fragment, useState } from 'react'
+import { CombinedGraphQLErrors, ServerError } from '@apollo/client'
 import { Alert, Intent } from '@blueprintjs/core'
 import { useToggle } from './useToggle'
-import { isApolloError } from '@apollo/client'
 
 enum Errors {
   CriticalErrorHappened = 'CRITICAL_ERROR_HAPPENED',
@@ -32,28 +32,27 @@ export function useErrorToDescription() {
       return <></>
     } else if (typeof error === 'string') {
       description = error
-    } else if (isApolloError(error)) {
-      if (error.graphQLErrors.length > 0) {
-        description = error.graphQLErrors.map(e => {
-          if (e.extensions?.code === Errors.CriticalErrorHappened) {
-            return undefined
-          }
-          if (e.extensions?.code) {
-            console.log('errContext', errContext, e.extensions?.code)
-            return 'error-' + e.extensions.code
-          }
-          // internal error
-          return 'error-internal'
-        }).map((i, id) => <Fragment key={id}>{i}</Fragment>)
-      } else if (error.networkError) {
-        const resp: Response | undefined = (error.networkError as any)?.response
-        // invalid token
-        if (resp?.status === 401) {
-          description = 'invalid-token'
-        } else {
-          description = 'error-networkError'
+    } else if (CombinedGraphQLErrors.is(error)) {
+      description = error.errors.map(e => {
+        if (e.extensions?.code === Errors.CriticalErrorHappened) {
+          return undefined
         }
+        if (e.extensions?.code) {
+          console.log('errContext', errContext, e.extensions?.code)
+          return 'error-' + e.extensions.code
+        }
+        // internal error
+        return 'error-internal'
+      }).map((i, id) => <Fragment key={id}>{i}</Fragment>)
+    } else if (ServerError.is(error)) {
+      if (error.statusCode === 401) {
+        description = 'invalid-token'
+      } else {
+        description = 'error-networkError'
       }
+    } else if (error instanceof Error) {
+      // Apollo Client 4 returns network failures as-is (no ApolloError wrapper).
+      description = 'error-networkError'
     } else {
       console.warn('unknown error', error)
       description = 'error-unknown'

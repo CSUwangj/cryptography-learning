@@ -1,7 +1,8 @@
 import React from 'react'
+import { useQuery } from '@apollo/client/react'
 import {
-  usePracticesQuery as useGeneratedPracticesQuery,
-  useLabQuery as useGeneratedLabQuery,
+  LabDocument,
+  PracticesDocument,
 } from '../transport/generated/graphql'
 import { useApolloData } from './useApolloData'
 import {
@@ -21,7 +22,7 @@ export const usePracticeMenu = (
   language: string,
   render: (categories: PracticeMenuCategory[]) => React.ReactElement
 ): React.ReactElement =>
-  useApolloData(useGeneratedPracticesQuery(), (data) =>
+  useApolloData(useQuery(PracticesDocument), (data) =>
     render(mapPracticeMenu(data, language))
   )
 
@@ -30,6 +31,6 @@ export const useLabDescription = (
   variables: LabQueryVars,
   render: (lab: LabDescription) => React.ReactElement
 ): React.ReactElement =>
-  useApolloData(useGeneratedLabQuery({ variables }), (data) =>
+  useApolloData(useQuery(LabDocument, { variables }), (data) =>
     render(mapLabDescription(data))
   )

@@ -58,6 +58,18 @@ jobs:
       - name: Install from the lockfile
         run: npm ci
 
+      - name: Verify GraphQL codegen is up to date
+        # Client-preset output under src/transport/generated must match a fresh
+        # `npm run gen` (issue #16 clean-tree contract).
+        run: |
+          npm run gen
+          if [ -n "$(git status --porcelain -- .)" ]; then
+            echo "GraphQL codegen left the frontend tree dirty:"
+            git status --porcelain -- .
+            git diff -- .
+            exit 1
+          fi
+
       - name: Typecheck
         run: npm run typecheck
 
