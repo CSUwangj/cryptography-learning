@@ -49,6 +49,18 @@ pub enum PracticeCatalogError {
         language: String,
     },
 
+    #[error("endpoint at `{path}` has an empty host")]
+    EmptyEndpointHost { path: String },
+
+    #[error("endpoint at `{path}` has an invalid host `{host}`")]
+    InvalidEndpointHost { path: String, host: String },
+
+    #[error("endpoint at `{path}` has an invalid port `{port}`; expected 1..=65535")]
+    InvalidEndpointPort { path: String, port: i32 },
+
+    #[error("resource path at `{path}` must be relative and must not contain `..`")]
+    InvalidResourcePath { path: String },
+
     #[error("failed to load Lab Description at `{path}`: {message}")]
     ContentLoad { path: String, message: String },
 }

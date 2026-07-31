@@ -1,4 +1,5 @@
 Configuration(
+  schema_version: 1,
   practice: (
     lab_categories: [
       (

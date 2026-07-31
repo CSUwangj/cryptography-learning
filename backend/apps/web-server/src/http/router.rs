@@ -187,6 +187,7 @@ mod tests {
         files.insert("affine.md".to_string(), "affine-body".to_string());
         let source = InMemoryLabContentSource::new(files);
         let raw = RawConfiguration {
+            schema_version: RawConfiguration::SUPPORTED_SCHEMA_VERSION,
             practice: RawPractice {
                 lab_categories: vec![RawLabCategory {
                     id: "classical".to_string(),

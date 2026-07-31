@@ -132,7 +132,7 @@ impl PracticeCatalog {
         let mut categories = Vec::with_capacity(raw.lab_categories.len());
         let mut seen_category_ids = HashSet::new();
 
-        for raw_category in raw.lab_categories {
+        for (category_index, raw_category) in raw.lab_categories.into_iter().enumerate() {
             if raw_category.id.is_empty() {
                 return Err(PracticeCatalogError::EmptyCategoryId);
             }
@@ -172,7 +172,7 @@ impl PracticeCatalog {
 
             let mut seen_lab_ids = HashSet::new();
             let mut labs = Vec::with_capacity(raw_category.labs.len());
-            for raw_lab in raw_category.labs {
+            for (lab_index, raw_lab) in raw_category.labs.into_iter().enumerate() {
                 if raw_lab.id.is_empty() {
                     return Err(PracticeCatalogError::EmptyLabId {
                         category_id: raw_category.id,
@@ -191,9 +191,22 @@ impl PracticeCatalog {
                     });
                 }
 
+                validate_endpoints(
+                    &raw_lab.ws_endpoints,
+                    &format!(
+                        "practice.lab_categories[{category_index}].labs[{lab_index}].ws_endpoints"
+                    ),
+                )?;
+                validate_endpoints(
+                    &raw_lab.tcp_endpoints,
+                    &format!(
+                        "practice.lab_categories[{category_index}].labs[{lab_index}].tcp_endpoints"
+                    ),
+                )?;
+
                 let mut seen_resource_langs = HashSet::new();
                 let mut resources = Vec::with_capacity(raw_lab.resources.len());
-                for raw_resource in raw_lab.resources {
+                for (resource_index, raw_resource) in raw_lab.resources.into_iter().enumerate() {
                     if raw_resource.lang.is_empty() {
                         return Err(PracticeCatalogError::EmptyResourceLanguage {
                             category_id: raw_category.id,
@@ -210,6 +223,14 @@ impl PracticeCatalog {
                         return Err(PracticeCatalogError::EmptyResourcePath {
                             category_id: raw_category.id,
                             lab_id: raw_lab.id,
+                        });
+                    }
+                    let resource_path = format!(
+                        "practice.lab_categories[{category_index}].labs[{lab_index}].resources[{resource_index}].resource"
+                    );
+                    if !is_safe_resource_path(&raw_resource.resource) {
+                        return Err(PracticeCatalogError::InvalidResourcePath {
+                            path: resource_path,
                         });
                     }
                     if !seen_resource_langs.insert(raw_resource.lang.clone()) {
@@ -319,6 +340,47 @@ fn map_endpoints(endpoints: Vec<RawEndpoint>) -> Vec<CatalogEndpoint> {
         .collect()
 }
 
+fn validate_endpoints(
+    endpoints: &[RawEndpoint],
+    collection_path: &str,
+) -> Result<(), PracticeCatalogError> {
+    for (index, endpoint) in endpoints.iter().enumerate() {
+        let path = format!("{collection_path}[{index}]");
+        if endpoint.host.is_empty() {
+            return Err(PracticeCatalogError::EmptyEndpointHost { path });
+        }
+        if endpoint.host.chars().any(char::is_whitespace)
+            || endpoint.host.contains('/')
+            || endpoint.host.contains('\\')
+            || endpoint.host.starts_with('.')
+            || endpoint.host.ends_with('.')
+        {
+            return Err(PracticeCatalogError::InvalidEndpointHost {
+                path,
+                host: endpoint.host.clone(),
+            });
+        }
+        if !(1..=65_535).contains(&endpoint.port) {
+            return Err(PracticeCatalogError::InvalidEndpointPort {
+                path,
+                port: endpoint.port,
+            });
+        }
+    }
+    Ok(())
+}
+
+fn is_safe_resource_path(path: &str) -> bool {
+    let path = std::path::Path::new(path);
+    !path.is_absolute()
+        && path.components().all(|component| {
+            matches!(
+                component,
+                std::path::Component::Normal(_) | std::path::Component::CurDir
+            )
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -384,6 +446,7 @@ mod tests {
     #[test]
     fn parses_host_configuration_ron_root_name() {
         let text = r#"Configuration(
+            schema_version: 1,
             practice: (
                 lab_categories: []
             )
@@ -394,6 +457,65 @@ mod tests {
             PracticeCatalog::try_from_raw(raw.practice, &InMemoryLabContentSource::default())
                 .expect("empty Practice is valid");
         assert!(catalog.practice().is_empty());
+    }
+
+    #[test]
+    fn rejects_unknown_manifest_fields_and_unsupported_versions() {
+        let unknown =
+            r#"Configuration(schema_version: 1, unexpected: true, practice: (lab_categories: []))"#;
+        assert!(ron::from_str::<RawConfiguration>(unknown).is_err());
+
+        let unsupported = RawConfiguration {
+            schema_version: 2,
+            practice: RawPractice {
+                lab_categories: vec![],
+            },
+        };
+        assert_eq!(
+            unsupported.validate_schema_version(),
+            Err((RawConfiguration::SUPPORTED_SCHEMA_VERSION, 2))
+        );
+    }
+
+    #[test]
+    fn rejects_malformed_endpoints_and_unsafe_resource_paths() {
+        let raw = RawPractice {
+            lab_categories: vec![RawLabCategory {
+                id: "classical".into(),
+                name: vec![translation("en-US", "Classical")],
+                labs: vec![RawLab {
+                    id: "affine".into(),
+                    ws_endpoints: vec![endpoint("", 19020)],
+                    tcp_endpoints: vec![],
+                    resources: vec![resource("en-US", "Affine", "../secret.md")],
+                }],
+            }],
+        };
+        let err = PracticeCatalog::try_from_raw(raw, &InMemoryLabContentSource::default())
+            .expect_err("malformed endpoint");
+        assert!(matches!(
+            err,
+            PracticeCatalogError::EmptyEndpointHost { .. }
+        ));
+
+        let raw = RawPractice {
+            lab_categories: vec![RawLabCategory {
+                id: "classical".into(),
+                name: vec![translation("en-US", "Classical")],
+                labs: vec![RawLab {
+                    id: "affine".into(),
+                    ws_endpoints: vec![],
+                    tcp_endpoints: vec![],
+                    resources: vec![resource("en-US", "Affine", "../secret.md")],
+                }],
+            }],
+        };
+        let err = PracticeCatalog::try_from_raw(raw, &InMemoryLabContentSource::default())
+            .expect_err("unsafe resource path");
+        assert!(matches!(
+            err,
+            PracticeCatalogError::InvalidResourcePath { .. }
+        ));
     }
 
     #[test]

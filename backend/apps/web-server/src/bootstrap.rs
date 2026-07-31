@@ -59,6 +59,9 @@ pub enum BootstrapError {
     #[error("failed to parse configuration at {path}: {message}")]
     ConfigParse { path: String, message: String },
 
+    #[error("unsupported configuration schema version {actual}; expected {expected}")]
+    UnsupportedSchemaVersion { expected: u32, actual: u32 },
+
     #[error("Practice Catalog initialization failed: {0}")]
     Catalog(#[from] PracticeCatalogError),
 
@@ -89,6 +92,10 @@ impl Application {
         content_source: &dyn LabContentSource,
         identity: ProcessIdentity,
     ) -> Result<Self, BootstrapError> {
+        raw.validate_schema_version()
+            .map_err(
+                |(expected, actual)| BootstrapError::UnsupportedSchemaVersion { expected, actual },
+            )?;
         validate_static_root(static_root)?;
         let practice_catalog = PracticeCatalog::try_from_raw(raw.practice, content_source)?;
         let schema = Schema::build(Query, EmptyMutation, EmptySubscription)
@@ -130,10 +137,16 @@ fn load_raw_configuration(path: &Path) -> Result<RawConfiguration, BootstrapErro
             path: path.display().to_string(),
             message: err.to_string(),
         })?;
-    ron::from_str(&config_string).map_err(|err| BootstrapError::ConfigParse {
-        path: path.display().to_string(),
-        message: err.to_string(),
-    })
+    let raw: RawConfiguration =
+        ron::from_str(&config_string).map_err(|err| BootstrapError::ConfigParse {
+            path: path.display().to_string(),
+            message: err.to_string(),
+        })?;
+    raw.validate_schema_version()
+        .map_err(
+            |(expected, actual)| BootstrapError::UnsupportedSchemaVersion { expected, actual },
+        )?;
+    Ok(raw)
 }
 
 fn validate_static_root(static_root: &Path) -> Result<(), BootstrapError> {
@@ -177,6 +190,7 @@ mod tests {
 
     fn valid_raw(content_path: &str) -> RawConfiguration {
         RawConfiguration {
+            schema_version: RawConfiguration::SUPPORTED_SCHEMA_VERSION,
             practice: RawPractice {
                 lab_categories: vec![RawLabCategory {
                     id: "classical".to_string(),
@@ -320,6 +334,7 @@ mod tests {
         fs::write(
             &config_path,
             r#"Configuration(
+            schema_version: 1,
             practice: (
                 lab_categories: [
                     (

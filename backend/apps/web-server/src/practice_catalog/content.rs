@@ -22,8 +22,27 @@ impl FilesystemLabContentSource {
 
 impl LabContentSource for FilesystemLabContentSource {
     fn load(&self, path: &str) -> Result<String, PracticeCatalogError> {
-        let full = self.root.join(Path::new(path));
-        std::fs::read_to_string(&full).map_err(|err| PracticeCatalogError::ContentLoad {
+        let root = self
+            .root
+            .canonicalize()
+            .map_err(|err| PracticeCatalogError::ContentLoad {
+                path: path.to_string(),
+                message: format!("content root is unavailable: {err}"),
+            })?;
+        let full = root.join(Path::new(path));
+        let resolved = full
+            .canonicalize()
+            .map_err(|err| PracticeCatalogError::ContentLoad {
+                path: path.to_string(),
+                message: err.to_string(),
+            })?;
+        if !resolved.starts_with(&root) {
+            return Err(PracticeCatalogError::ContentLoad {
+                path: path.to_string(),
+                message: "resolved path escapes the content root".to_string(),
+            });
+        }
+        std::fs::read_to_string(resolved).map_err(|err| PracticeCatalogError::ContentLoad {
             path: path.to_string(),
             message: err.to_string(),
         })
