@@ -10,16 +10,20 @@ documented in `terminal/known_defects.md` rather than asserted as requirements.
 From a fresh checkout with Docker available:
 
 ```bash
-./baseline/run.sh
+docker build -t cryptography-learning-web-tier:local .
+./acceptance/run.sh cryptography-learning-web-tier:local --mode smoke
 ```
 
 That builds the root `Dockerfile`, starts Compose with `baseline/content` as
 `CONTENT_DIR`, waits for HTTP readiness, and runs the characterization suite.
 
-CI builds and loads the same image with Docker Buildx (BuildKit layers restored
-and exported under the `baseline-web-tier` GitHub Actions cache scope), then
-invokes this script with `BASELINE_SKIP_BUILD=1` so characterization runs
-against the loaded image without a second rebuild.
+The harness never builds: it starts exactly the supplied image reference or ID
+with the public synthetic fixture content in `baseline/content`. Use `smoke`
+for ordinary local course updates, `pr` for Chromium browser acceptance, and
+`release` for Chromium, Firefox, and WebKit against the exact image candidate
+for a tagged web-image release. On failure it prints the retained diagnostics
+directory, containing Compose logs and Playwright artifacts; on success it
+removes temporary containers and temporary artifacts.
 
 ## What is covered
 

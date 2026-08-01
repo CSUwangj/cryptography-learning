@@ -9,7 +9,15 @@ export default defineConfig({
     baseURL: process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:4177',
     headless: true,
     permissions: ['clipboard-read', 'clipboard-write'],
+    screenshot: 'only-on-failure',
+    trace: 'retain-on-failure',
   },
+  outputDir: process.env.PLAYWRIGHT_ARTIFACT_DIR ?? 'test-results',
+  projects: [
+    { name: 'chromium', use: { browserName: 'chromium' } },
+    { name: 'firefox', use: { browserName: 'firefox' } },
+    { name: 'webkit', use: { browserName: 'webkit' } },
+  ],
   ...(process.env.PLAYWRIGHT_BASE_URL
     ? {}
     : {

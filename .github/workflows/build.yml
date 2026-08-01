@@ -118,12 +118,18 @@ jobs:
         # Starts Compose against the Buildx-loaded image (no rebuild) with
         # baseline/content and runs HTTP/GraphQL/terminal characterization
         # checks (issue #12).
-        run: ./baseline/run.sh
+        run: ./acceptance/run.sh cryptography-learning-web-tier:local --mode smoke
         env:
-          BASELINE_SKIP_BUILD: "1"
+          ACCEPTANCE_ARTIFACT_DIR: ${{ runner.temp }}/baseline-artifacts
+      - name: Upload acceptance diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: baseline-diagnostics-${{ github.sha }}
+          path: ${{ runner.temp }}/baseline-artifacts
 
   container-browser:
-    name: Container Chromium acceptance
+    name: Container browser acceptance
     runs-on: ubuntu-latest
     needs: [backend, frontend]
     steps:
@@ -139,12 +145,6 @@ jobs:
           build-args: |
             BUILD_COMMIT=${{ github.sha }}
             IMAGE_VERSION=${{ github.ref_name }}
-      - name: Start the candidate image
-        run: docker compose -f docker-compose.yml --project-name cryptography-learning-browser up -d --no-build
-        env:
-          CONTENT_DIR: ${{ github.workspace }}/baseline/content
-          WEB_HTTP_PORT: "18080"
-          WEB_TIER_IMAGE: cryptography-learning-web-tier:ci
       - uses: actions/setup-node@v4
         with:
           node-version-file: frontend/.nvmrc
@@ -153,18 +153,20 @@ jobs:
       - name: Install frontend test dependencies
         working-directory: frontend
         run: npm ci
-      - name: Install Chromium
+      - name: Install Chromium for pull-request acceptance
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         working-directory: frontend
         run: npx playwright install --with-deps chromium
-      - name: Run browser acceptance against the image
+      - name: Install release browsers
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
         working-directory: frontend
-        run: npm run test:terminal-browser -- --grep 'Linux web-tier acceptance'
+        run: npx playwright install --with-deps chromium firefox webkit
+      - name: Run acceptance against the candidate image
+        run: ./acceptance/run.sh cryptography-learning-web-tier:ci --mode ${{ startsWith(github.ref, 'refs/tags/') && 'release' || 'pr' }}
         env:
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:18080
-      - name: Verify graceful restart and readiness
-        run: |
-          docker compose -f docker-compose.yml --project-name cryptography-learning-browser restart web-tier
-          timeout 60 bash -c 'until wget -qO- http://127.0.0.1:18080/health/ready; do sleep 1; done'
+          WEB_HTTP_PORT: "18080"
+          ACCEPTANCE_ARTIFACT_DIR: ${{ runner.temp }}/browser-artifacts
       - name: Record image digest
         run: docker image inspect cryptography-learning-web-tier:ci --format 'local@{{.Id}}' | tee image-digest.txt
       - name: Upload image digest record
@@ -172,6 +174,10 @@ jobs:
         with:
           name: web-tier-image-digest-${{ github.sha }}
           path: image-digest.txt
-      - name: Stop the candidate image
+      - name: Upload browser diagnostics
         if: always()
-        run: docker compose -f docker-compose.yml --project-name cryptography-learning-browser down --remove-orphans
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-acceptance-${{ github.sha }}
+          path: ${{ runner.temp }}/browser-artifacts
+          if-no-files-found: ignore

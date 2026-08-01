@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { Terminal } from '../Terminal'
 
@@ -6,8 +6,11 @@ declare global {
   interface Window {
     __terminalHarness?: {
       getVisibleText: () => string
-      outbound: string[]
-      inbound: string[]
+    outbound: string[]
+    inbound: string[]
+      resizeEvents: Array<{ cols: number; rows: number }>
+      switchEndpoint: (nextUrl: string) => void
+      socketCounts: { opened: number; closed: number }
     }
     __terminalHarnessRoot?: Root
   }
@@ -21,11 +24,17 @@ if (!url) {
 
 const outbound: string[] = []
 const inbound: string[] = []
+const resizeEvents: Array<{ cols: number; rows: number }> = []
+const socketCounts = { opened: 0, closed: 0 }
 const OriginalWebSocket = window.WebSocket
 
 class RecordingWebSocket extends OriginalWebSocket {
   constructor(wsUrl: string, protocols?: string | string[]) {
     super(wsUrl, protocols)
+    socketCounts.opened += 1
+    this.addEventListener('close', () => {
+      socketCounts.closed += 1
+    })
     this.addEventListener('message', (event) => {
       const data = event.data
       if (typeof data === 'string') {
@@ -51,7 +60,7 @@ class RecordingWebSocket extends OriginalWebSocket {
 window.WebSocket = RecordingWebSocket as unknown as typeof WebSocket
 
 const Harness: React.FC = () => {
-  const endpoint = useMemo(() => url, [])
+  const [endpoint, setEndpoint] = useState(url)
   return (
     <div style={{ width: 800, height: 400 }}>
       <Terminal
@@ -61,7 +70,13 @@ const Harness: React.FC = () => {
             getVisibleText: session.getVisibleText,
             outbound,
             inbound,
+            resizeEvents,
+            switchEndpoint: setEndpoint,
+            socketCounts,
           }
+        }}
+        onPtyResize={(dimensions) => {
+          resizeEvents.push(dimensions)
         }}
       />
     </div>
@@ -74,4 +89,12 @@ if (!mount) {
 }
 const root = window.__terminalHarnessRoot ?? createRoot(mount)
 window.__terminalHarnessRoot = root
-root.render(<Harness />)
+root.render(
+  params.has('strict') ? (
+    <React.StrictMode>
+      <Harness />
+    </React.StrictMode>
+  ) : (
+    <Harness />
+  ),
+)

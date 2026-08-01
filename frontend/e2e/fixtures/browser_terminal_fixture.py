@@ -57,7 +57,9 @@ def _read_frame(conn: socket.socket, pending: bytearray) -> tuple[int, bytes]:
     return read_frame(exact)
 
 
-def _serve_client(conn: socket.socket, echo: bool, bracketed_paste: bool) -> None:
+def _serve_client(
+    conn: socket.socket, echo: bool, bracketed_paste: bool, disconnect_on_input: bool
+) -> None:
     pending = bytearray()
     try:
         _request_line, headers, rest = _read_http_headers(conn)
@@ -94,6 +96,8 @@ def _serve_client(conn: socket.socket, echo: bool, bracketed_paste: bool) -> Non
             if opcode in (0x1, 0x2):
                 if echo:
                     _send_frame(conn, payload, opcode=opcode)
+                if disconnect_on_input:
+                    break
             elif opcode == 0x9:
                 _send_frame(conn, payload, opcode=0xA)
     except (ConnectionError, OSError):
@@ -112,11 +116,13 @@ class BrowserTerminalFixture:
         port: int = 0,
         echo: bool = True,
         bracketed_paste: bool = False,
+        disconnect_on_input: bool = False,
     ):
         self.host = host
         self.port = port
         self.echo = echo
         self.bracketed_paste = bracketed_paste
+        self.disconnect_on_input = disconnect_on_input
         self._sock: Optional[socket.socket] = None
         self._thread: Optional[threading.Thread] = None
         self._stop = threading.Event()
@@ -145,7 +151,7 @@ class BrowserTerminalFixture:
                 break
             threading.Thread(
                 target=_serve_client,
-                args=(conn, self.echo, self.bracketed_paste),
+                args=(conn, self.echo, self.bracketed_paste, self.disconnect_on_input),
                 daemon=True,
             ).start()
 
@@ -168,12 +174,14 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--port", type=int, default=0)
     parser.add_argument("--no-echo", action="store_true")
     parser.add_argument("--bracketed-paste", action="store_true")
+    parser.add_argument("--disconnect-on-input", action="store_true")
     args = parser.parse_args(argv)
     fixture = BrowserTerminalFixture(
         host=args.host,
         port=args.port,
         echo=not args.no_echo,
         bracketed_paste=args.bracketed_paste,
+        disconnect_on_input=args.disconnect_on_input,
     ).start()
     print(f"listening on ws://{fixture.host}:{fixture.port}", flush=True)
     try:
