@@ -19,6 +19,12 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
+    rollupOptions: {
+      input: {
+        app: path.resolve(rootDir, 'index.html'),
+        terminalHarness: path.resolve(rootDir, 'terminal-harness.html'),
+      },
+    },
   },
   resolve: {
     alias: {

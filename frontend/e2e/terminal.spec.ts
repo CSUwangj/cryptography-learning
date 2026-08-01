@@ -259,12 +259,14 @@ test.describe('Terminal browser acceptance (#17)', () => {
     }
   })
 
-  test('Strict Mode cleans up its first terminal session before accepting input', async ({ page }) => {
+  test('Strict Mode mounts and unmounts a terminal session safely', async ({ page }) => {
     const fixture = await startFixture()
     try {
       await page.goto(`/terminal-harness.html?strict=1&url=${encodeURIComponent(fixture.url)}`)
-      await page.waitForFunction(() => (window.__terminalHarness?.socketCounts.opened ?? 0) >= 2)
-      await page.waitForFunction(() => (window.__terminalHarness?.socketCounts.closed ?? 0) >= 1)
+      // Production React does not replay Strict Mode effects; the component's
+      // unit test covers that development-only cycle. This candidate-image test
+      // proves the Strict Mode tree mounts and its real unmount closes the socket.
+      await page.waitForFunction(() => (window.__terminalHarness?.socketCounts.opened ?? 0) >= 1)
       await page.locator('.xterm').click()
       await page.keyboard.type('strict-once')
       await page.waitForFunction(() =>
@@ -272,6 +274,8 @@ test.describe('Terminal browser acceptance (#17)', () => {
       )
       const state = await getHarness(page)
       expect(state.outbound.join('').split('strict-once').length - 1).toBe(1)
+      await page.evaluate(() => window.__terminalHarnessRoot?.unmount())
+      await page.waitForFunction(() => (window.__terminalHarness?.socketCounts.closed ?? 0) >= 1)
     } finally {
       await fixture.stop()
     }
