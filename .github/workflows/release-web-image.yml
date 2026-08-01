@@ -33,6 +33,7 @@ jobs:
     needs: validate-tag
     runs-on: ubuntu-latest
     env:
+      IMAGE_REPOSITORY: ghcr.io/csuwangj/cryptography-learning
       IMAGE: ghcr.io/csuwangj/cryptography-learning:${{ needs.validate-tag.outputs.version }}
     outputs:
       digest: ${{ steps.publish.outputs.digest }}
@@ -42,19 +43,34 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      - name: Build one Linux AMD64 candidate image
+      - name: Log in to GHCR for immutable candidate storage
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build one immutable Linux AMD64 candidate manifest
+        id: candidate
         run: |
-          docker buildx build --load --platform linux/amd64 \
-            --tag "$IMAGE" \
+          docker buildx build --platform linux/amd64 \
+            --output "type=image,name=$IMAGE_REPOSITORY,push=true,push-by-digest=true,name-canonical=true" \
             --metadata-file candidate-metadata.json \
             --build-arg BUILD_COMMIT="$GITHUB_SHA" \
             --build-arg IMAGE_VERSION="${{ needs.validate-tag.outputs.version }}" \
             .
+          digest="$(jq -r '."containerimage.digest"' candidate-metadata.json)"
+          test "$digest" != "null"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "image=$IMAGE_REPOSITORY@$digest" >> "$GITHUB_OUTPUT"
 
-      - name: Record tested candidate image ID
+      - name: Pull and record the immutable candidate
+        env:
+          CANDIDATE_IMAGE: ${{ steps.candidate.outputs.image }}
         run: |
-          docker image inspect "$IMAGE" --format '{{.Id}}' | tee candidate-image-id.txt
-          jq -r '."containerimage.digest"' candidate-metadata.json | tee candidate-manifest-digest.txt
+          docker pull "$CANDIDATE_IMAGE"
+          docker image inspect "$CANDIDATE_IMAGE" --format '{{.Id}}' | tee candidate-image-id.txt
+          printf '%s\n' "${{ steps.candidate.outputs.digest }}" | tee candidate-manifest-digest.txt
 
       - uses: actions/setup-node@v4
         with:
@@ -70,27 +86,23 @@ jobs:
         working-directory: frontend
         run: npx playwright install --with-deps chromium firefox webkit
 
-      - name: Run three-browser acceptance against the local candidate
-        run: ./acceptance/run.sh "$IMAGE" --mode release
+      - name: Run three-browser acceptance against the immutable candidate
+        run: ./acceptance/run.sh "$CANDIDATE_IMAGE" --mode release
         env:
+          CANDIDATE_IMAGE: ${{ steps.candidate.outputs.image }}
           WEB_HTTP_PORT: '18080'
           ACCEPTANCE_ARTIFACT_DIR: ${{ runner.temp }}/release-artifacts
           ACCEPTANCE_RESULT_FILE: ${{ runner.temp }}/browser-results.txt
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish candidate without rebuilding
+      - name: Publish the tested candidate manifest without rebuilding
         id: publish
+        env:
+          CANDIDATE_IMAGE: ${{ steps.candidate.outputs.image }}
         run: |
           candidate_id="$(cat candidate-image-id.txt)"
-          test "$candidate_id" = "$(docker image inspect "$IMAGE" --format '{{.Id}}')"
-          docker push "$IMAGE"
-          digest="$(docker buildx imagetools inspect "$IMAGE" --format '{{.Digest}}')"
+          test "$candidate_id" = "$(docker image inspect "$CANDIDATE_IMAGE" --format '{{.Id}}')"
+          docker buildx imagetools create --prefer-index=false --tag "$IMAGE" "$CANDIDATE_IMAGE"
+          digest="$(docker buildx imagetools inspect "$IMAGE" --raw | sha256sum | awk '{print "sha256:" $1}')"
           test "$(cat candidate-manifest-digest.txt)" = "$digest"
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
           echo "$IMAGE@$digest" | tee published-image.txt
@@ -100,7 +112,7 @@ jobs:
           PUBLISHED_IMAGE: ${{ env.IMAGE }}@${{ steps.publish.outputs.digest }}
         run: |
           candidate_id="$(cat candidate-image-id.txt)"
-          docker image rm "$IMAGE"
+          docker image rm "${{ steps.candidate.outputs.image }}"
           docker pull "$PUBLISHED_IMAGE"
           test "$candidate_id" = "$(docker image inspect "$PUBLISHED_IMAGE" --format '{{.Id}}')"
       - name: Attest published image provenance
@@ -154,7 +166,7 @@ jobs:
           docker pull "$PUBLISHED_IMAGE"
           ./acceptance/run.sh "$PUBLISHED_IMAGE" --mode smoke
 
-      - name: Create GitHub Release record
+      - name: Create or update GitHub Release record
         run: |
           cat > release-notes.md <<EOF
           Source commit: $GITHUB_SHA
@@ -168,4 +180,8 @@ jobs:
           Supported platform: linux/amd64 only.
           This release contains the public web tier only. The maintained course Host builds locally from Git repositories; it does not pull this image. Newest Web Image Releases receive fixes; older versions remain pullable and the immediately previous version is the rollback candidate.
           EOF
-          gh release create "$GITHUB_REF_NAME" --title "Web image $GITHUB_REF_NAME" --notes-file release-notes.md
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" --title "Web image $GITHUB_REF_NAME" --notes-file release-notes.md
+          else
+            gh release create "$GITHUB_REF_NAME" --title "Web image $GITHUB_REF_NAME" --notes-file release-notes.md
+          fi

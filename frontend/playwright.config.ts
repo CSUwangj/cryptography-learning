@@ -4,11 +4,13 @@ export default defineConfig({
   testDir: './e2e',
   timeout: 60_000,
   fullyParallel: false,
-  retries: 0,
+  // A GitHub-hosted runner can transiently replace its network while a
+  // container restarts. Retry once in CI so a one-off ERR_NETWORK_CHANGED
+  // asset fetch cannot reject an otherwise verified release candidate.
+  retries: process.env.CI ? 1 : 0,
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:4177',
     headless: true,
-    permissions: ['clipboard-read', 'clipboard-write'],
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
   },

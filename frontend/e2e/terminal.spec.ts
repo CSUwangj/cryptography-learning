@@ -70,6 +70,19 @@ async function getHarness(page: Page) {
   })
 }
 
+async function copyWithNativeClipboard(page: Page, text: string) {
+  await page.evaluate((value) => {
+    const seed = document.createElement('textarea')
+    seed.dataset.clipboardSeed = 'true'
+    seed.value = value
+    document.body.appendChild(seed)
+    seed.focus()
+    seed.select()
+  }, text)
+  await page.keyboard.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+c`)
+  await page.locator('[data-clipboard-seed="true"]').evaluate((seed) => seed.remove())
+}
+
 test.describe('Terminal browser acceptance (#17)', () => {
   test('input reaches the Challenge once and server output renders once', async ({ page }) => {
     const fixture = await startFixture()
@@ -117,8 +130,9 @@ test.describe('Terminal browser acceptance (#17)', () => {
           get: () => calls,
           configurable: true,
         })
-        await clipboard.writeText('control-paste')
       })
+
+      await copyWithNativeClipboard(page, 'control-paste')
 
       await page.locator('.xterm').click()
       await page.keyboard.press('Control+v')
@@ -140,7 +154,7 @@ test.describe('Terminal browser acceptance (#17)', () => {
     const fixture = await startFixture()
     try {
       await openHarness(page, fixture.url)
-      await page.evaluate(async () => navigator.clipboard.writeText('command-paste'))
+      await copyWithNativeClipboard(page, 'command-paste')
       await page.locator('.xterm').click()
       await page.keyboard.press('Meta+v')
       await page.waitForFunction(() => window.__terminalHarness?.outbound.join('').includes('command-paste'))
@@ -159,9 +173,7 @@ test.describe('Terminal browser acceptance (#17)', () => {
         window.__terminalHarness?.inbound.some((frame) => frame.includes('\x1b[?2004h')),
       )
 
-      await page.evaluate(async () => {
-        await navigator.clipboard.writeText('line-one\nline-two')
-      })
+      await copyWithNativeClipboard(page, 'line-one\nline-two')
       await page.locator('.xterm').click()
       await page.keyboard.press('Control+v')
 
@@ -237,7 +249,9 @@ test.describe('Terminal browser acceptance (#17)', () => {
       await page.waitForFunction(() => (window.__terminalHarness?.resizeEvents.length ?? 0) > 1)
 
       await page.locator('.xterm').click()
-      await page.keyboard.type('drop-now')
+      // The fixture closes after its first data frame. insertText keeps this
+      // trigger atomic across browser engines, unlike per-key typing.
+      await page.keyboard.insertText('drop-now')
       await expect(page.getByRole('status')).toContainText('Disconnected from Challenge')
       await page.getByRole('button', { name: 'Retry' }).click()
       await page.waitForFunction(() =>
@@ -281,7 +295,9 @@ test.describe('Terminal browser acceptance (#17)', () => {
       // Production React does not replay Strict Mode effects; the component's
       // unit test covers that development-only cycle. This candidate-image test
       // proves the Strict Mode tree mounts and its real unmount closes the socket.
-      await page.waitForFunction(() => (window.__terminalHarness?.socketCounts.opened ?? 0) >= 1)
+      await page.waitForFunction(() =>
+        window.__terminalHarness?.inbound.some((frame) => frame.includes('BROWSER-CHALLENGE ready')),
+      )
       await page.locator('.xterm').click()
       await page.keyboard.type('strict-once')
       await page.waitForFunction(() =>
