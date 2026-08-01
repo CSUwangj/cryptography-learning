@@ -60,9 +60,23 @@ PY
 if [[ "$MODE" != smoke ]]; then
   export PLAYWRIGHT_BASE_URL="$BASELINE_BASE_URL"
   export PLAYWRIGHT_ARTIFACT_DIR="$ARTIFACT_DIR/playwright"
+  if [[ -n "${ACCEPTANCE_RESULT_FILE:-}" ]]; then
+    : > "$ACCEPTANCE_RESULT_FILE"
+  fi
   if [[ "$MODE" == pr ]]; then BROWSERS=(chromium); else BROWSERS=(chromium firefox webkit); fi
+  record_browser_result() {
+    if [[ -n "${ACCEPTANCE_RESULT_FILE:-}" ]]; then
+      echo "$1: $2 against $IMAGE_REFERENCE (npx playwright test --project=$1)" >> "$ACCEPTANCE_RESULT_FILE"
+    fi
+  }
   for browser in "${BROWSERS[@]}"; do
-    (cd frontend && npx playwright test --project="$browser")
+    record_browser_result "$browser" running
+    if (cd frontend && npx playwright test --project="$browser"); then
+      record_browser_result "$browser" passed
+    else
+      record_browser_result "$browser" failed
+      exit 1
+    fi
   done
 fi
 echo "==> $MODE acceptance green for $IMAGE_REFERENCE"

@@ -1,0 +1,171 @@
+name: Release web image
+
+on:
+  push:
+    tags:
+      - 'web-v*'
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+  attestations: write
+
+jobs:
+  validate-tag:
+    name: Validate web-image release tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Invalid release tag fails before publication
+        id: version
+        shell: bash
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^web-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid release tag: $GITHUB_REF_NAME (expected web-v<major>.<minor>.<patch>)" >&2
+            exit 1
+          fi
+          echo "version=${GITHUB_REF_NAME#web-v}" >> "$GITHUB_OUTPUT"
+
+  release:
+    name: Test, attest, and publish web image
+    needs: validate-tag
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: ghcr.io/csuwangj/cryptography-learning:${{ needs.validate-tag.outputs.version }}
+    outputs:
+      digest: ${{ steps.publish.outputs.digest }}
+      image: ghcr.io/csuwangj/cryptography-learning:${{ needs.validate-tag.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build one Linux AMD64 candidate image
+        run: |
+          docker buildx build --load --platform linux/amd64 \
+            --tag "$IMAGE" \
+            --metadata-file candidate-metadata.json \
+            --build-arg BUILD_COMMIT="$GITHUB_SHA" \
+            --build-arg IMAGE_VERSION="${{ needs.validate-tag.outputs.version }}" \
+            .
+
+      - name: Record tested candidate image ID
+        run: |
+          docker image inspect "$IMAGE" --format '{{.Id}}' | tee candidate-image-id.txt
+          jq -r '."containerimage.digest"' candidate-metadata.json | tee candidate-manifest-digest.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend test dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install release browsers
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium firefox webkit
+
+      - name: Run three-browser acceptance against the local candidate
+        run: ./acceptance/run.sh "$IMAGE" --mode release
+        env:
+          WEB_HTTP_PORT: '18080'
+          ACCEPTANCE_ARTIFACT_DIR: ${{ runner.temp }}/release-artifacts
+          ACCEPTANCE_RESULT_FILE: ${{ runner.temp }}/browser-results.txt
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish candidate without rebuilding
+        id: publish
+        run: |
+          candidate_id="$(cat candidate-image-id.txt)"
+          test "$candidate_id" = "$(docker image inspect "$IMAGE" --format '{{.Id}}')"
+          docker push "$IMAGE"
+          digest="$(docker buildx imagetools inspect "$IMAGE" --format '{{.Digest}}')"
+          test "$(cat candidate-manifest-digest.txt)" = "$digest"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "$IMAGE@$digest" | tee published-image.txt
+
+      - name: Pull published manifest digest
+        env:
+          PUBLISHED_IMAGE: ${{ env.IMAGE }}@${{ steps.publish.outputs.digest }}
+        run: |
+          candidate_id="$(cat candidate-image-id.txt)"
+          docker image rm "$IMAGE"
+          docker pull "$PUBLISHED_IMAGE"
+          test "$candidate_id" = "$(docker image inspect "$PUBLISHED_IMAGE" --format '{{.Id}}')"
+      - name: Attest published image provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ghcr.io/csuwangj/cryptography-learning
+          subject-digest: ${{ steps.publish.outputs.digest }}
+          push-to-registry: true
+
+      - name: Upload release diagnostics and evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-image-release-${{ github.ref_name }}
+          path: |
+            candidate-image-id.txt
+            candidate-manifest-digest.txt
+            candidate-metadata.json
+            published-image.txt
+            ${{ runner.temp }}/browser-results.txt
+            ${{ runner.temp }}/release-artifacts
+          if-no-files-found: ignore
+
+      - name: Upload browser acceptance record
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-results-${{ github.ref_name }}
+          path: ${{ runner.temp }}/browser-results.txt
+
+  verify-public-image:
+    name: Verify anonymous public image pull
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      PUBLISHED_IMAGE: ${{ needs.release.outputs.image }}@${{ needs.release.outputs.digest }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download browser acceptance record
+        uses: actions/download-artifact@v4
+        with:
+          name: browser-results-${{ github.ref_name }}
+          path: release-evidence
+
+      - name: Pull published digest anonymously and run public synthetic-content example
+        run: |
+          docker logout ghcr.io || true
+          docker pull "$PUBLISHED_IMAGE"
+          ./acceptance/run.sh "$PUBLISHED_IMAGE" --mode smoke
+
+      - name: Create GitHub Release record
+        run: |
+          cat > release-notes.md <<EOF
+          Source commit: $GITHUB_SHA
+          Image: $PUBLISHED_IMAGE
+          Application Manifest schema: 1
+          Compatibility: this image supports Application Manifest schema version 1. Rollback requires an image that also supports schema version 1; no other schema version is supported.
+
+          Browser acceptance:
+          $(cat release-evidence/browser-results.txt)
+
+          Supported platform: linux/amd64 only.
+          This release contains the public web tier only. The maintained course Host builds locally from Git repositories; it does not pull this image. Newest Web Image Releases receive fixes; older versions remain pullable and the immediately previous version is the rollback candidate.
+          EOF
+          gh release create "$GITHUB_REF_NAME" --title "Web image $GITHUB_REF_NAME" --notes-file release-notes.md

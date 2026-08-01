@@ -39,7 +39,25 @@ the Linux container with one command:
 
 See [`baseline/README.md`](baseline/README.md). Locally that remains a
 one-command build-and-test. CI builds the image with Buildx (cached BuildKit
-layers) and then runs the same script without rebuilding.
+layers) and runs the explicit-image acceptance command without rebuilding.
+
+## Public web images
+
+Supported web images are published from tags named `web-v<major>.<minor>.<patch>`.
+They contain only the public web tier. To try one with the checked-in public
+synthetic content, clone this repository and run:
+
+```bash
+docker pull ghcr.io/csuwangj/cryptography-learning:0.1.0
+WEB_TIER_IMAGE=ghcr.io/csuwangj/cryptography-learning:0.1.0 \
+  CONTENT_DIR="$PWD/baseline/content" \
+  docker compose up --no-build -d
+```
+
+The newest Web Image Release receives fixes. Older versions remain pullable;
+the immediately previous version is the rollback candidate. The maintained
+course Host continues to build locally from Git repositories and does not pull
+published web images.
 
 ## Building
 

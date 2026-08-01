@@ -41,6 +41,34 @@ The terminal session is also checked manually from the classroom browser during
 the promotion window because its network path and clipboard policy are deployment
 properties, not properties a local container test can prove.
 
+## Public web-image releases
+
+Public operators may pull a supported `web-v<major>.<minor>.<patch>` image and
+run it with the synthetic content tracked in this repository:
+
+```bash
+docker pull ghcr.io/csuwangj/cryptography-learning:0.1.0
+WEB_TIER_IMAGE=ghcr.io/csuwangj/cryptography-learning:0.1.0 \
+  CONTENT_DIR="$PWD/baseline/content" \
+  docker compose up --no-build -d
+```
+
+The release workflow tests the exact Linux AMD64 candidate in Chromium,
+Firefox, and WebKit before it is attested and published. No `latest` tag is
+published. The newest release receives fixes; older releases remain pullable
+and the immediately previous release is the rollback candidate. The maintained
+course Host remains on the local Git-build path described below, rather than
+pulling published images.
+
+### First public release checkpoint
+
+GitHub creates a new Container registry package as private. Before the first
+public release, a maintainer must use that package's GitHub settings page to
+set its visibility to public. The release workflow's final anonymous pull is
+the enforcement point: if it fails on the first `web-v0.1.0` run, set the
+package public in the UI and rerun the failed verification job. Do not bypass
+the anonymous-pull check.
+
 ## Promotion and rollback
 
 During a maintenance window with no active Lab sessions, record the candidate and
