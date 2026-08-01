@@ -97,7 +97,7 @@ test.describe('Terminal browser acceptance (#17)', () => {
     }
   })
 
-  test('Ctrl+V uses native paste without Async Clipboard reads in the terminal module', async ({
+  test('Ctrl+V and Cmd+V use native paste without Async Clipboard reads in the terminal module', async ({
     page,
   }) => {
     const fixture = await startFixture()
@@ -117,22 +117,35 @@ test.describe('Terminal browser acceptance (#17)', () => {
           get: () => calls,
           configurable: true,
         })
-        await clipboard.writeText('paste-payload')
+        await clipboard.writeText('control-paste')
       })
 
       await page.locator('.xterm').click()
       await page.keyboard.press('Control+v')
 
-      await page.waitForFunction(() =>
-        window.__terminalHarness?.outbound.join('').includes('paste-payload'),
-      )
+      await page.waitForFunction(() => window.__terminalHarness?.outbound.join('').includes('control-paste'))
       const state = await getHarness(page)
-      expect(state.outbound.join('')).toContain('paste-payload')
-      expect(state.outbound.join('').split('paste-payload').length - 1).toBe(1)
+      expect(state.outbound.join('').split('control-paste').length - 1).toBe(1)
       const clipboardReads = await page.evaluate(() => {
         return (window as unknown as { __clipboardReadCalls: number }).__clipboardReadCalls
       })
       expect(clipboardReads).toBe(0)
+    } finally {
+      await fixture.stop()
+    }
+  })
+
+  test('Cmd+V uses native paste on macOS', async ({ page }) => {
+    test.skip(process.platform !== 'darwin', 'Cmd+V is a macOS shortcut')
+    const fixture = await startFixture()
+    try {
+      await openHarness(page, fixture.url)
+      await page.evaluate(async () => navigator.clipboard.writeText('command-paste'))
+      await page.locator('.xterm').click()
+      await page.keyboard.press('Meta+v')
+      await page.waitForFunction(() => window.__terminalHarness?.outbound.join('').includes('command-paste'))
+      const state = await getHarness(page)
+      expect(state.outbound.join('').split('command-paste').length - 1).toBe(1)
     } finally {
       await fixture.stop()
     }
@@ -217,6 +230,7 @@ test.describe('Terminal browser acceptance (#17)', () => {
     const fixture = await startFixture(['--disconnect-on-input'])
     try {
       await openHarness(page, fixture.url)
+      const dimensionsBeforeResize = await getHarness(page)
       await page.locator('#terminal').evaluate((element) => {
         ;(element.parentElement as HTMLElement).style.width = '500px'
       })
@@ -233,6 +247,7 @@ test.describe('Terminal browser acceptance (#17)', () => {
       expect(state.outbound.join('').split('drop-now').length - 1).toBe(1)
       expect(state.resizeEvents.at(-1)?.cols).toBeGreaterThan(0)
       expect(state.resizeEvents.at(-1)?.rows).toBeGreaterThan(0)
+      expect(state.resizeEvents.at(-1)).not.toEqual(dimensionsBeforeResize.resizeEvents.at(-1))
     } finally {
       await fixture.stop()
     }

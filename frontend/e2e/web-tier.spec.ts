@@ -15,9 +15,7 @@ test.describe('Linux web-tier acceptance (#21)', () => {
     })
     expect(response.ok()).toBeTruthy()
     const body = await response.json()
-    expect(body.data.practice.labCategories).toEqual(
-      expect.arrayContaining([{ id: 'classical' }, { id: 'modern' }]),
-    )
+    expect(body.data.practice.labCategories).toEqual([{ id: 'classical' }, { id: 'modern' }])
     await page.goto('/practice')
     await expect(page.locator('#root')).toBeVisible()
   })

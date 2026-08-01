@@ -23,6 +23,12 @@ class HttpSpaBaselineTest(unittest.TestCase):
         content_type = headers.get("content-type", "")
         self.assertIn("text/html", content_type)
 
+    def test_liveness_and_readiness_endpoints_are_healthy(self):
+        for path in ("/health/live", "/health/ready"):
+            with self.subTest(path=path):
+                status, _, _ = http_get(path)
+                self.assertEqual(status, 200)
+
     def test_nested_practice_route_falls_back_to_spa_shell(self):
         status, headers, body = http_get("/practice/classical/affine")
         self.assertEqual(status, 200)
