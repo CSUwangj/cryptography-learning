@@ -16,6 +16,10 @@ export default defineConfig({
     }),
   ],
   base: '/',
+  define: {
+    // vfile@2 calls process.cwd() while rendering Markdown in the browser.
+    'process.cwd': '() => "/"',
+  },
   build: {
     outDir: 'dist',
     sourcemap: false,

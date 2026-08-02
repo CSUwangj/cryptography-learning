@@ -1,10 +1,34 @@
-# Linux image operation
+# Deploy the web tier
 
-The web tier is one immutable Linux image. CI builds it from the pinned Rust and
-Node toolchains and committed lockfiles, then records the resulting image digest.
-The production Host promotes that digest; it does not rebuild source during a
-maintenance window. Lab Descriptions, images, and the generated RON manifest stay
-in the private content repository and are mounted read-only.
+This repository can deploy the public web tier on its own. Docker Compose builds
+the checked-out source by default and mounts an operator-provided content directory
+read-only. The private infrastructure repository is only needed when operating the
+maintained course Host.
+
+## Standalone example
+
+From a checkout, start the web tier with the synthetic fixture tracked here:
+
+```bash
+CONTENT_DIR="$PWD/baseline/content" docker compose up --build -d
+```
+
+It is ready when `http://127.0.0.1:8000/health/ready` returns successfully. Stop
+the example with `docker compose down`.
+
+The fixture is intentionally synthetic and contains no private Lab content. To run
+real Labs, replace `CONTENT_DIR` with a directory that contains `config.ron` and
+every Lab Description or resource referenced by that configuration. Compose mounts
+the directory at `/content` and does not modify it.
+
+To run an already-built image instead of building this checkout, set
+`WEB_TIER_IMAGE` and use `--no-build`:
+
+```bash
+WEB_TIER_IMAGE=registry.example/cryptography-learning:version \
+  CONTENT_DIR=/path/to/content \
+  docker compose up --no-build -d
+```
 
 ## Local development and acceptance
 
@@ -74,7 +98,7 @@ the enforcement point: if it fails on the first `web-v0.1.0` run, set the
 package public in the UI and rerun the failed verification job. Do not bypass
 the anonymous-pull check.
 
-## Promotion and rollback
+## Managed Host promotion and rollback
 
 During a maintenance window with no active Lab sessions, record the candidate and
 currently running digests. Start the candidate with the private content directory
@@ -96,6 +120,8 @@ rollback command. No database reversal is required for this stateless web tier.
 ## Ownership
 
 This repository owns the image, startup contract, health routes, and acceptance
-checks. The private infrastructure repository owns Host orchestration, digest
-promotion, generated manifest values, secrets, and persistent mounts. This public
-repository must never contain private Lab content or deployment credentials.
+checks. Independent operators own their Compose invocation and supplied content.
+For the maintained course Host, the private infrastructure repository owns Host
+orchestration, digest promotion, generated manifest values, secrets, and persistent
+mounts. This public repository must never contain private Lab content or deployment
+credentials.
