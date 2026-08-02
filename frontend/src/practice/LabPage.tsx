@@ -112,6 +112,7 @@ export const LabPage: React.FC = () => {
           <Terminal
             {...endpoint}
             id={'terminal' + endpoint.host + ':' + endpoint.port}
+            localEcho
             onExit={() => {
               setTermianls((open) => open.filter((term) => !sameEndpoint(term, endpoint)))
             }}

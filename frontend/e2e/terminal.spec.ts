@@ -47,8 +47,12 @@ async function startFixture(args: string[] = []): Promise<{
   }
 }
 
-async function openHarness(page: Page, wsUrl: string) {
-  await page.goto(`/terminal-harness.html?url=${encodeURIComponent(wsUrl)}`)
+async function openHarness(page: Page, wsUrl: string, options: { localEcho?: boolean } = {}) {
+  const params = new URLSearchParams({ url: wsUrl })
+  if (options.localEcho) {
+    params.set('localEcho', '1')
+  }
+  await page.goto(`/terminal-harness.html?${params}`)
   await page.waitForFunction(() => {
     const probe = window.__terminalHarness
     return Boolean(probe && probe.inbound.some((frame) => frame.includes('BROWSER-CHALLENGE ready')))
@@ -147,7 +151,7 @@ test.describe('Terminal browser acceptance (#17)', () => {
     }
   })
 
-  test('Linux synthetic regression: Ctrl+V uses native paste without Async Clipboard reads in the terminal module', async ({
+  test('Linux synthetic regression: Ctrl+V renders Challenge-echoed paste once without Async Clipboard reads', async ({
     page,
   }) => {
     const fixture = await startFixture()
@@ -175,12 +179,43 @@ test.describe('Terminal browser acceptance (#17)', () => {
       await page.keyboard.press('Control+v')
 
       await page.waitForFunction(() => window.__terminalHarness?.outbound.join('').includes('control-paste'))
+      await page.waitForFunction(() =>
+        window.__terminalHarness?.getVisibleText().includes('control-paste'),
+        undefined,
+        { timeout: 5_000 },
+      )
       const state = await getHarness(page)
       expect(state.outbound.join('').split('control-paste').length - 1).toBe(1)
+      expect(state.inbound.join('').split('control-paste').length - 1).toBe(1)
+      expect(state.visible.split('control-paste').length - 1).toBe(1)
       const clipboardReads = await page.evaluate(() => {
         return (window as unknown as { __clipboardReadCalls: number }).__clipboardReadCalls
       })
       expect(clipboardReads).toBe(0)
+    } finally {
+      await fixture.stop()
+    }
+  })
+
+  test('raw TCP Challenge mode locally renders pasted input once without server echo', async ({ page }) => {
+    const fixture = await startFixture(['--no-echo'])
+    try {
+      await openHarness(page, fixture.url, { localEcho: true })
+      await copyWithNativeClipboard(page, 'visible-paste')
+
+      await page.locator('.xterm').click()
+      await page.keyboard.press('Control+v')
+
+      await page.waitForFunction(() =>
+        window.__terminalHarness?.outbound.join('').includes('visible-paste'),
+      )
+      await page.waitForFunction(() =>
+        window.__terminalHarness?.getVisibleText().includes('visible-paste'),
+      )
+      const state = await getHarness(page)
+      expect(state.outbound.join('').split('visible-paste').length - 1).toBe(1)
+      expect(state.inbound.join('')).not.toContain('visible-paste')
+      expect(state.visible.split('visible-paste').length - 1).toBe(1)
     } finally {
       await fixture.stop()
     }

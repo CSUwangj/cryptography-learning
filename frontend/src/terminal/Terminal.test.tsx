@@ -13,11 +13,15 @@ const {
   fitAddons,
   attachAddons,
   customKeyHandlers,
+  dataHandlers,
+  dataSubscriptions,
   MockTerminal,
   MockFitAddon,
   MockAttachAddon,
 } = vi.hoisted(() => {
   const customKeyHandlers: Array<(event: KeyboardEvent) => boolean> = []
+  const dataHandlers: Array<(data: string) => void> = []
+  const dataSubscriptions: Array<{ dispose: ReturnType<typeof vi.fn> }> = []
   const terminalInstances: Array<{
     options: { disableStdin: boolean }
     cols: number
@@ -49,7 +53,12 @@ const {
     attachCustomKeyEventHandler = vi.fn((handler: (event: KeyboardEvent) => boolean) => {
       customKeyHandlers.push(handler)
     })
-    onData = vi.fn(() => ({ dispose: vi.fn() }))
+    onData = vi.fn((handler: (data: string) => void) => {
+      dataHandlers.push(handler)
+      const subscription = { dispose: vi.fn() }
+      dataSubscriptions.push(subscription)
+      return subscription
+    })
     onKey = vi.fn(() => ({ dispose: vi.fn() }))
     onResize = vi.fn(() => ({ dispose: vi.fn() }))
 
@@ -82,6 +91,8 @@ const {
     fitAddons,
     attachAddons,
     customKeyHandlers,
+    dataHandlers,
+    dataSubscriptions,
     MockTerminal,
     MockFitAddon,
     MockAttachAddon,
@@ -162,6 +173,8 @@ describe('Terminal module (#17)', () => {
     fitAddons.length = 0
     attachAddons.length = 0
     customKeyHandlers.length = 0
+    dataHandlers.length = 0
+    dataSubscriptions.length = 0
     vi.stubGlobal('WebSocket', MockWebSocket)
     vi.stubGlobal('ResizeObserver', MockResizeObserver)
     vi.stubGlobal('location', { ...window.location, protocol: 'http:' })
@@ -250,6 +263,24 @@ describe('Terminal module (#17)', () => {
       ),
     ).toBe(true)
     expect(readText).not.toHaveBeenCalled()
+  })
+
+  it('locally renders input for raw TCP Challenges when local echo is enabled', async () => {
+    const { unmount } = render(
+      <Terminal host="127.0.0.1" port={19020} localEcho />,
+    )
+    await waitFor(() => expect(dataHandlers).toHaveLength(1))
+
+    act(() => {
+      dataHandlers[0]('pasted command\rnext')
+      dataHandlers[0]('\u007f\u007f\u007f\u007f\u007f')
+    })
+
+    expect(terminalInstances[0].write).toHaveBeenNthCalledWith(1, 'pasted command\r\nnext')
+    expect(terminalInstances[0].write).toHaveBeenNthCalledWith(2, '\b \b\b \b\b \b\b \b')
+
+    unmount()
+    expect(dataSubscriptions[0].dispose).toHaveBeenCalledTimes(1)
   })
 
   it('fits from observed container size and reports changed PTY dimensions', async () => {

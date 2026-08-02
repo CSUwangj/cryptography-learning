@@ -18,6 +18,7 @@ declare global {
 
 const params = new URLSearchParams(window.location.search)
 const url = params.get('url')
+const localEcho = params.has('localEcho')
 if (!url) {
   throw new Error('terminal harness requires ?url=ws://...')
 }
@@ -65,6 +66,7 @@ const Harness: React.FC = () => {
     <div style={{ width: 800, height: 400 }}>
       <Terminal
         url={endpoint}
+        localEcho={localEcho}
         onSession={(session) => {
           window.__terminalHarness = {
             getVisibleText: session.getVisibleText,

@@ -11,6 +11,8 @@ export type TerminalProps = {
   port?: number
   id?: string
   onExit?: () => void
+  /** Render input locally for raw TCP Challenges that do not provide PTY echo. */
+  localEcho?: boolean
   /** Called after a successful local fit when the caller’s protocol can apply PTY size. */
   onPtyResize?: (dimensions: { cols: number; rows: number }) => void
 }
@@ -50,6 +52,36 @@ function shouldReleaseNativePaste(event: KeyboardEvent): boolean {
   return event.key === 'v' || event.key === 'V'
 }
 
+function renderLocalEcho(
+  data: string,
+  currentInputLength: number,
+): { output: string; inputLength: number } {
+  const input = data
+    .replaceAll('\x1b[200~', '')
+    .replaceAll('\x1b[201~', '')
+    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
+    .replaceAll('\r\n', '\n')
+  let output = ''
+  let inputLength = currentInputLength
+
+  for (const character of input) {
+    if (character === '\r' || character === '\n') {
+      output += '\r\n'
+      inputLength = 0
+    } else if (character === '\b' || character === '\u007f') {
+      if (inputLength > 0) {
+        output += '\b \b'
+        inputLength -= 1
+      }
+    } else if (character === '\t' || character >= ' ') {
+      output += character
+      inputLength += 1
+    }
+  }
+
+  return { output, inputLength }
+}
+
 type ConnectionStatus = 'connecting' | 'open' | 'closed'
 
 export const Terminal: React.FC<TerminalViewProps> = ({
@@ -58,6 +90,7 @@ export const Terminal: React.FC<TerminalViewProps> = ({
   port,
   id,
   onExit,
+  localEcho = false,
   onPtyResize,
   onSession,
 }) => {
@@ -113,6 +146,16 @@ export const Terminal: React.FC<TerminalViewProps> = ({
       }
       return true
     })
+    let localEchoInputLength = 0
+    const localEchoSubscription = localEcho
+      ? xterm.onData((data) => {
+          const rendered = renderLocalEcho(data, localEchoInputLength)
+          localEchoInputLength = rendered.inputLength
+          if (rendered.output) {
+            xterm.write(rendered.output)
+          }
+        })
+      : undefined
 
     const socket = new WebSocket(wsUrl)
     socket.binaryType = 'arraybuffer'
@@ -182,6 +225,7 @@ export const Terminal: React.FC<TerminalViewProps> = ({
         cancelAnimationFrame(fitFrame)
       }
       observer.disconnect()
+      localEchoSubscription?.dispose()
       attachAddon?.dispose()
       fitAddon.dispose()
       if (
@@ -196,7 +240,7 @@ export const Terminal: React.FC<TerminalViewProps> = ({
       socket.onmessage = null
       xterm.dispose()
     }
-  }, [wsUrl, reconnectNonce])
+  }, [wsUrl, reconnectNonce, localEcho])
 
   return (
     <div>
