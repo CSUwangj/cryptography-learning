@@ -10,6 +10,9 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:4177',
+    // The macOS native-compatibility workflow selects Playwright's branded
+    // stable Google Chrome channel. Other runs retain bundled Chromium.
+    channel: process.env.PLAYWRIGHT_BROWSER_CHANNEL,
     headless: true,
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',

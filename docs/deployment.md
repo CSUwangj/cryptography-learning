@@ -41,6 +41,11 @@ The terminal session is also checked manually from the classroom browser during
 the promotion window because its network path and clipboard policy are deployment
 properties, not properties a local container test can prove.
 
+Native terminal keyboard compatibility has a deliberately narrow supported matrix
+and separate evidence procedures in [native terminal keyboard compatibility](native-terminal-compatibility.md).
+The Linux Playwright checks above are regression coverage, not native-platform
+evidence, and native-matrix failures do not gate web-image releases.
+
 ## Public web-image releases
 
 Public operators may pull a supported `web-v<major>.<minor>.<patch>` image and

@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, test, type Page } from '@playwright/test'
@@ -83,6 +84,42 @@ async function copyWithNativeClipboard(page: Page, text: string) {
   await page.locator('[data-clipboard-seed="true"]').evaluate((seed) => seed.remove())
 }
 
+function protocolHex(payload: string): string {
+  return Buffer.from(payload, 'utf8')
+    .toString('hex')
+    .match(/../g)
+    ?.join(' ') ?? ''
+}
+
+function nativeEvidenceRecord(
+  browserVersion: string,
+  actual: string,
+  clipboardReads: number,
+): string {
+  const expected = 'cmd-v-native'
+  const expectedHex = '63 6d 64 2d 76 2d 6e 61 74 69 76 65'
+  const count = actual.split(expected).length - 1
+  const passed = actual === expected && count === 1 && clipboardReads === 0
+  const runUrl =
+    process.env.GITHUB_SERVER_URL && process.env.GITHUB_REPOSITORY && process.env.GITHUB_RUN_ID
+      ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
+      : 'N/A (local execution)'
+
+  return `### macos14-chrome-cmd-v — ${passed ? 'PASS' : 'FAIL'}
+- Date: ${new Date().toISOString()}
+- Tested commit: ${process.env.GITHUB_SHA ?? 'local working tree'}
+- OS and exact version/build: ${process.env.NATIVE_COMPAT_OS_VERSION ?? process.platform}
+- Browser and exact version: Google Chrome ${browserVersion}
+- Keyboard layout/input source: U.S.
+- Command/key chord: ${process.env.NATIVE_COMPAT_COMMAND ?? 'Cmd+V once'}
+- Clipboard text: ${expected}
+- Expected protocol output: hex=${expectedHex}; decoded=${expected}; count=1
+- Actual protocol output: hex=${protocolHex(actual)}; decoded=${JSON.stringify(actual)}; count=${count}
+- Async Clipboard reads: ${clipboardReads}
+- Evidence: ${runUrl}
+`
+}
+
 test.describe('Terminal browser acceptance (#17)', () => {
   test('input reaches the Challenge once and server output renders once', async ({ page }) => {
     const fixture = await startFixture()
@@ -110,7 +147,7 @@ test.describe('Terminal browser acceptance (#17)', () => {
     }
   })
 
-  test('Ctrl+V and Cmd+V use native paste without Async Clipboard reads in the terminal module', async ({
+  test('Linux synthetic regression: Ctrl+V uses native paste without Async Clipboard reads in the terminal module', async ({
     page,
   }) => {
     const fixture = await startFixture()
@@ -149,17 +186,52 @@ test.describe('Terminal browser acceptance (#17)', () => {
     }
   })
 
-  test('Cmd+V uses native paste on macOS', async ({ page }) => {
+  test('macos14-chrome-cmd-v sends the exact native Cmd+V payload without Async Clipboard reads', async ({
+    page,
+  }, testInfo) => {
     test.skip(process.platform !== 'darwin', 'Cmd+V is a macOS shortcut')
     const fixture = await startFixture()
     try {
       await openHarness(page, fixture.url)
-      await copyWithNativeClipboard(page, 'command-paste')
+
+      await page.evaluate(async () => {
+        const clipboard = navigator.clipboard
+        const original = clipboard.readText.bind(clipboard)
+        let calls = 0
+        clipboard.readText = async () => {
+          calls += 1
+          return original()
+        }
+        ;(window as unknown as { __clipboardReadCalls?: number }).__clipboardReadCalls = 0
+        Object.defineProperty(window, '__clipboardReadCalls', {
+          get: () => calls,
+          configurable: true,
+        })
+      })
+
+      await copyWithNativeClipboard(page, 'cmd-v-native')
       await page.locator('.xterm').click()
       await page.keyboard.press('Meta+v')
-      await page.waitForFunction(() => window.__terminalHarness?.outbound.join('').includes('command-paste'))
+      await page
+        .waitForFunction(() => window.__terminalHarness?.outbound.join('').includes('cmd-v-native'), undefined, {
+          timeout: 5_000,
+        })
+        .catch(() => undefined)
       const state = await getHarness(page)
-      expect(state.outbound.join('').split('command-paste').length - 1).toBe(1)
+      const clipboardReads = await page.evaluate(() => {
+        return (window as unknown as { __clipboardReadCalls: number }).__clipboardReadCalls
+      })
+      const browserVersion = page.context().browser()?.version() ?? 'unavailable'
+      const record = nativeEvidenceRecord(browserVersion, state.outbound.join(''), clipboardReads)
+      await writeFile(testInfo.outputPath('macos14-chrome-cmd-v.md'), record)
+      await testInfo.attach('macos14-chrome-cmd-v evidence', {
+        body: Buffer.from(record),
+        contentType: 'text/markdown',
+      })
+
+      if (state.outbound.join('') !== 'cmd-v-native' || clipboardReads !== 0) {
+        throw new Error(`Native compatibility evidence follows:\n${record}`)
+      }
     } finally {
       await fixture.stop()
     }
@@ -212,7 +284,8 @@ test.describe('Terminal browser acceptance (#17)', () => {
     }
   })
 
-  test('Ctrl+C and AltGr input reach the Challenge exactly once', async ({ page }) => {
+  test('Linux synthetic regression: Ctrl+C and Control+Alt+Q reach the Challenge exactly once', async ({ page }) => {
+    test.skip(process.platform !== 'linux', 'This is Linux synthetic regression coverage, not native-platform evidence')
     const fixture = await startFixture()
     try {
       await openHarness(page, fixture.url)
@@ -229,9 +302,8 @@ test.describe('Terminal browser acceptance (#17)', () => {
       )
       const state = await getHarness(page)
       expect(state.outbound.join('').split('\u0003').length - 1).toBe(1)
-      // Chromium's US CI layout encodes the AltGr chord as ESC + Ctrl+Q. The
-      // important protocol property is that the modified input reaches the
-      // Challenge once, rather than being consumed by application shortcuts.
+      // This synthetic U.S. Linux chord is regression coverage only. It is not
+      // evidence for the Windows German-layout native AltGr+Q matrix row.
       expect(state.outbound.join('').split('\x1b\x11').length - 1).toBe(1)
     } finally {
       await fixture.stop()

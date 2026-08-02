@@ -193,3 +193,45 @@ jobs:
           name: browser-acceptance-${{ github.sha }}
           path: ${{ runner.temp }}/browser-artifacts
           if-no-files-found: ignore
+
+  macos14-chrome-cmd-v:
+    name: macOS 14 Chrome Cmd+V compatibility
+    # Native keyboard compatibility is evidence-gathering, not a web-image
+    # release gate. Failures remain visible in CI without blocking releases.
+    continue-on-error: true
+    runs-on: macos-14
+    needs: [frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend test dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Install branded stable Google Chrome
+        working-directory: frontend
+        run: npx playwright install chrome
+      - name: Record macOS version and build
+        id: macos-version
+        run: |
+          product_version="$(sw_vers -productVersion)"
+          build_version="$(sw_vers -buildVersion)"
+          echo "value=macOS ${product_version} (build ${build_version})" >> "$GITHUB_OUTPUT"
+      - name: Record macOS 14 Chrome Cmd+V compatibility evidence
+        working-directory: frontend
+        run: npx playwright test --project=chromium --grep 'macos14-chrome-cmd-v'
+        env:
+          PLAYWRIGHT_BROWSER_CHANNEL: chrome
+          PLAYWRIGHT_ARTIFACT_DIR: ${{ runner.temp }}/native-terminal-compatibility
+          NATIVE_COMPAT_OS_VERSION: ${{ steps.macos-version.outputs.value }}
+          NATIVE_COMPAT_COMMAND: Cmd+V dispatched through branded Chrome on the real macOS runner
+      - name: Upload native compatibility diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos14-chrome-cmd-v-${{ github.sha }}
+          path: ${{ runner.temp }}/native-terminal-compatibility
+          if-no-files-found: warn
