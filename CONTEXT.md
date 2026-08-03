@@ -6,6 +6,8 @@
   cryptography exercises.
 - **Lab** — One Practice item that presents instructions and connects a student
   to a Challenge.
+- **Lab ID** — The stable identifier of one Lab, unique across Practice.
+  Category membership is not part of a Lab's identity.
 - **Challenge** — The running interactive program through which a student
   completes a Lab.
 - **Learning** — The top-level experience in which students study explanatory,
@@ -21,6 +23,8 @@
 
 ## Completion
 
+- **Student ID** — The identifier a student supplies for a Completion Claim.
+  It is self-asserted and does not prove the student's identity.
 - **Completion Evidence** — A trusted Lab Host's signed assertion that a
   self-identified student completed a Lab in a Course Run.
 - **Completion Claim** — The stored, user-visible record derived from verified
