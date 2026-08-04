@@ -1,0 +1,14 @@
+{
+  "label": "TEST ONLY - NEVER DEPLOY",
+  "description": "Normative version-1 Completion Evidence vector. Seed is RFC 8032 test vector 1.",
+  "seed_hex": "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+  "public_key_hex": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+  "kid": "lab-host-a-2026-01",
+  "course_run": "2026-autumn",
+  "lab": "spn-basics",
+  "student": "20260001",
+  "completed_at": "2026-10-12T08:15:30Z",
+  "protected_header_json": "{\"alg\":\"EdDSA\",\"kid\":\"lab-host-a-2026-01\"}",
+  "payload_json": "{\"v\":1,\"course_run\":\"2026-autumn\",\"lab\":\"spn-basics\",\"student\":\"20260001\",\"completed_at\":\"2026-10-12T08:15:30Z\"}",
+  "compact_jws": "eyJhbGciOiJFZERTQSIsImtpZCI6ImxhYi1ob3N0LWEtMjAyNi0wMSJ9.eyJ2IjoxLCJjb3Vyc2VfcnVuIjoiMjAyNi1hdXR1bW4iLCJsYWIiOiJzcG4tYmFzaWNzIiwic3R1ZGVudCI6IjIwMjYwMDAxIiwiY29tcGxldGVkX2F0IjoiMjAyNi0xMC0xMlQwODoxNTozMFoifQ.FYmqZTnFHqZA81k7sd6UoRVKaaGu-h4f0CG8_qy47KgDT4ROV35KSoABRa1CZp5LWs6GHbazA_zatwFSppKGBQ"
+}

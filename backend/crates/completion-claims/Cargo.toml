@@ -1,0 +1,15 @@
+[package]
+name = "completion-claims"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+description = "Strict version-1 Completion Evidence signing and verification"
+readme = "README.md"
+
+[dependencies]
+base64 = "0.22"
+ed25519-dalek = "3"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["raw_value"] }
+thiserror = "2"
+time = { version = "0.3", default-features = false, features = ["formatting", "parsing"] }
