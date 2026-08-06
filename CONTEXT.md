@@ -29,6 +29,8 @@
   self-identified student completed a Lab in a Course Run.
 - **Completion Claim** — The stored, user-visible record derived from verified
   Completion Evidence. It is not proof of the student's identity.
+- **Completion Board** — The explicitly unofficial view of Completion Claims for
+  one Course Run, showing only self-asserted Student IDs and completed Lab IDs.
 - **Course Run** — One offering of the course for which completions are tracked
   independently.
 - **Lab Host** — A machine that runs one or more Challenges.

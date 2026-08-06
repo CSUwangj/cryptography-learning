@@ -18,11 +18,11 @@ variables, or process configuration.
 - Multiple key IDs may map to one Lab Host during rotation. Rotation policy and
   the trust registry live outside this crate (web-server ticket #23; relay
   operations in #24 / private infra).
-- After this crate verifies evidence, authorization (#23) should reject an
-  unknown Course Run or a Lab outside the verified key's allowed set. The
-  suggested registry shape is
-  `kid → Ed25519 public key + Lab Host identity + allowed Lab IDs`, plus a
-  configured set of known Course Run IDs.
+- After this crate verifies evidence, authorization (#23) requires the signed
+  Course Run to match the central backend's singular configured Course Run and
+  requires the Lab to exist in its globally unique Practice Lab set. The
+  central registry is only `kid -> Ed25519 public key`: every trusted key may
+  submit any known Lab for that configured Course Run.
 - Replay safety is expected from immutable, idempotent Completion Claims in the
   server, not from nonce, expiry, issuer, or audience claims in the token.
 - Verification performs **no** age, future-skew, expiry, or current-clock check.
