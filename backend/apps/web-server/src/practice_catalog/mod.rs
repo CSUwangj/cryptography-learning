@@ -266,6 +266,22 @@ impl PracticeCatalog {
         Ok(Self { categories })
     }
 
+    /// Lab IDs across all Practice categories, requiring global uniqueness.
+    ///
+    /// Used when Completion is enabled so any trusted key may submit any known Lab.
+    pub fn globally_unique_lab_ids(&self) -> Result<std::collections::HashSet<String>, String> {
+        use std::collections::HashSet;
+        let mut labs = HashSet::new();
+        for category in &self.categories {
+            for lab in &category.labs {
+                if !labs.insert(lab.id.clone()) {
+                    return Err(lab.id.clone());
+                }
+            }
+        }
+        Ok(labs)
+    }
+
     /// Ordered Practice catalog (categories and Labs) without description bodies.
     pub fn practice(&self) -> Vec<CatalogCategory> {
         self.categories

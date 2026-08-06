@@ -31,6 +31,34 @@ impl Query {
             .map_err(resolve_error_to_field)?;
         Ok(LabInstance::from(resolved))
     }
+
+    async fn completion_board(
+        &self,
+        ctx: &Context<'_>,
+        course_run_id: Option<String>,
+    ) -> FieldResult<CompletionBoard> {
+        let Some(service) = ctx.data_opt::<crate::completion::CompletionService>() else {
+            return Err(QueryError::CompletionNotConfigured.extend());
+        };
+        match service.board(course_run_id.as_deref()).await {
+            Ok((course_run, students)) => Ok(CompletionBoard {
+                course_run_id: course_run.to_string(),
+                students: students
+                    .into_iter()
+                    .map(|row| StudentCompletion {
+                        student_id: row.student_id,
+                        completed_lab_ids: row.completed_lab_ids,
+                    })
+                    .collect(),
+            }),
+            Err(crate::completion::BoardError::InvalidCourseRunId) => {
+                Err(QueryError::InvalidCourseRunId.extend())
+            }
+            Err(crate::completion::BoardError::Unavailable) => {
+                Err(QueryError::CompletionUnavailable.extend())
+            }
+        }
+    }
 }
 
 fn resolve_error_to_field(err: ResolveError) -> async_graphql::Error {
@@ -163,4 +191,16 @@ impl From<CatalogResourceSummary> for ResourceWithTranslation {
             name: resource.name,
         }
     }
+}
+
+#[derive(SimpleObject, Debug, Clone)]
+pub struct CompletionBoard {
+    course_run_id: String,
+    students: Vec<StudentCompletion>,
+}
+
+#[derive(SimpleObject, Debug, Clone)]
+pub struct StudentCompletion {
+    student_id: String,
+    completed_lab_ids: Vec<String>,
 }

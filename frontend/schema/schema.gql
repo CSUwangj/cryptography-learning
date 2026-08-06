@@ -1,6 +1,11 @@
 # Directs the executor to query only when the field exists.
 directive @ifdef on FIELD
 
+type CompletionBoard {
+  courseRunId: String!
+  students: [StudentCompletion!]!
+}
+
 type Endpoint {
   host: String!
   port: Int!
@@ -35,11 +40,17 @@ type Query {
   hello: String!
   practice: Practice!
   lab(categoryId: String!, labId: String!, language: String): LabInstance!
+  completionBoard(courseRunId: String): CompletionBoard!
 }
 
 type ResourceWithTranslation {
   lang: String!
   name: String!
+}
+
+type StudentCompletion {
+  studentId: String!
+  completedLabIds: [String!]!
 }
 
 type Translation {

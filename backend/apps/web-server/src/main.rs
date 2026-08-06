@@ -23,6 +23,14 @@ async fn main() {
     };
     log_startup(&identity, &opt.access_point);
 
+    let completion = match opt.completion_module_paths() {
+        Ok(paths) => paths,
+        Err(err) => {
+            error!(error = %err, "invalid Completion process options");
+            std::process::exit(1);
+        }
+    };
+
     // Lab Description paths in the RON are resolved relative to the process
     // working directory (Hosts `cd` into the content mount before start).
     let content_source = FilesystemLabContentSource::new(".");
@@ -30,10 +38,13 @@ async fn main() {
         &BootstrapPaths {
             config_path: opt.config.clone(),
             static_root: opt.static_file_path.clone(),
+            completion,
         },
         &content_source,
         identity.clone(),
-    ) {
+    )
+    .await
+    {
         Ok(app) => app,
         Err(err) => {
             error!(error = %err, "application bootstrap failed");

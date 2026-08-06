@@ -10,22 +10,34 @@ use axum::routing::{get, post};
 use axum::{Router, body::Body, http::Request};
 
 use crate::bootstrap::{AppSchema, Application};
+use crate::completion::post_completion_claim;
 use crate::logging::log_request_failure;
 
 /// Build the public HTTP router for a successfully bootstrapped application.
 pub fn app_router(app: Application) -> Router {
     let static_root = app.static_root().to_path_buf();
-    Router::new()
+    let completion = app.completion().cloned();
+
+    let mut router = Router::new()
         .route("/health/live", get(live))
         .route("/health/ready", get(ready))
         .route("/query", post(graphql_handler))
         .route("/playground", get(playground))
         .fallback(spa_fallback)
-        .layer(middleware::from_fn(log_failed_requests))
         .with_state(AppState {
             application: app,
             static_root,
-        })
+        });
+
+    if let Some(service) = completion {
+        router = router.merge(
+            Router::new()
+                .route("/api/completion-claims", post(post_completion_claim))
+                .with_state(service),
+        );
+    }
+
+    router.layer(middleware::from_fn(log_failed_requests))
 }
 
 #[derive(Clone)]
@@ -109,7 +121,11 @@ async fn log_failed_requests(req: Request<Body>, next: Next) -> Response {
 }
 
 fn is_reserved_prefix(path: &str) -> bool {
-    path == "/query" || path == "/playground" || path == "/health" || path.starts_with("/health/")
+    path == "/query"
+        || path == "/playground"
+        || path == "/health"
+        || path.starts_with("/health/")
+        || path == "/api/completion-claims"
 }
 
 fn looks_like_asset_path(path: &str) -> bool {
@@ -145,6 +161,7 @@ async fn serve_static_file(file_path: PathBuf) -> Response {
 mod tests {
     use super::*;
     use crate::bootstrap::{Application, ProcessIdentity};
+    use crate::completion::SystemClock;
     use crate::practice_catalog::{
         InMemoryLabContentSource, RawConfiguration, RawLab, RawLabCategory, RawPractice,
         RawResource, RawTranslation,
@@ -155,6 +172,7 @@ mod tests {
     use serde_json::{Value, json};
     use std::collections::HashMap;
     use std::fs;
+    use std::sync::Arc;
     use tower::ServiceExt;
 
     fn translation(lang: &str, text: &str) -> RawTranslation {
@@ -172,7 +190,7 @@ mod tests {
         }
     }
 
-    fn sample_app(static_root: &Path) -> Application {
+    async fn sample_app(static_root: &Path) -> Application {
         fs::create_dir_all(static_root).unwrap();
         fs::write(
             static_root.join("index.html"),
@@ -207,7 +225,16 @@ mod tests {
                 }],
             },
         };
-        Application::from_raw(raw, static_root, &source, ProcessIdentity::unknown()).unwrap()
+        Application::from_raw(
+            raw,
+            static_root,
+            &source,
+            ProcessIdentity::unknown(),
+            None,
+            Arc::new(SystemClock),
+        )
+        .await
+        .unwrap()
     }
 
     async fn body_text(response: Response) -> String {
@@ -223,7 +250,7 @@ mod tests {
     #[tokio::test]
     async fn graphql_query_returns_hello() {
         let tmp = tempfile::tempdir().unwrap();
-        let router = app_router(sample_app(tmp.path()));
+        let router = app_router(sample_app(tmp.path()).await);
         let response = router
             .oneshot(
                 Request::builder()
@@ -241,9 +268,58 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn practice_only_completion_board_returns_not_configured() {
+        let tmp = tempfile::tempdir().unwrap();
+        let router = app_router(sample_app(tmp.path()).await);
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/query")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        r#"{"query":"{ completionBoard { courseRunId students { studentId } } }"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let json = body_json(response).await;
+        assert!(
+            json.get("data").is_none()
+                || json["data"].is_null()
+                || json["data"]["completionBoard"].is_null()
+        );
+        let errors = json["errors"].as_array().expect("GraphQL errors");
+        let code = errors[0]["extensions"]["code"]
+            .as_str()
+            .expect("error code");
+        assert_eq!(code, "COMPLETION_NOT_CONFIGURED");
+    }
+
+    #[tokio::test]
+    async fn practice_only_completion_claims_post_is_not_found() {
+        let tmp = tempfile::tempdir().unwrap();
+        let router = app_router(sample_app(tmp.path()).await);
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/completion-claims")
+                    .header(header::CONTENT_TYPE, "application/jose")
+                    .body(Body::from("eyJhbGciOiJFZERTQSJ9.e30.e30"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
     async fn graphql_lab_and_missing_lab_semantics() {
         let tmp = tempfile::tempdir().unwrap();
-        let router = app_router(sample_app(tmp.path()));
+        let router = app_router(sample_app(tmp.path()).await);
 
         let ok = router
             .clone()
@@ -299,7 +375,7 @@ mod tests {
     #[tokio::test]
     async fn playground_targets_query_endpoint() {
         let tmp = tempfile::tempdir().unwrap();
-        let router = app_router(sample_app(tmp.path()));
+        let router = app_router(sample_app(tmp.path()).await);
         let response = router
             .oneshot(
                 Request::builder()
@@ -318,7 +394,7 @@ mod tests {
     #[tokio::test]
     async fn health_live_and_ready_succeed_for_bootstrapped_app() {
         let tmp = tempfile::tempdir().unwrap();
-        let router = app_router(sample_app(tmp.path()));
+        let router = app_router(sample_app(tmp.path()).await);
 
         let live = router
             .clone()
@@ -348,7 +424,7 @@ mod tests {
     #[tokio::test]
     async fn static_assets_and_nested_spa_fallback() {
         let tmp = tempfile::tempdir().unwrap();
-        let router = app_router(sample_app(tmp.path()));
+        let router = app_router(sample_app(tmp.path()).await);
 
         let asset = router
             .clone()
@@ -388,7 +464,7 @@ mod tests {
     #[tokio::test]
     async fn missing_assets_and_reserved_paths_are_not_rewritten_to_index() {
         let tmp = tempfile::tempdir().unwrap();
-        let router = app_router(sample_app(tmp.path()));
+        let router = app_router(sample_app(tmp.path()).await);
 
         let missing_js = router
             .clone()

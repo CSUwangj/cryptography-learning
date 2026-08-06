@@ -1,4 +1,5 @@
 pub mod bootstrap;
+pub(crate) mod completion;
 pub mod errors;
 pub mod http;
 pub mod logging;
