@@ -1,0 +1,19 @@
+[package]
+name = "completion-relay"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+description = "Host Completion Relay: sign and deliver Completion Evidence"
+publish = false
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+completion-claims = { path = "../../crates/completion-claims" }
+ed25519-dalek = { version = "3", features = ["pem"] }
+ron = ">=0.8.0, <0.9.0"
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+url = "2"
+
+[dev-dependencies]
+tempfile = "3"
