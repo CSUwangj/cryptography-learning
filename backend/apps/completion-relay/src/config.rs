@@ -13,7 +13,7 @@ use thiserror::Error;
 use url::Url;
 
 /// Validated relay configuration and signing material for the process lifetime.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RelayConfiguration {
     course_run: CourseRunId,
     /// Backend endpoint text exactly as configured (validated, not rewritten).

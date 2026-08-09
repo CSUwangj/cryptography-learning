@@ -2,12 +2,14 @@
 
 mod key;
 
-use std::net::TcpListener;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use completion_relay::config;
+use completion_relay::serve::{self, init_tracing};
+use tokio::net::TcpListener;
+use tokio::signal::unix::{SignalKind, signal};
 
 #[derive(Debug, Parser)]
 #[command(name = "completion-relay", about = "Host Completion Relay")]
@@ -47,13 +49,16 @@ enum KeyCommand {
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
-        Command::Serve { config } => match serve(config) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(err) => {
-                eprintln!("completion-relay serve: {err}");
-                ExitCode::FAILURE
+        Command::Serve { config } => {
+            init_tracing();
+            match serve_main(config) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(err) => {
+                    eprintln!("completion-relay serve: {err}");
+                    ExitCode::FAILURE
+                }
             }
-        },
+        }
         Command::Key { command } => match command {
             KeyCommand::Generate { kid, private_key } => match key::generate(&kid, &private_key) {
                 Ok(ron) => {
@@ -69,16 +74,26 @@ fn main() -> ExitCode {
     }
 }
 
-fn serve(config_path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn serve_main(config_path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     let loaded = config::load(&config_path)?;
-    let listener = TcpListener::bind(loaded.bind_addr())?;
+    let listener = TcpListener::bind(loaded.bind_addr()).await?;
     let local = listener.local_addr()?;
-    eprintln!("completion-relay listening on {local}");
+    tracing::info!(%local, "completion-relay listening");
 
-    // #39 validates configuration and bind only. Intake arrives in #43.
-    // Hold the listener until the process is stopped.
-    let _listener = listener;
-    loop {
-        std::thread::park();
+    serve::serve_until_shutdown(loaded, listener, shutdown_signal()).await?;
+    Ok(())
+}
+
+async fn shutdown_signal() {
+    let mut sigterm = signal(SignalKind::terminate()).expect("install SIGTERM handler");
+    let mut sigint = signal(SignalKind::interrupt()).expect("install SIGINT handler");
+    tokio::select! {
+        _ = sigterm.recv() => {
+            tracing::info!(signal = "SIGTERM", "shutdown signal received");
+        }
+        _ = sigint.recv() => {
+            tracing::info!(signal = "SIGINT", "shutdown signal received");
+        }
     }
 }

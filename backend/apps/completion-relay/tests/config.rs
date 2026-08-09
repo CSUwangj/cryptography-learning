@@ -260,14 +260,14 @@ fn serve_binds_configured_ipv4_loopback_port() {
         .expect("spawn serve");
 
     let stderr = child.stderr.take().expect("stderr");
-    let expected = format!("listening on 127.0.0.1:{port}");
+    let expected_addr = format!("127.0.0.1:{port}");
     let line = BufReader::new(stderr)
         .lines()
         .next()
         .expect("serve should emit a listen diagnostic")
         .expect("read stderr");
     assert!(
-        line.contains(&expected),
+        line.contains(&expected_addr),
         "production local_addr not observed; line={line}"
     );
 
