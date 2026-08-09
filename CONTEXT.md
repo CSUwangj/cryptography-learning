@@ -27,6 +27,9 @@
   It is self-asserted and does not prove the student's identity.
 - **Completion Evidence** — A trusted Lab Host's signed assertion that a
   self-identified student completed a Lab in a Course Run.
+- **Quarantined Completion Evidence** — Completion Evidence that an operator has
+  deliberately removed from active delivery after an exceptional failure while
+  retaining it for audit.
 - **Completion Claim** — The stored, user-visible record derived from verified
   Completion Evidence. It is not proof of the student's identity.
 - **Completion Board** — The explicitly unofficial view of Completion Claims for
@@ -34,5 +37,6 @@
 - **Course Run** — One offering of the course for which completions are tracked
   independently.
 - **Lab Host** — A machine that runs one or more Challenges.
-- **Host Completion Relay** — The trusted participant that accepts Challenge
-  results for one Lab Host and issues Completion Evidence.
+- **Host Completion Relay** — The single trusted participant for one Lab Host,
+  shared by that Host's Challenges, that accepts local completion reports and
+  issues Completion Evidence.
