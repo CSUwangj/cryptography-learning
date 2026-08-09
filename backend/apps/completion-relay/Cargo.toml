@@ -9,11 +9,13 @@ publish = false
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 completion-claims = { path = "../../crates/completion-claims" }
-ed25519-dalek = { version = "3", features = ["pem"] }
+ed25519-dalek = { version = "3", features = ["pem", "rand_core"] }
+getrandom = { version = "0.4", features = ["sys_rng"] }
 ron = ">=0.8.0, <0.9.0"
 serde = { version = "1", features = ["derive"] }
 thiserror = "2"
 url = "2"
 
 [dev-dependencies]
+libc = "0.2.189"
 tempfile = "3"
