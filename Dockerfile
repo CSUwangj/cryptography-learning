@@ -9,6 +9,7 @@ WORKDIR /src
 
 COPY backend/Cargo.toml backend/Cargo.lock ./backend/
 COPY backend/apps ./backend/apps
+COPY backend/crates ./backend/crates
 RUN cargo build --release --locked --manifest-path backend/Cargo.toml
 
 ###
@@ -27,6 +28,21 @@ COPY frontend ./frontend/
 RUN cd frontend \
   && VITE_FEEDBACK_URL="${VITE_FEEDBACK_URL}" \
      npm run build
+
+###
+# Host Completion Relay: release binary + CA certificates for HTTPS verification
+###
+FROM debian:bookworm-slim AS completion-relay
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY --from=backend-builder /src/backend/target/release/completion-relay /app/completion-relay
+
+ENTRYPOINT ["/app/completion-relay"]
 
 ###
 # Runtime image: one web-tier process serving static frontend + GraphQL
