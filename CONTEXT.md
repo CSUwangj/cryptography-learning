@@ -32,6 +32,10 @@
   retaining it for audit.
 - **Completion Claim** — The stored, user-visible record derived from verified
   Completion Evidence. It is not proof of the student's identity.
+- **Completion Record** — The plain-language, student-facing presentation of a
+  Completion Claim. It remains explicitly unofficial and does not authenticate the
+  Student ID.
+  _Avoid:_ Completion Claim in student-facing copy
 - **Completion Board** — The explicitly unofficial view of Completion Claims for
   one Course Run, showing only self-asserted Student IDs and completed Lab IDs.
 - **Course Run** — One offering of the course for which completions are tracked

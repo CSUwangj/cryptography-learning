@@ -15,6 +15,9 @@
 
 - `backend/` is Rust; `frontend/` is React/TypeScript. Read a subtree's own `AGENTS.md`
   before changing files there.
+- New or changed student-facing frontend copy must provide both `en-US` and `zh-CN`
+  translations unless an issue explicitly approves an exception. Stable identifiers and
+  user-supplied content remain untranslated.
 - The GraphQL schema is a cross-tree contract. Rust GraphQL adapters in
   `backend/apps/web-server/src/model.rs` are authoritative, while
   `frontend/schema/schema.gql` is the hand-maintained client copy.
