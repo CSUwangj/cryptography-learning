@@ -22,6 +22,25 @@ i18n
             'practice': 'Practice',
             'learning': 'Learning',
             'feedback': 'Feedback',
+            'completion': 'Completion Records',
+          },
+          'completion': {
+            'title': 'Completion Records',
+            'courseRun': 'Course Run',
+            'disclaimer': 'These records are unofficial. Student IDs are self-asserted and unauthenticated.',
+            'student': 'Student ID',
+            'cellRecorded': 'Recorded',
+            'cellNotRecorded': 'Not recorded',
+            'loading': 'Loading Completion Records',
+            'refreshing': 'Refreshing Completion Records',
+            'error': 'Unable to load Completion Records.',
+            'retry': 'Retry',
+            'stale': 'Records may be out of date',
+            'empty': 'No Completion Records for {{courseRunId}}',
+          },
+          'notFound': {
+            'title': 'Not Found',
+            'message': 'The page you requested could not be found.',
           },
           'homepage': {
             'intro': {
@@ -72,6 +91,25 @@ i18n
             'practice': '实践',
             'learning': '学习',
             'feedback': '反馈',
+            'completion': '完成记录',
+          },
+          'completion': {
+            'title': '完成记录',
+            'courseRun': '课程运行',
+            'disclaimer': '这些记录为非正式记录。学号由学生自行填写，未经验证。',
+            'student': '学号',
+            'cellRecorded': '已记录',
+            'cellNotRecorded': '未记录',
+            'loading': '正在加载完成记录',
+            'refreshing': '正在刷新完成记录',
+            'error': '无法加载完成记录。',
+            'retry': '重试',
+            'stale': '记录可能已过期',
+            'empty': '课程运行 {{courseRunId}} 暂无完成记录',
+          },
+          'notFound': {
+            'title': '未找到',
+            'message': '无法找到您请求的页面。',
           },
           'homepage': {
             'intro': {

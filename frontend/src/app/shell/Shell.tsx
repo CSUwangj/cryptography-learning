@@ -76,6 +76,7 @@ export const Shell: React.FC<PropsWithChildren> = ({ children }) => {
             {/* <Button minimal large icon={IconNames.HELP} text={t('nav.tutorial')} onClick={() => history.push('/tutorial')} /> */}
             {/* <Button minimal large icon={IconNames.SEARCH} text={t('nav.learning')} onClick={() => history.push('/learning')} /> */}
             <Button minimal large icon={IconNames.FLAG} text={t('nav.practice')} onClick={() => history.push('/practice')} />
+            <Button minimal large icon={IconNames.TH} text={t('nav.completion')} onClick={() => history.push('/completion')} />
             <Button minimal large icon={IconNames.ENVELOPE} text={t('nav.feedback')} onClick={handleOpenFeedback} />
           </Unselectable>
         </NavbarGroup>

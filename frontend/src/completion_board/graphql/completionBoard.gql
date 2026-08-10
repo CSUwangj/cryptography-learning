@@ -1,0 +1,9 @@
+query CompletionBoard($courseRunId: String) {
+  completionBoard(courseRunId: $courseRunId) {
+    courseRunId
+    students {
+      studentId
+      completedLabIds
+    }
+  }
+}

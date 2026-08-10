@@ -2,6 +2,7 @@ schema:
   - "schema/schema.gql"
 documents:
   - "src/practice/graphql/**/*.gql"
+  - "src/completion_board/graphql/**/*.gql"
   - "src/transport/graphql/**/*.gql"
 generates:
   src/transport/generated/:

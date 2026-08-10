@@ -33,6 +33,7 @@ export default defineConfig({
   resolve: {
     alias: {
       app: path.resolve(rootDir, 'src/app'),
+      completion_board: path.resolve(rootDir, 'src/completion_board'),
       practice: path.resolve(rootDir, 'src/practice'),
       terminal: path.resolve(rootDir, 'src/terminal'),
       transport: path.resolve(rootDir, 'src/transport'),

@@ -1,7 +1,8 @@
 import React, { Suspense } from 'react'
-import { Switch, Redirect } from 'react-router-dom'
+import { Switch } from 'react-router-dom'
 import { RoutePage } from './LoadPage'
 import { LAB_PATTERN } from 'practice'
+import { COMPLETION_PATTERN } from 'completion_board'
 
 export const Routes: React.FC = () => {
   return <Suspense fallback={ <div>faild</div> }>
@@ -13,8 +14,9 @@ export const Routes: React.FC = () => {
           <RoutePage path='/practice' page={import('practice').then(m => ({ Page: m.PracticePage }))} />
           <RoutePage path='/learning' page={import('./learning/LearningPage').then(m => ({ Page: m.LearningPage }))} />
           <RoutePage path='/feedback' page={import('./feedback/FeedbackPage').then(m => ({ Page: m.FeedbackPage }))} />
+          <RoutePage exact path={COMPLETION_PATTERN} page={import('completion_board').then(m => ({ Page: m.CompletionRecordsPage }))} />
           <RoutePage exact path='/' page={import('./home/HomePage').then(m => ({ Page: m.HomePage }))} />
-          <Redirect to='/' />
+          <RoutePage page={import('./NotFoundPage').then(m => ({ Page: m.NotFoundPage }))} />
         </Switch>
       </RoutePage>
     </Switch>

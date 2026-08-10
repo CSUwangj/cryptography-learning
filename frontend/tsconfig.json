@@ -23,6 +23,7 @@
     "rootDir": "./src",
     "paths": {
       "app": ["./src/app"],
+      "completion_board": ["./src/completion_board"],
       "practice": ["./src/practice"],
       "terminal": ["./src/terminal"],
       "transport": ["./src/transport"],

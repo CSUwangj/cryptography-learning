@@ -1,5 +1,6 @@
 export { Div } from './Div'
 export { Loading } from './Loading'
+export { NotFound } from './NotFound'
 export { ShowError, useError } from './Error'
 export type { ErrorType, ErrorContext } from './Error'
 export { useToggle } from './useToggle'
