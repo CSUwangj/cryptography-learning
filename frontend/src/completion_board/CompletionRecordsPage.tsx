@@ -1,5 +1,6 @@
 import React from 'react'
 import { CombinedGraphQLErrors } from '@apollo/client'
+import { Tooltip } from '@blueprintjs/core'
 import { useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { NotFound } from 'ui'
@@ -43,10 +44,16 @@ const isNotFoundError = (error: unknown): boolean => {
   return code !== undefined && NOT_FOUND_CODES.has(code)
 }
 
+const formatCompletionTime = (value: string, language: string): string =>
+  new Intl.DateTimeFormat(language, {
+    dateStyle: 'medium',
+    timeStyle: 'medium',
+  }).format(new Date(value))
+
 const MatrixTable: React.FC<{ matrix: CompletionRecordsMatrix }> = ({
   matrix,
 }) => {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   return (
     <div style={{ overflowX: 'auto' }}>
       <table>
@@ -66,15 +73,25 @@ const MatrixTable: React.FC<{ matrix: CompletionRecordsMatrix }> = ({
               <th scope="row">{row.studentId}</th>
               {row.cells.map((cell, index) => {
                 const labId = matrix.labIds[index]
-                const recorded = cell === 'recorded'
+                const recorded = cell.state === 'recorded'
                 return (
                   <td key={labId}>
-                    <span aria-hidden="true">{recorded ? '✓' : '—'}</span>
-                    <span style={visuallyHidden}>
-                      {recorded
-                        ? t('completion.cellRecorded')
-                        : t('completion.cellNotRecorded')}
-                    </span>
+                    {recorded ? (
+                      <Tooltip
+                        content={t('completion.completionTime', {
+                          time: formatCompletionTime(cell.completedAt, i18n.language),
+                        })}
+                      >
+                        <span tabIndex={0} aria-label={t('completion.cellRecorded')}>
+                          ✓
+                        </span>
+                      </Tooltip>
+                    ) : (
+                      <>
+                        <span aria-hidden="true">—</span>
+                        <span style={visuallyHidden}>{t('completion.cellNotRecorded')}</span>
+                      </>
+                    )}
                   </td>
                 )
               })}

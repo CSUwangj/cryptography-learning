@@ -14,8 +14,17 @@ const boardResponse = {
     completionBoard: {
       courseRunId: 'spring-2026',
       students: [
-        { studentId: 'alice', completedLabIds: ['caesar'] },
-        { studentId: 'bob', completedLabIds: ['affine', 'caesar'] },
+        {
+          studentId: 'alice',
+          completions: [{ labId: 'caesar', completedAt: '2026-10-12T08:15:30Z' }],
+        },
+        {
+          studentId: 'bob',
+          completions: [
+            { labId: 'affine', completedAt: '2026-10-11T08:15:30Z' },
+            { labId: 'caesar', completedAt: '2026-10-12T08:15:30Z' },
+          ],
+        },
       ],
     },
   },
@@ -72,8 +81,18 @@ describe('Completion Records routes (#48)', () => {
     expect(within(table).getByRole('rowheader', { name: 'alice' })).toBeInTheDocument()
     expect(within(table).getByRole('columnheader', { name: 'affine' })).toBeInTheDocument()
     expect(within(table).getByRole('columnheader', { name: 'caesar' })).toBeInTheDocument()
-    expect(within(table).getAllByText('Recorded').length).toBeGreaterThan(0)
+    expect(within(table).getAllByLabelText('Recorded').length).toBeGreaterThan(0)
     expect(within(table).getAllByText('Not recorded').length).toBeGreaterThan(0)
+    const recordedMarker = within(table).getAllByLabelText('Recorded')[0]
+    recordedMarker.focus()
+    const expectedTime = new Intl.DateTimeFormat('en-US', {
+      dateStyle: 'medium',
+      timeStyle: 'medium',
+    }).format(new Date('2026-10-12T08:15:30Z'))
+    expect(
+      await screen.findByText(`Completion Time: ${expectedTime}`),
+    ).toBeInTheDocument()
+    expect(table).not.toHaveTextContent('2026-10-12T08:15:30Z')
     expect(
       screen.getByText(/These records are unofficial/),
     ).toBeInTheDocument()
@@ -96,7 +115,14 @@ describe('Completion Records routes (#48)', () => {
           data: {
             completionBoard: {
               courseRunId: 'fall-2025',
-              students: [{ studentId: 'carol', completedLabIds: ['rsa'] }],
+              students: [
+                {
+                  studentId: 'carol',
+                  completions: [
+                    { labId: 'rsa', completedAt: '2026-10-12T08:15:30Z' },
+                  ],
+                },
+              ],
             },
           },
         }),
@@ -171,6 +197,9 @@ describe('Completion Records routes (#48)', () => {
     expect(
       screen.getByText(/这些记录为非正式记录/),
     ).toBeInTheDocument()
+    const recordedMarker = (await screen.findAllByLabelText('已记录'))[0]
+    recordedMarker.focus()
+    expect(await screen.findByText(/^完成时间：/)).toBeInTheDocument()
   })
 
   it('shows a localized empty state when the board has no students', async () => {
@@ -387,7 +416,14 @@ describe('Completion Records routes (#48)', () => {
             data: {
               completionBoard: {
                 courseRunId: '',
-                students: [{ studentId: 'alice', completedLabIds: ['caesar'] }],
+                students: [
+                  {
+                    studentId: 'alice',
+                    completions: [
+                      { labId: 'caesar', completedAt: 'not-a-time' },
+                    ],
+                  },
+                ],
               },
             },
           }),

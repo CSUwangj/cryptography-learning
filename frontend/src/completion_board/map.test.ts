@@ -2,14 +2,25 @@ import { describe, expect, it } from 'vitest'
 import { mapCompletionBoard } from './map'
 import type { CompletionBoardQuery } from '../transport/generated/graphql'
 
-describe('Completion Board mapper (#48)', () => {
-  it('transposes students and completed Lab IDs into a matrix of cell states', () => {
+const completion = (labId: string, completedAt = '2026-10-12T08:15:30Z') => ({
+  labId,
+  completedAt,
+})
+
+describe('Completion Board mapper (#53)', () => {
+  it('transposes students and Completion Records into timestamped cell states', () => {
     const data: CompletionBoardQuery = {
       completionBoard: {
         courseRunId: 'spring-2026',
         students: [
-          { studentId: 'alice', completedLabIds: ['caesar'] },
-          { studentId: 'bob', completedLabIds: ['affine', 'caesar'] },
+          { studentId: 'alice', completions: [completion('caesar')] },
+          {
+            studentId: 'bob',
+            completions: [
+              completion('affine', '2026-10-11T08:15:30Z'),
+              completion('caesar'),
+            ],
+          },
         ],
       },
     }
@@ -20,147 +31,137 @@ describe('Completion Board mapper (#48)', () => {
         courseRunId: 'spring-2026',
         labIds: ['affine', 'caesar'],
         rows: [
-          { studentId: 'alice', cells: ['notRecorded', 'recorded'] },
-          { studentId: 'bob', cells: ['recorded', 'recorded'] },
+          {
+            studentId: 'alice',
+            cells: [
+              { state: 'notRecorded' },
+              { state: 'recorded', completedAt: '2026-10-12T08:15:30Z' },
+            ],
+          },
+          {
+            studentId: 'bob',
+            cells: [
+              { state: 'recorded', completedAt: '2026-10-11T08:15:30Z' },
+              { state: 'recorded', completedAt: '2026-10-12T08:15:30Z' },
+            ],
+          },
         ],
       },
     })
   })
 
-  it('uses lexicographically sorted observed Lab IDs as columns', () => {
+  it('uses lexicographically sorted observed Lab IDs and preserves student order', () => {
     const data: CompletionBoardQuery = {
       completionBoard: {
         courseRunId: 'run-1',
         students: [
-          { studentId: 's1', completedLabIds: ['zeta', 'alpha'] },
-          { studentId: 's2', completedLabIds: ['mu'] },
+          {
+            studentId: 'zoe',
+            completions: [completion('zeta'), completion('alpha')],
+          },
+          { studentId: 'amy', completions: [completion('mu')] },
         ],
       },
     }
 
-    expect(mapCompletionBoard(data)).toEqual({
-      ok: true,
-      matrix: {
-        courseRunId: 'run-1',
-        labIds: ['alpha', 'mu', 'zeta'],
-        rows: [
-          { studentId: 's1', cells: ['recorded', 'notRecorded', 'recorded'] },
-          { studentId: 's2', cells: ['notRecorded', 'recorded', 'notRecorded'] },
-        ],
-      },
-    })
-  })
+    const result = mapCompletionBoard(data)
 
-  it('preserves backend student row order', () => {
-    const data: CompletionBoardQuery = {
-      completionBoard: {
-        courseRunId: 'run-2',
-        students: [
-          { studentId: 'zoe', completedLabIds: ['lab-a'] },
-          { studentId: 'amy', completedLabIds: ['lab-a'] },
-        ],
-      },
-    }
-
-    expect(mapCompletionBoard(data)).toEqual({
-      ok: true,
-      matrix: {
-        courseRunId: 'run-2',
-        labIds: ['lab-a'],
-        rows: [
-          { studentId: 'zoe', cells: ['recorded'] },
-          { studentId: 'amy', cells: ['recorded'] },
-        ],
-      },
-    })
+    expect(result.ok && result.matrix.labIds).toEqual(['alpha', 'mu', 'zeta'])
+    expect(result.ok && result.matrix.rows.map((row) => row.studentId)).toEqual([
+      'zoe',
+      'amy',
+    ])
   })
 
   it('maps an empty board to empty rows and columns', () => {
-    const data: CompletionBoardQuery = {
-      completionBoard: {
-        courseRunId: 'empty-run',
-        students: [],
-      },
-    }
-
-    expect(mapCompletionBoard(data)).toEqual({
+    expect(
+      mapCompletionBoard({
+        completionBoard: { courseRunId: 'empty-run', students: [] },
+      }),
+    ).toEqual({
       ok: true,
-      matrix: {
-        courseRunId: 'empty-run',
-        labIds: [],
-        rows: [],
-      },
+      matrix: { courseRunId: 'empty-run', labIds: [], rows: [] },
     })
   })
 
-  it('rejects an empty Course Run ID', () => {
-    const data: CompletionBoardQuery = {
-      completionBoard: {
-        courseRunId: '',
-        students: [{ studentId: 'alice', completedLabIds: ['caesar'] }],
-      },
-    }
-
-    expect(mapCompletionBoard(data)).toEqual({ ok: false })
-  })
-
-  it('rejects an empty Student ID', () => {
-    const data: CompletionBoardQuery = {
-      completionBoard: {
+  it.each([
+    ['empty Course Run ID', { courseRunId: '', students: [] }],
+    [
+      'empty Student ID',
+      { courseRunId: 'run-1', students: [{ studentId: '', completions: [] }] },
+    ],
+    [
+      'empty Lab ID',
+      {
         courseRunId: 'run-1',
-        students: [{ studentId: '', completedLabIds: ['caesar'] }],
+        students: [{ studentId: 'alice', completions: [completion('')] }],
       },
-    }
-
-    expect(mapCompletionBoard(data)).toEqual({ ok: false })
-  })
-
-  it('rejects an empty Lab ID', () => {
-    const data: CompletionBoardQuery = {
-      completionBoard: {
-        courseRunId: 'run-1',
-        students: [{ studentId: 'alice', completedLabIds: [''] }],
-      },
-    }
-
-    expect(mapCompletionBoard(data)).toEqual({ ok: false })
-  })
-
-  it('rejects duplicate Student ID rows', () => {
-    const data: CompletionBoardQuery = {
-      completionBoard: {
+    ],
+    [
+      'malformed Completion Time',
+      {
         courseRunId: 'run-1',
         students: [
-          { studentId: 'alice', completedLabIds: ['caesar'] },
-          { studentId: 'alice', completedLabIds: ['affine'] },
+          {
+            studentId: 'alice',
+            completions: [completion('caesar', '2026-10-12T08:15:30+00:00')],
+          },
         ],
       },
-    }
-
-    expect(mapCompletionBoard(data)).toEqual({ ok: false })
-  })
-
-  it('rejects duplicate Lab IDs within one student row', () => {
-    const data: CompletionBoardQuery = {
-      completionBoard: {
+    ],
+    [
+      'Completion Time outside supported year range',
+      {
         courseRunId: 'run-1',
         students: [
-          { studentId: 'alice', completedLabIds: ['caesar', 'caesar'] },
+          {
+            studentId: 'alice',
+            completions: [completion('caesar', '0000-01-01T00:00:00Z')],
+          },
         ],
       },
-    }
-
-    expect(mapCompletionBoard(data)).toEqual({ ok: false })
+    ],
+  ])('rejects %s', (_reason, completionBoard) => {
+    expect(
+      mapCompletionBoard({ completionBoard } as CompletionBoardQuery),
+    ).toEqual({ ok: false })
   })
 
-  it('maps only Course Run, Student, Lab, and cell-state data', () => {
+  it('rejects duplicate Student/Lab pairs without returning a partial matrix', () => {
+    expect(
+      mapCompletionBoard({
+        completionBoard: {
+          courseRunId: 'run-1',
+          students: [
+            { studentId: 'alice', completions: [completion('caesar')] },
+            { studentId: 'alice', completions: [completion('affine')] },
+          ],
+        },
+      }),
+    ).toEqual({ ok: false })
+    expect(
+      mapCompletionBoard({
+        completionBoard: {
+          courseRunId: 'run-1',
+          students: [
+            {
+              studentId: 'alice',
+              completions: [completion('caesar'), completion('caesar')],
+            },
+          ],
+        },
+      }),
+    ).toEqual({ ok: false })
+  })
+
+  it('maps only Course Run, Student, Lab, and Completion Time data', () => {
     const data = {
       completionBoard: {
         courseRunId: 'run-1',
         students: [
           {
             studentId: 'alice',
-            completedLabIds: ['caesar'],
+            completions: [completion('caesar')],
             name: 'Alice',
             grade: 'A',
           },
@@ -172,22 +173,14 @@ describe('Completion Board mapper (#48)', () => {
 
     const result = mapCompletionBoard(data)
 
-    expect(result).toEqual({
-      ok: true,
-      matrix: {
-        courseRunId: 'run-1',
-        labIds: ['caesar'],
-        rows: [{ studentId: 'alice', cells: ['recorded'] }],
-      },
-    })
     expect(result.ok && Object.keys(result.matrix).sort()).toEqual([
       'courseRunId',
       'labIds',
       'rows',
     ])
-    expect(result.ok && Object.keys(result.matrix.rows[0]).sort()).toEqual([
-      'cells',
-      'studentId',
-    ])
+    expect(result.ok && result.matrix.rows[0]).toEqual({
+      studentId: 'alice',
+      cells: [{ state: 'recorded', completedAt: '2026-10-12T08:15:30Z' }],
+    })
   })
 })

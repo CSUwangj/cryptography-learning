@@ -27,7 +27,14 @@ pub struct ClaimAuditFields {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StudentBoardRow {
     pub student_id: String,
-    pub completed_lab_ids: Vec<String>,
+    pub completions: Vec<CompletionRecord>,
+}
+
+/// Public fields for one immutable Completion Claim.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompletionRecord {
+    pub lab_id: String,
+    pub completed_at: String,
 }
 
 #[derive(Debug, Clone)]
@@ -157,7 +164,7 @@ impl ClaimStore {
     ) -> Result<Vec<StudentBoardRow>, ClaimStoreError> {
         let rows = sqlx::query(
             r#"
-            SELECT student_id, lab_id
+            SELECT student_id, lab_id, completed_at
             FROM completion_claims
             WHERE course_run = ?
             ORDER BY student_id ASC, lab_id ASC
@@ -172,13 +179,18 @@ impl ClaimStore {
         for row in rows {
             let student_id: String = row.get("student_id");
             let lab_id: String = row.get("lab_id");
+            let completed_at: String = row.get("completed_at");
+            let completion = CompletionRecord {
+                lab_id,
+                completed_at,
+            };
             match students.last_mut() {
                 Some(current) if current.student_id == student_id => {
-                    current.completed_lab_ids.push(lab_id);
+                    current.completions.push(completion);
                 }
                 _ => students.push(StudentBoardRow {
                     student_id,
-                    completed_lab_ids: vec![lab_id],
+                    completions: vec![completion],
                 }),
             }
         }

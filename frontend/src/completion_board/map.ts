@@ -4,6 +4,21 @@ import type {
   MapCompletionBoardResult,
 } from './domain'
 
+const isCanonicalUtcRfc3339 = (value: string): boolean => {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(value)) {
+    return false
+  }
+  const year = Number(value.slice(0, 4))
+  if (year < 1 || year > 9999) {
+    return false
+  }
+  const parsed = new Date(value)
+  return (
+    !Number.isNaN(parsed.getTime()) &&
+    parsed.toISOString() === value.replace(/Z$/, '.000Z')
+  )
+}
+
 export const mapCompletionBoard = (
   data: CompletionBoardQuery,
 ): MapCompletionBoardResult => {
@@ -16,7 +31,10 @@ export const mapCompletionBoard = (
   }
   if (
     board.students.some((student) =>
-      student.completedLabIds.some((labId) => labId === ''),
+      student.completions.some(
+        (completion) =>
+          completion.labId === '' || !isCanonicalUtcRfc3339(completion.completedAt),
+      ),
     )
   ) {
     return { ok: false }
@@ -28,22 +46,30 @@ export const mapCompletionBoard = (
     }
     seenStudents.add(student.studentId)
     const seenLabs = new Set<string>()
-    for (const labId of student.completedLabIds) {
-      if (seenLabs.has(labId)) {
+    for (const completion of student.completions) {
+      if (seenLabs.has(completion.labId)) {
         return { ok: false }
       }
-      seenLabs.add(labId)
+      seenLabs.add(completion.labId)
     }
   }
 
   const labIds = Array.from(
-    new Set(board.students.flatMap((student) => student.completedLabIds)),
+    new Set(
+      board.students.flatMap((student) =>
+        student.completions.map((completion) => completion.labId),
+      ),
+    ),
   ).sort()
 
   const rows = board.students.map((student) => {
-    const recorded = new Set(student.completedLabIds)
+    const recordsByLabId = new Map(
+      student.completions.map((completion) => [completion.labId, completion]),
+    )
     const cells: CompletionCell[] = labIds.map((labId) =>
-      recorded.has(labId) ? 'recorded' : 'notRecorded',
+      recordsByLabId.has(labId)
+        ? { state: 'recorded', completedAt: recordsByLabId.get(labId)!.completedAt }
+        : { state: 'notRecorded' },
     )
     return { studentId: student.studentId, cells }
   })

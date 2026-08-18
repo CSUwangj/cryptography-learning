@@ -6,6 +6,11 @@ type CompletionBoard {
   students: [StudentCompletion!]!
 }
 
+type CompletionRecord {
+  labId: String!
+  completedAt: String!
+}
+
 type Endpoint {
   host: String!
   port: Int!
@@ -50,7 +55,7 @@ type ResourceWithTranslation {
 
 type StudentCompletion {
   studentId: String!
-  completedLabIds: [String!]!
+  completions: [CompletionRecord!]!
 }
 
 type Translation {

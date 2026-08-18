@@ -59,6 +59,11 @@ test.describe('Completion Records relay-to-board (#49)', () => {
     await expect(table.getByRole('rowheader')).toHaveCount(1)
     await expect(table.getByText('✓')).toHaveCount(1)
     await expect(table.getByText('—')).toHaveCount(0)
+    const recordedMarker = table.getByLabel('Recorded')
+    await recordedMarker.hover()
+    await expect(page.getByText(/^Completion Time:/)).toBeVisible()
+    await recordedMarker.focus()
+    await expect(page.getByText(/^Completion Time:/)).toBeVisible()
 
     const bodyText = await page.locator('body').innerText()
     for (const pattern of forbiddenFieldPatterns) {

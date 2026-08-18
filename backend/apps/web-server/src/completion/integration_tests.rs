@@ -314,13 +314,16 @@ async fn stores_first_claim_repeats_and_preserves_audit_across_restart() {
 
     let board = graphql(
         router,
-        "query { completionBoard { courseRunId students { studentId completedLabIds } } }",
+        "query { completionBoard { courseRunId students { studentId completions { labId completedAt } } } }",
         json!({}),
     )
     .await;
     assert_eq!(
         board["data"]["completionBoard"]["students"],
-        json!([{"studentId":"20260001","completedLabIds":["affine"]}])
+        json!([{"studentId":"20260001","completions":[{
+            "labId":"affine",
+            "completedAt":"2026-10-12T08:15:30Z"
+        }]}])
     );
 }
 
@@ -437,7 +440,7 @@ async fn historical_board_preserves_labs_removed_from_catalog() {
     let router = app_router(app);
     let board = graphql(
         router,
-        "query($id:String){ completionBoard(courseRunId:$id){ courseRunId students { studentId completedLabIds } } }",
+        "query($id:String){ completionBoard(courseRunId:$id){ courseRunId students { studentId completions { labId completedAt } } } }",
         json!({"id": "2025-spring"}),
     )
     .await;
@@ -445,7 +448,10 @@ async fn historical_board_preserves_labs_removed_from_catalog() {
         board["data"]["completionBoard"],
         json!({
             "courseRunId": "2025-spring",
-            "students": [{"studentId":"20250001","completedLabIds":["retired-lab"]}]
+            "students": [{"studentId":"20250001","completions":[{
+                "labId":"retired-lab",
+                "completedAt":"2025-05-01T12:00:00Z"
+            }]}]
         })
     );
 }
@@ -458,7 +464,7 @@ async fn graphql_board_current_historical_empty_invalid_and_ordered() {
 
     let empty = graphql(
         router.clone(),
-        "query { completionBoard { courseRunId students { studentId completedLabIds } } }",
+        "query { completionBoard { courseRunId students { studentId completions { labId completedAt } } } }",
         json!({}),
     )
     .await;
@@ -477,15 +483,20 @@ async fn graphql_board_current_historical_empty_invalid_and_ordered() {
 
     let board = graphql(
         router.clone(),
-        "query { completionBoard { courseRunId students { studentId completedLabIds } } }",
+        "query { completionBoard { courseRunId students { studentId completions { labId completedAt } } } }",
         json!({}),
     )
     .await;
     assert_eq!(
         board["data"]["completionBoard"]["students"],
         json!([
-            {"studentId":"a-student","completedLabIds":["affine","shift"]},
-            {"studentId":"b-student","completedLabIds":["shift"]},
+            {"studentId":"a-student","completions":[
+                {"labId":"affine","completedAt":"2026-10-12T08:15:30Z"},
+                {"labId":"shift","completedAt":"2026-10-12T09:00:00Z"}
+            ]},
+            {"studentId":"b-student","completions":[
+                {"labId":"shift","completedAt":"2026-10-12T08:15:30Z"}
+            ]},
         ])
     );
 

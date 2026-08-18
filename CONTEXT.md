@@ -32,12 +32,15 @@
   retaining it for audit.
 - **Completion Claim** — The stored, user-visible record derived from verified
   Completion Evidence. It is not proof of the student's identity.
+- **Completion Time** — The public time asserted by a trusted Lab Host for a
+  student's Lab completion. It is distinct from the backend's private receipt time.
 - **Completion Record** — The plain-language, student-facing presentation of a
-  Completion Claim. It remains explicitly unofficial and does not authenticate the
-  Student ID.
+  Completion Claim, including its Completion Time. It remains explicitly unofficial
+  and does not authenticate the Student ID.
   _Avoid:_ Completion Claim in student-facing copy
 - **Completion Board** — The explicitly unofficial view of Completion Claims for
-  one Course Run, showing only self-asserted Student IDs and completed Lab IDs.
+  one Course Run, showing self-asserted Student IDs, completed Lab IDs, and their
+  Completion Times.
 - **Course Run** — One offering of the course for which completions are tracked
   independently.
 - **Lab Host** — A machine that runs one or more Challenges.

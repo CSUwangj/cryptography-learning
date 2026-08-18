@@ -3,7 +3,10 @@ query CompletionBoard($courseRunId: String) {
     courseRunId
     students {
       studentId
-      completedLabIds
+      completions {
+        labId
+        completedAt
+      }
     }
   }
 }

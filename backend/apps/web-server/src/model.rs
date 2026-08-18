@@ -47,7 +47,14 @@ impl Query {
                     .into_iter()
                     .map(|row| StudentCompletion {
                         student_id: row.student_id,
-                        completed_lab_ids: row.completed_lab_ids,
+                        completions: row
+                            .completions
+                            .into_iter()
+                            .map(|completion| CompletionRecord {
+                                lab_id: completion.lab_id,
+                                completed_at: completion.completed_at,
+                            })
+                            .collect(),
                     })
                     .collect(),
             }),
@@ -202,5 +209,11 @@ pub struct CompletionBoard {
 #[derive(SimpleObject, Debug, Clone)]
 pub struct StudentCompletion {
     student_id: String,
-    completed_lab_ids: Vec<String>,
+    completions: Vec<CompletionRecord>,
+}
+
+#[derive(SimpleObject, Debug, Clone)]
+pub struct CompletionRecord {
+    lab_id: String,
+    completed_at: String,
 }

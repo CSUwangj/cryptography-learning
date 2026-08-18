@@ -1,6 +1,8 @@
 /** Local Completion Records types — not generated GraphQL shapes. */
 
-export type CompletionCell = 'recorded' | 'notRecorded'
+export type CompletionCell =
+  | { state: 'recorded'; completedAt: string }
+  | { state: 'notRecorded' }
 
 export type CompletionRecordsMatrix = {
   courseRunId: string
