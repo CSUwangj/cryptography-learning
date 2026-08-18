@@ -39,6 +39,24 @@ const emptyBoardResponse = {
   },
 }
 
+const historicalBoardResponse = {
+  data: {
+    completionBoard: {
+      ...boardResponse.data.completionBoard,
+      courseRunId: 'fall-2025',
+    },
+  },
+}
+
+const historicalEmptyBoardResponse = {
+  data: {
+    completionBoard: {
+      courseRunId: 'fall-2025',
+      students: [],
+    },
+  },
+}
+
 const renderAt = (path: string, history?: MemoryHistory) => {
   const routerHistory =
     history ?? createMemoryHistory({ initialEntries: [path] })
@@ -78,6 +96,7 @@ describe('Completion Records routes (#48)', () => {
     ).toBeInTheDocument()
 
     const table = await screen.findByRole('table')
+    expect(await screen.findByRole('button', { name: 'Export CSV' })).toBeEnabled()
     expect(within(table).getByRole('rowheader', { name: 'alice' })).toBeInTheDocument()
     expect(within(table).getByRole('columnheader', { name: 'affine' })).toBeInTheDocument()
     expect(within(table).getByRole('columnheader', { name: 'caesar' })).toBeInTheDocument()
@@ -148,6 +167,7 @@ describe('Completion Records routes (#48)', () => {
     ).toBeInTheDocument()
     expect(await screen.findByText(/fall-2025/)).toBeInTheDocument()
     expect(await screen.findByRole('rowheader', { name: 'carol' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Export CSV' })).toBeEnabled()
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalled()
@@ -157,6 +177,42 @@ describe('Completion Records routes (#48)', () => {
       variables?: Record<string, unknown>
     }
     expect(body.variables?.courseRunId).toBe('fall-2025')
+  })
+
+  it.each([
+    {
+      name: 'initial loading',
+      fetch: () => new Promise<Response>(() => undefined),
+      waitFor: () => screen.findByRole('status', { name: 'Loading Completion Records' }),
+    },
+    {
+      name: 'initial failure',
+      fetch: () => Promise.reject(new TypeError('Failed to fetch')),
+      waitFor: () => screen.findByText('Unable to load Completion Records.'),
+    },
+    {
+      name: 'malformed data',
+      fetch: () => Promise.resolve(new Response(JSON.stringify({
+        data: { completionBoard: { courseRunId: '', students: [] } },
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } })),
+      waitFor: () => screen.findByText('Unable to load Completion Records.'),
+    },
+    {
+      name: 'empty data',
+      fetch: () => Promise.resolve(new Response(JSON.stringify(emptyBoardResponse), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })),
+      waitFor: () => screen.findByText('No Completion Records for empty-run'),
+    },
+  ])('disables Export CSV on historical route for $name', async ({ fetch, waitFor: waitForState }) => {
+    await i18n.changeLanguage('en-US')
+    vi.stubGlobal('fetch', vi.fn(fetch))
+
+    renderAt('/completion/fall-2025')
+
+    await waitForState()
+    expect(screen.getByRole('button', { name: 'Export CSV' })).toBeDisabled()
   })
 
   it('shows an always-visible Completion Records nav item that opens /completion', async () => {
@@ -235,6 +291,7 @@ describe('Completion Records routes (#48)', () => {
       screen.getByText(/These records are unofficial/),
     ).toBeInTheDocument()
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Export CSV' })).toBeDisabled()
   })
 
   it('shows an accessible busy state while loading without cached data', async () => {
@@ -257,6 +314,7 @@ describe('Completion Records routes (#48)', () => {
     ).toHaveAttribute('aria-busy', 'true')
     expect(screen.getByRole('heading', { name: 'Completion Records' })).toBeInTheDocument()
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Export CSV' })).toBeDisabled()
 
     resolveFetch?.(
       new Response(JSON.stringify(boardResponse), {
@@ -370,6 +428,7 @@ describe('Completion Records routes (#48)', () => {
       await screen.findByText('Unable to load Completion Records.'),
     ).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Completion Records' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Export CSV' })).toBeDisabled()
     expect(
       screen.getByRole('button', { name: 'Retry' }),
     ).toBeInTheDocument()
@@ -386,6 +445,7 @@ describe('Completion Records routes (#48)', () => {
       await screen.findByText('Unable to load Completion Records.'),
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Export CSV' })).toBeDisabled()
     expect(screen.queryByText(/Failed to fetch/)).not.toBeInTheDocument()
   })
 
@@ -417,6 +477,7 @@ describe('Completion Records routes (#48)', () => {
       await screen.findByText('Unable to load Completion Records.'),
     ).toBeInTheDocument()
     expect(screen.queryByText(/mystery boom/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Export CSV' })).toBeDisabled()
   })
 
   it('shows a generic error for malformed Completion Board data', async () => {
@@ -454,6 +515,7 @@ describe('Completion Records routes (#48)', () => {
       await screen.findByText('Unable to load Completion Records.'),
     ).toBeInTheDocument()
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Export CSV' })).toBeDisabled()
   })
 
   it('keeps the matrix visible and announces refresh when cached data is revalidated', async () => {
@@ -488,6 +550,7 @@ describe('Completion Records routes (#48)', () => {
     expect(
       await screen.findByRole('status', { name: 'Refreshing Completion Records' }),
     ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Export CSV' })).toBeDisabled()
 
     resolveRefresh?.(
       new Response(JSON.stringify(boardResponse), {
@@ -581,6 +644,47 @@ describe('Completion Records routes (#48)', () => {
     )
     expect(screen.getByRole('rowheader', { name: 'alice' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Export CSV' })).toBeDisabled()
+  })
+
+  it('disables Export CSV during and after a failed historical refresh', async () => {
+    await i18n.changeLanguage('en-US')
+    const history = createMemoryHistory({ initialEntries: ['/completion/fall-2025'] })
+    let rejectRefresh: ((reason?: unknown) => void) | undefined
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(historicalBoardResponse), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+      .mockImplementationOnce(
+        () => new Promise<Response>((_resolve, reject) => {
+          rejectRefresh = reject
+        }),
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderAt('/completion/fall-2025', history)
+    expect(await screen.findByRole('rowheader', { name: 'alice' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Export CSV' })).toBeEnabled()
+
+    history.push('/')
+    await screen.findByRole('button', { name: 'Completion Records' })
+    history.push('/completion/fall-2025')
+
+    expect(
+      await screen.findByRole('status', { name: 'Refreshing Completion Records' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Export CSV' })).toBeDisabled()
+
+    rejectRefresh?.(new TypeError('Failed to fetch'))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Records may be out of date',
+    )
+    expect(screen.getByRole('button', { name: 'Export CSV' })).toBeDisabled()
   })
 
   it('keeps an empty board and shows a stale warning when refresh fails', async () => {
@@ -614,6 +718,35 @@ describe('Completion Records routes (#48)', () => {
       screen.getByText('No Completion Records for empty-run'),
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Export CSV' })).toBeDisabled()
+  })
+
+  it('keeps a historical empty board and disables Export CSV after refresh failure', async () => {
+    await i18n.changeLanguage('en-US')
+    const history = createMemoryHistory({ initialEntries: ['/completion/fall-2025'] })
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(historicalEmptyBoardResponse), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderAt('/completion/fall-2025', history)
+    expect(await screen.findByText('No Completion Records for fall-2025')).toBeInTheDocument()
+
+    history.push('/')
+    await screen.findByRole('button', { name: 'Completion Records' })
+    history.push('/completion/fall-2025')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Records may be out of date',
+    )
+    expect(screen.getByText('No Completion Records for fall-2025')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Export CSV' })).toBeDisabled()
   })
 
   it('recovers through Retry after an initial failure', async () => {
@@ -634,10 +767,12 @@ describe('Completion Records routes (#48)', () => {
     expect(
       await screen.findByText('Unable to load Completion Records.'),
     ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Export CSV' })).toBeDisabled()
 
     screen.getByRole('button', { name: 'Retry' }).click()
 
     expect(await screen.findByRole('rowheader', { name: 'alice' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Export CSV' })).toBeEnabled()
     expect(
       screen.queryByText('Unable to load Completion Records.'),
     ).not.toBeInTheDocument()

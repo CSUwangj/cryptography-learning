@@ -33,6 +33,7 @@ test.describe('Completion Records Academic Register (#54)', () => {
     await page.setViewportSize({ width: 1280, height: 900 })
     await page.goto('/completion')
     await expect(page.getByRole('heading', { name: 'Completion Records' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Export CSV' })).toBeVisible()
     await expect(page.getByText(maxCourseRunId)).toBeVisible()
     expect(await page.locator('body').evaluate(
       (body) => document.documentElement.scrollWidth === body.clientWidth,
@@ -40,6 +41,11 @@ test.describe('Completion Records Academic Register (#54)', () => {
     await page.screenshot({ path: testInfo.outputPath('completion-records-desktop.png'), fullPage: true })
 
     await page.setViewportSize({ width: 390, height: 844 })
+    const exportButton = page.getByRole('button', { name: 'Export CSV' })
+    await expect(exportButton).toBeVisible()
+    expect(await exportButton.evaluate((element) =>
+      Math.abs(element.getBoundingClientRect().width - element.parentElement!.getBoundingClientRect().width) < 1,
+    )).toBe(true)
     const matrix = page.getByRole('region', { name: 'Completion Records matrix' })
     await expect(matrix).toBeVisible()
     expect(await page.locator('body').evaluate(

@@ -1,6 +1,7 @@
 import React from 'react'
 import { CombinedGraphQLErrors } from '@apollo/client'
-import { Tooltip } from '@blueprintjs/core'
+import { Button, Intent, Tooltip } from '@blueprintjs/core'
+import { IconNames } from '@blueprintjs/icons'
 import styled from '@emotion/styled'
 import { useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -9,6 +10,7 @@ import { useCompletionBoardQuery } from './data'
 import { mapCompletionBoard } from './map'
 import type { CompletionRecordsMatrix } from './domain'
 import type { CompletionRouteParams } from './routes'
+import { downloadCompletionRecordsCsv } from './export'
 
 const NOT_FOUND_CODES = new Set([
   'COMPLETION_NOT_CONFIGURED',
@@ -93,18 +95,50 @@ const DoubleRule = styled.div`
 `
 
 const Totals = styled.dl`
-  display: grid;
-  gap: 16px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin: 0 0 26px;
+  display: contents;
 
   div { border-left: 2px solid #77ad91; padding-left: 10px; }
   dt { color: #59635d; font-size: 0.8125rem; }
   dd { font-family: Georgia, 'Times New Roman', serif; font-size: 2rem; margin: 3px 0 0; }
+`
+
+const Summary = styled.div`
+  align-items: end;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(180px, auto);
+  margin: 0 0 26px;
 
   @media (max-width: 480px) {
+    align-items: stretch;
     gap: 10px;
     grid-template-columns: 1fr;
+  }
+`
+
+const ExportButton = styled(Button)`
+  && {
+    align-self: stretch;
+    background: #26302c;
+    border: 1px solid #26302c;
+    box-shadow: none;
+    color: #fff;
+    min-height: 44px;
+  }
+
+  &&:hover:not(:disabled) {
+    background: #3c4a44;
+    border-color: #3c4a44;
+  }
+
+  &&:disabled {
+    background: #d5d8d3;
+    border-color: #d5d8d3;
+    color: #6b726d;
+  }
+
+  @media (max-width: 480px) {
+    width: 100%;
   }
 `
 
@@ -187,11 +221,13 @@ const MatrixTable: React.FC<{ matrix: CompletionRecordsMatrix }> = ({
   )
 }
 
-const PageChrome: React.FC<{
+const CompletionRecordsLayout: React.FC<{
   courseRunId: string
   matrix?: CompletionRecordsMatrix
+  canExport?: boolean
+  onExport?: () => void
   children?: React.ReactNode
-}> = ({ courseRunId, matrix, children }) => {
+}> = ({ courseRunId, matrix, canExport = false, onExport, children }) => {
   const { t } = useTranslation()
   const completionCount = matrix?.rows.reduce(
     (count, row) => count + row.cells.filter((cell) => cell.state === 'recorded').length,
@@ -205,19 +241,29 @@ const PageChrome: React.FC<{
       <Heading>{t('completion.title')}</Heading>
       <Notice>{t('completion.disclaimer')}</Notice>
       <DoubleRule />
-      {matrix && completionCount !== undefined ? (
-        <Totals role="group" aria-label={t('completion.totals')}>
-          <div role="group" aria-label={t('completion.total', { label: t('completion.students'), count: matrix.rows.length })}>
-            <dt>{t('completion.students')}</dt><dd>{matrix.rows.length}</dd>
-          </div>
-          <div role="group" aria-label={t('completion.total', { label: t('completion.observedLabs'), count: matrix.labIds.length })}>
-            <dt>{t('completion.observedLabs')}</dt><dd>{matrix.labIds.length}</dd>
-          </div>
-          <div role="group" aria-label={t('completion.total', { label: t('completion.records'), count: completionCount })}>
-            <dt>{t('completion.records')}</dt><dd>{completionCount}</dd>
-          </div>
-        </Totals>
-      ) : null}
+      <Summary>
+        {matrix && completionCount !== undefined ? (
+          <Totals role="group" aria-label={t('completion.totals')}>
+            <div role="group" aria-label={t('completion.total', { label: t('completion.students'), count: matrix.rows.length })}>
+              <dt>{t('completion.students')}</dt><dd>{matrix.rows.length}</dd>
+            </div>
+            <div role="group" aria-label={t('completion.total', { label: t('completion.observedLabs'), count: matrix.labIds.length })}>
+              <dt>{t('completion.observedLabs')}</dt><dd>{matrix.labIds.length}</dd>
+            </div>
+            <div role="group" aria-label={t('completion.total', { label: t('completion.records'), count: completionCount })}>
+              <dt>{t('completion.records')}</dt><dd>{completionCount}</dd>
+            </div>
+          </Totals>
+        ) : null}
+        <ExportButton
+          aria-label={t('completion.exportCsv')}
+          disabled={!canExport}
+          icon={IconNames.DOWNLOAD}
+          intent={Intent.NONE}
+          onClick={onExport}
+          text={t('completion.exportCsv')}
+        />
+      </Summary>
       {children}
     </Register>
   )
@@ -243,6 +289,7 @@ export const CompletionRecordsPage: React.FC = () => {
   const onRetry = () => {
     void refetch()
   }
+  const canExport = !loading && !error
 
   if (error !== undefined && isNotFoundError(error)) {
     return <NotFound />
@@ -250,16 +297,16 @@ export const CompletionRecordsPage: React.FC = () => {
 
   if (loading && !data) {
     return (
-      <PageChrome courseRunId={displayCourseRunId}>
+      <CompletionRecordsLayout courseRunId={displayCourseRunId} canExport={false}>
         <div role="status" aria-busy="true" aria-label={t('completion.loading')}>
           {t('completion.loading')}
         </div>
-      </PageChrome>
+      </CompletionRecordsLayout>
     )
   }
 
   if (error && !data) {
-    return <PageChrome courseRunId={displayCourseRunId}><ErrorWithRetry onRetry={onRetry} /></PageChrome>
+    return <CompletionRecordsLayout courseRunId={displayCourseRunId} canExport={false}><ErrorWithRetry onRetry={onRetry} /></CompletionRecordsLayout>
   }
 
   if (!data) {
@@ -268,12 +315,19 @@ export const CompletionRecordsPage: React.FC = () => {
 
   const mapped = mapCompletionBoard(data)
   if (!mapped.ok) {
-    return <PageChrome courseRunId={displayCourseRunId}><ErrorWithRetry onRetry={onRetry} /></PageChrome>
+    return <CompletionRecordsLayout courseRunId={displayCourseRunId} canExport={false}><ErrorWithRetry onRetry={onRetry} /></CompletionRecordsLayout>
   }
 
   const { matrix } = mapped
+  const exportEnabled = canExport && matrix.rows.length > 0
+  const onExport = exportEnabled ? () => downloadCompletionRecordsCsv(matrix) : undefined
   return (
-    <PageChrome courseRunId={matrix.courseRunId} matrix={matrix}>
+    <CompletionRecordsLayout
+      courseRunId={matrix.courseRunId}
+      matrix={matrix}
+      canExport={exportEnabled}
+      onExport={onExport}
+    >
       {loading ? (
         <div
           role="status"
@@ -296,6 +350,6 @@ export const CompletionRecordsPage: React.FC = () => {
       ) : (
         <MatrixTable matrix={matrix} />
       )}
-    </PageChrome>
+    </CompletionRecordsLayout>
   )
 }

@@ -45,6 +45,7 @@ i18n
             'retry': 'Retry',
             'stale': 'Records may be out of date',
             'empty': 'No Completion Records for {{courseRunId}}',
+            'exportCsv': 'Export CSV',
           },
           'notFound': {
             'title': 'Not Found',
@@ -122,6 +123,7 @@ i18n
             'retry': '重试',
             'stale': '记录可能已过期',
             'empty': '课程运行 {{courseRunId}} 暂无完成记录',
+            'exportCsv': '导出 CSV',
           },
           'notFound': {
             'title': '未找到',
