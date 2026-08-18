@@ -61,6 +61,23 @@ Use `npm run lint` cautiously: the configured script includes `--fix` and modifi
   Passing tests and CI are evidence, not proof that the requested result was
   delivered.
 
+## Completion gate
+
+- Every coding-task final response must include this exact `### Change Manifest` section. Do
+  not substitute a prose summary or declare completion before it.
+
+  ```md
+  ### Change Manifest
+  - `path:start-end` - observable behavior changed - verification result
+  - Staged verification: `<command/result>`
+  - Untracked files: `<classification or none>`
+  - Checks not run: `<reason or none>`
+  ```
+
+  It should only summary one edit(means one prompt) not whole session.
+
+- For a no-change task, don't include this section.
+
 ## Requirement authority and complexity
 
 Correctness means satisfying authorized behavior within the documented operating and threat
