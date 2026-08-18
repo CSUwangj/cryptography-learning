@@ -7,6 +7,7 @@ use cryptography_learning_backend::logging::{init_tracing, log_shutdown, log_sta
 use cryptography_learning_backend::opts::Opt;
 use cryptography_learning_backend::practice_catalog::FilesystemLabContentSource;
 use cryptography_learning_backend::serve::serve_until_shutdown;
+use sqlx::{Connection, SqliteConnection};
 use tokio::net::TcpListener;
 use tokio::signal::unix::{SignalKind, signal};
 use tracing::error;
@@ -15,6 +16,13 @@ use tracing::error;
 async fn main() {
     dotenvy::dotenv().ok();
     let opt = Opt::parse();
+    if opt.print_sqlite_version {
+        if let Err(err) = print_sqlite_version().await {
+            eprintln!("SQLite version diagnostic failed: {err}");
+            std::process::exit(1);
+        }
+        return;
+    }
     init_tracing(opt.log_level);
 
     let identity = ProcessIdentity {
@@ -77,6 +85,16 @@ async fn main() {
     }
 
     log_shutdown(&identity);
+}
+
+async fn print_sqlite_version() -> Result<(), sqlx::Error> {
+    let mut connection = SqliteConnection::connect("sqlite::memory:").await?;
+    let version: String = sqlx::query_scalar("SELECT sqlite_version()")
+        .fetch_one(&mut connection)
+        .await?;
+    connection.close().await?;
+    println!("sqlite_version={version}");
+    Ok(())
 }
 
 async fn shutdown_signal() {

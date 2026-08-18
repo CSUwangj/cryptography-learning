@@ -157,6 +157,31 @@ jobs:
           build-args: |
             BUILD_COMMIT=${{ github.sha }}
             IMAGE_VERSION=${{ github.ref_name }}
+      - name: Record SQLite runtime version from candidate image
+        run: |
+          image_identity="$(docker image inspect cryptography-learning-web-tier:ci --format 'local@{{.Id}}')"
+          diagnostic_command=(
+            docker run --rm
+            --entrypoint /app/backend
+            cryptography-learning-web-tier:ci
+            --static /www
+            --print-sqlite-version
+          )
+          printf -v command '%q ' "${diagnostic_command[@]}"
+          command="${command% }"
+          output="$("${diagnostic_command[@]}")"
+          case "$output" in
+            sqlite_version=*) version="${output#sqlite_version=}" ;;
+            *) echo "Unexpected SQLite diagnostic output: $output" >&2; exit 1 ;;
+          esac
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "$(printf '%s\n%s\n' 3.51.3 "$version" | sort -V | head -n1)" = "3.51.3"
+          {
+            printf 'image=%s\n' "$image_identity"
+            printf 'command=%s\n' "$command"
+            printf 'output=%s\n' "$output"
+            printf 'ci_run_url=%s/actions/runs/%s\n' "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "$GITHUB_RUN_ID"
+          } | tee sqlite-runtime-evidence.txt
       - uses: actions/setup-node@v4
         with:
           node-version-file: frontend/.nvmrc
@@ -181,11 +206,13 @@ jobs:
           ACCEPTANCE_ARTIFACT_DIR: ${{ runner.temp }}/browser-artifacts
       - name: Record image digest
         run: docker image inspect cryptography-learning-web-tier:ci --format 'local@{{.Id}}' | tee image-digest.txt
-      - name: Upload image digest record
+      - name: Upload candidate-image runtime evidence
         uses: actions/upload-artifact@v4
         with:
-          name: web-tier-image-digest-${{ github.sha }}
-          path: image-digest.txt
+          name: web-tier-runtime-evidence-${{ github.sha }}
+          path: |
+            image-digest.txt
+            sqlite-runtime-evidence.txt
       - name: Upload browser diagnostics
         if: always()
         uses: actions/upload-artifact@v4

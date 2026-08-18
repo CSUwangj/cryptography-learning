@@ -38,6 +38,10 @@ pub struct Opt {
     #[arg(short, long = "static", env = "STATIC")]
     pub static_file_path: PathBuf,
 
+    /// Print the SQLite runtime version and exit without bootstrapping the web server.
+    #[arg(long)]
+    pub print_sqlite_version: bool,
+
     /// Listen address.
     #[arg(short, long, default_value = "0.0.0.0:8000")]
     pub access_point: String,
@@ -91,6 +95,17 @@ mod tests {
     fn practice_only_when_both_completion_options_absent() {
         let opt = parse(&["cryptography-learning", "--static", "/www"]);
         assert_eq!(opt.completion_module_paths(), Ok(None));
+    }
+
+    #[test]
+    fn accepts_sqlite_version_diagnostic() {
+        let opt = parse(&[
+            "cryptography-learning",
+            "--static",
+            "/www",
+            "--print-sqlite-version",
+        ]);
+        assert!(opt.print_sqlite_version);
     }
 
     #[test]
