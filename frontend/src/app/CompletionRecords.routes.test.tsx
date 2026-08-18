@@ -96,6 +96,13 @@ describe('Completion Records routes (#48)', () => {
     expect(
       screen.getByText(/These records are unofficial/),
     ).toBeInTheDocument()
+    const totals = screen.getByRole('group', { name: 'Completion Record totals' })
+    expect(within(totals).getByRole('group', { name: 'Students: 2' })).toBeInTheDocument()
+    expect(within(totals).getByRole('group', { name: 'Observed Labs: 2' })).toBeInTheDocument()
+    expect(
+      within(totals).getByRole('group', { name: 'Completion Records: 3' }),
+    ).toBeInTheDocument()
+    expect(within(totals).getAllByRole('group')).toHaveLength(3)
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalled()
@@ -200,6 +207,10 @@ describe('Completion Records routes (#48)', () => {
     const recordedMarker = (await screen.findAllByLabelText('已记录'))[0]
     recordedMarker.focus()
     expect(await screen.findByText(/^完成时间：/)).toBeInTheDocument()
+    const totals = screen.getByRole('group', { name: '完成记录总计' })
+    expect(within(totals).getByRole('group', { name: '学生：2' })).toBeInTheDocument()
+    expect(within(totals).getByRole('group', { name: '已观察实验：2' })).toBeInTheDocument()
+    expect(within(totals).getByRole('group', { name: '完成记录：3' })).toBeInTheDocument()
   })
 
   it('shows a localized empty state when the board has no students', async () => {
@@ -244,6 +255,7 @@ describe('Completion Records routes (#48)', () => {
     expect(
       await screen.findByRole('status', { name: 'Loading Completion Records' }),
     ).toHaveAttribute('aria-busy', 'true')
+    expect(screen.getByRole('heading', { name: 'Completion Records' })).toBeInTheDocument()
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
 
     resolveFetch?.(
@@ -357,6 +369,7 @@ describe('Completion Records routes (#48)', () => {
     expect(
       await screen.findByText('Unable to load Completion Records.'),
     ).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Completion Records' })).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: 'Retry' }),
     ).toBeInTheDocument()
