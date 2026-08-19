@@ -17,6 +17,7 @@ import { Body, Footer, Header, Layout } from '../Layout'
 import { navbarHeight } from 'ui'
 import styled from '@emotion/styled'
 import { IconNames } from '@blueprintjs/icons'
+import { PracticeNavigation } from 'practice'
 
 type I18nRenderProps = {
   s: string
@@ -75,7 +76,7 @@ export const Shell: React.FC<PropsWithChildren> = ({ children }) => {
           <Unselectable>
             {/* <Button minimal large icon={IconNames.HELP} text={t('nav.tutorial')} onClick={() => history.push('/tutorial')} /> */}
             {/* <Button minimal large icon={IconNames.SEARCH} text={t('nav.learning')} onClick={() => history.push('/learning')} /> */}
-            <Button minimal large icon={IconNames.FLAG} text={t('nav.practice')} onClick={() => history.push('/practice')} />
+            <PracticeNavigation />
             <Button minimal large icon={IconNames.TH} text={t('nav.completion')} onClick={() => history.push('/completion')} />
             <Button minimal large icon={IconNames.ENVELOPE} text={t('nav.feedback')} onClick={handleOpenFeedback} />
           </Unselectable>

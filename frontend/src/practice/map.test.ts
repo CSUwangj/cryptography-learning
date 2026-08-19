@@ -52,6 +52,31 @@ describe('Practice GraphQL mapping (#16)', () => {
     })
   })
 
+  it('uses stable IDs when a catalog entry has no translated name', () => {
+    const data: PracticesQuery = {
+      practice: {
+        labCategories: [{
+          id: 'classical',
+          name: [],
+          labs: [{
+            id: 'affine',
+            resources: [],
+            wsEndpoints: [],
+            tcpEndpoints: [],
+          }],
+        }],
+      },
+    }
+
+    expect(mapPracticeMenu(data, 'en-US')).toEqual([
+      {
+        id: 'classical',
+        name: 'classical',
+        labs: [{ id: 'affine', name: 'affine' }],
+      },
+    ])
+  })
+
   it('maps Lab Description endpoints and content from representative fixtures', () => {
     const en = loadFixture<{ data: LabQuery }>('lab_affine_en.json')
     const zh = loadFixture<{ data: LabQuery }>('lab_affine_zh.json')

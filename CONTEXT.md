@@ -20,6 +20,13 @@
   produces values and teaching traces.
 - **Visualizer** — A compiled-in, versioned teaching view that transforms typed
   CryptoGraph values and semantic traces into an interactive presentation.
+- **Mobile Practice View** — The narrow-viewport presentation of Practice in
+  which one selected Lab is the primary surface and Lab navigation is secondary.
+  _Avoid:_ mobile Practice page, phone layout
+- **Practice Navigation** — The student-facing hierarchy of Lab categories,
+  Labs, and Completion Records. Completion Records is a distinct destination,
+  not a Lab or Lab category.
+  _Avoid:_ Practice menu
 
 ## Completion
 

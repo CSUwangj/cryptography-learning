@@ -47,6 +47,14 @@ i18n
             'empty': 'No Completion Records for {{courseRunId}}',
             'exportCsv': 'Export CSV',
           },
+          'practiceNavigation': {
+            'label': 'Practice Navigation',
+            'categories': 'Lab categories',
+            'labs': 'Labs',
+            'selectCategory': 'Select a Lab category',
+            'loading': 'Loading Practice Navigation',
+            'error': 'Unable to load Practice Navigation.',
+          },
           'notFound': {
             'title': 'Not Found',
             'message': 'The page you requested could not be found.',
@@ -124,6 +132,14 @@ i18n
             'stale': '记录可能已过期',
             'empty': '课程运行 {{courseRunId}} 暂无完成记录',
             'exportCsv': '导出 CSV',
+          },
+          'practiceNavigation': {
+            'label': '实践导航',
+            'categories': '实验分类',
+            'labs': '实验',
+            'selectCategory': '选择实验分类',
+            'loading': '正在加载实践导航',
+            'error': '无法加载实践导航。',
           },
           'notFound': {
             'title': '未找到',

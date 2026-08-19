@@ -19,10 +19,10 @@ export const mapPracticeMenu = (
 ): PracticeMenuCategory[] =>
   data.practice.labCategories.map((category) => {
     const nameAsSameLang = category.name.find((entry) => entry.lang === language)
-    const name = nameAsSameLang?.text ?? (category.name.length ? category.name[0].text : 'secrete labs')
+    const name = nameAsSameLang?.text ?? (category.name.length ? category.name[0].text : category.id)
     const labs = category.labs.map((lab) => {
       const labNameAsSameLang = lab.resources.find((resource) => resource.lang === language)
-      const labName = labNameAsSameLang?.name ?? (lab.resources.length ? lab.resources[0].name : 'secrete lab')
+      const labName = labNameAsSameLang?.name ?? (lab.resources.length ? lab.resources[0].name : lab.id)
       return { id: lab.id, name: labName }
     })
     return { id: category.id, name, labs }
