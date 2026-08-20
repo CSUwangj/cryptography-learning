@@ -18,10 +18,12 @@ i18n
           'quote': ': ',
           'nav': {
             'home': 'Cryptography Learning Platform',
+            'homeAction': 'Home',
             'tutorial': 'Tutorial',
             'practice': 'Practice',
             'learning': 'Learning',
             'feedback': 'Feedback',
+            'language': 'Language',
             'completion': 'Completion Records',
           },
           'completion': {
@@ -104,10 +106,12 @@ i18n
           'quote': '：',
           'nav': {
             'home': '密码学学习平台',
+            'homeAction': '主页',
             'tutorial': '教程',
             'practice': '实践',
             'learning': '学习',
             'feedback': '反馈',
+            'language': '语言',
             'completion': '完成记录',
           },
           'completion': {

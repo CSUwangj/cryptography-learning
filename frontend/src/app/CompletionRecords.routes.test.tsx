@@ -215,7 +215,7 @@ describe('Completion Records routes (#48)', () => {
     expect(screen.getByRole('button', { name: 'Export CSV' })).toBeDisabled()
   })
 
-  it('shows an always-visible Completion Records nav item that opens /completion', async () => {
+  it('removes peer-level Completion Records navigation', async () => {
     await i18n.changeLanguage('en-US')
     vi.stubGlobal(
       'fetch',
@@ -227,14 +227,12 @@ describe('Completion Records routes (#48)', () => {
       ),
     )
 
-    const { history } = renderAt('/')
-    const nav = await screen.findByRole('button', { name: 'Completion Records' })
-    nav.click()
+    renderAt('/')
 
     expect(
-      await screen.findByRole('heading', { name: 'Completion Records' }),
+      await screen.findByRole('button', { name: 'Practice' }),
     ).toBeInTheDocument()
-    expect(history.location.pathname).toBe('/completion')
+    expect(screen.queryByRole('button', { name: 'Completion Records' })).not.toBeInTheDocument()
   })
 
   it('renders Completion Records copy in zh-CN', async () => {
@@ -255,7 +253,7 @@ describe('Completion Records routes (#48)', () => {
       await screen.findByRole('heading', { name: '完成记录' }),
     ).toBeInTheDocument()
     expect(
-      await screen.findByRole('button', { name: '完成记录' }),
+      await screen.findByRole('button', { name: '实践 > 完成记录' }),
     ).toBeInTheDocument()
     expect(
       screen.getByText(/这些记录为非正式记录/),
@@ -543,7 +541,7 @@ describe('Completion Records routes (#48)', () => {
     expect(await screen.findByRole('rowheader', { name: 'alice' })).toBeInTheDocument()
 
     history.push('/')
-    await screen.findByRole('button', { name: 'Completion Records' })
+    await screen.findByRole('button', { name: 'Practice' })
     history.push('/completion')
 
     expect(await screen.findByRole('rowheader', { name: 'alice' })).toBeInTheDocument()
@@ -593,7 +591,7 @@ describe('Completion Records routes (#48)', () => {
     ).toBeInTheDocument()
 
     history.push('/')
-    await screen.findByRole('button', { name: 'Completion Records' })
+    await screen.findByRole('button', { name: 'Practice' })
     history.push('/completion')
 
     expect(
@@ -636,7 +634,7 @@ describe('Completion Records routes (#48)', () => {
     expect(await screen.findByRole('rowheader', { name: 'alice' })).toBeInTheDocument()
 
     history.push('/')
-    await screen.findByRole('button', { name: 'Completion Records' })
+    await screen.findByRole('button', { name: 'Practice' })
     history.push('/completion')
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
@@ -671,7 +669,7 @@ describe('Completion Records routes (#48)', () => {
     expect(screen.getByRole('button', { name: 'Export CSV' })).toBeEnabled()
 
     history.push('/')
-    await screen.findByRole('button', { name: 'Completion Records' })
+    await screen.findByRole('button', { name: 'Practice' })
     history.push('/completion/fall-2025')
 
     expect(
@@ -708,7 +706,7 @@ describe('Completion Records routes (#48)', () => {
     ).toBeInTheDocument()
 
     history.push('/')
-    await screen.findByRole('button', { name: 'Completion Records' })
+    await screen.findByRole('button', { name: 'Practice' })
     history.push('/completion')
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
@@ -739,7 +737,7 @@ describe('Completion Records routes (#48)', () => {
     expect(await screen.findByText('No Completion Records for fall-2025')).toBeInTheDocument()
 
     history.push('/')
-    await screen.findByRole('button', { name: 'Completion Records' })
+    await screen.findByRole('button', { name: 'Practice' })
     history.push('/completion/fall-2025')
 
     expect(await screen.findByRole('alert')).toHaveTextContent(

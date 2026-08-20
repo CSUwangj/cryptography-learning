@@ -18,12 +18,18 @@ const catalogResponse = {
         {
           __typename: 'LabCategory',
           id: 'classical',
-          name: [{ __typename: 'Translation', lang: 'en-US', text: 'Classical' }],
+          name: [
+            { __typename: 'Translation', lang: 'en-US', text: 'Classical' },
+            { __typename: 'Translation', lang: 'zh-CN', text: '古典密码' },
+          ],
           labs: [
             {
               __typename: 'Lab',
               id: 'affine',
-              resources: [{ __typename: 'ResourceWithTranslation', lang: 'en-US', name: 'Affine Cipher' }],
+              resources: [
+                { __typename: 'ResourceWithTranslation', lang: 'en-US', name: 'Affine Cipher' },
+                { __typename: 'ResourceWithTranslation', lang: 'zh-CN', name: '仿射密码' },
+              ],
               wsEndpoints: [],
               tcpEndpoints: [],
             },
@@ -47,6 +53,15 @@ const labResponse = {
       content: '# Affine Cipher',
       wsEndpoints: [],
       tcpEndpoints: [],
+    },
+  },
+}
+
+const completionResponse = {
+  data: {
+    completionBoard: {
+      courseRunId: 'spring-2026',
+      students: [],
     },
   },
 }
@@ -98,13 +113,74 @@ describe('Practice Navigation routes (#57)', () => {
 
     expect(history.location.pathname).toBe('/practice/classical/affine')
 
-    await user.click(await screen.findByRole('button', { name: 'Practice' }))
+    await user.click(
+      await screen.findByRole('button', { name: 'Practice > Classical > Affine Cipher' }),
+    )
     const reopenedNavigation = await screen.findByRole('dialog', { name: 'Practice Navigation' })
     await user.click(
       within(reopenedNavigation).getByRole('button', { name: 'Completion Records' }),
     )
 
     expect(history.location.pathname).toBe('/completion')
+  })
+
+  it('shows selected Lab hierarchy in its one dropdown trigger', async () => {
+    await i18n.changeLanguage('en-US')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as { operationName?: string }
+        const response = body.operationName === 'Practices' ? catalogResponse : labResponse
+        return Promise.resolve(new Response(JSON.stringify(response), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }))
+      }),
+    )
+
+    renderAt('/practice/classical/affine')
+
+    expect(
+      await screen.findByRole('button', { name: 'Practice > Classical > Affine Cipher' }),
+    ).toBeInTheDocument()
+  })
+
+  it.each([
+    ['en-US', '/practice', 'Practice'],
+    ['en-US', '/practice/classical/affine', 'Practice > Classical > Affine Cipher'],
+    ['en-US', '/completion', 'Practice > Completion Records'],
+    ['en-US', '/', 'Practice'],
+    ['en-US', '/feedback', 'Practice'],
+    ['zh-CN', '/practice', '实践'],
+    ['zh-CN', '/practice/classical/affine', '实践 > 古典密码 > 仿射密码'],
+    ['zh-CN', '/completion', '实践 > 完成记录'],
+    ['zh-CN', '/', '实践'],
+    ['zh-CN', '/feedback', '实践'],
+  ])('renders %s breadcrumb on %s', async (language, path, breadcrumb) => {
+    await i18n.changeLanguage(language)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as { operationName?: string }
+        const response = body.operationName === 'Practices'
+          ? catalogResponse
+          : body.operationName === 'CompletionBoard'
+            ? completionResponse
+            : labResponse
+        return Promise.resolve(
+          new Response(JSON.stringify(response), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        )
+      }),
+    )
+
+    renderAt(path)
+
+    const trigger = await screen.findByRole('button', { name: breadcrumb })
+    expect(trigger).toHaveAttribute('aria-haspopup', 'dialog')
+    expect(screen.queryByRole('link', { name: breadcrumb })).not.toBeInTheDocument()
   })
 
   it('keeps Completion Records actionable while its catalog loads', async () => {

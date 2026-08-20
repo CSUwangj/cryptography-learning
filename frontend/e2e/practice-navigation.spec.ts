@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
 const catalog = {
   data: {
@@ -8,12 +8,18 @@ const catalog = {
         {
           __typename: 'LabCategory',
           id: 'classical',
-          name: [{ __typename: 'Translation', lang: 'en-US', text: 'Classical' }],
+          name: [
+            { __typename: 'Translation', lang: 'en-US', text: 'Classical Cryptography Foundations' },
+            { __typename: 'Translation', lang: 'zh-CN', text: '古典密码学基础与入门' },
+          ],
           labs: [
             {
               __typename: 'Lab',
               id: 'affine',
-              resources: [{ __typename: 'ResourceWithTranslation', lang: 'en-US', name: 'Affine Cipher' }],
+              resources: [
+                { __typename: 'ResourceWithTranslation', lang: 'en-US', name: 'Affine Cipher With An Intentionally Long English Lab Title' },
+                { __typename: 'ResourceWithTranslation', lang: 'zh-CN', name: '仿射密码长标题实验' },
+              ],
               wsEndpoints: [],
               tcpEndpoints: [],
             },
@@ -24,13 +30,45 @@ const catalog = {
   },
 }
 
+const lab = {
+  data: {
+    lab: {
+      __typename: 'LabInstance',
+      content: '# Affine Cipher',
+      wsEndpoints: [],
+      tcpEndpoints: [],
+    },
+  },
+}
+
+const completion = {
+  data: {
+    completionBoard: {
+      courseRunId: 'spring-2026',
+      students: [],
+    },
+  },
+}
+
+const mockGraphQL = async (page: Page) => {
+  await page.route('**/query', (route) => {
+    const body = route.request().postData() ?? ''
+    const response = body.includes('completionBoard')
+      ? completion
+      : body.includes('lab(')
+        ? lab
+        : catalog
+    return route.fulfill({ json: response })
+  })
+}
+
 test.describe('Practice Navigation (#57)', () => {
   test.skip(({ browserName }) => browserName !== 'chromium', 'Responsive geometry runs in Chromium')
 
   test('keeps the same two-column catalog usable on desktop and phone', async ({ page }) => {
-    await page.route('**/query', (route) => route.fulfill({ json: catalog }))
+    await mockGraphQL(page)
 
-    for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
+    for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }, { width: 320, height: 844 }]) {
       await page.setViewportSize(viewport)
       await page.goto('/')
       await page.getByRole('button', { name: 'Practice' }).click()
@@ -49,8 +87,75 @@ test.describe('Practice Navigation (#57)', () => {
       }
       expect(Math.abs(categoriesBox.y - labsBox.y)).toBeLessThan(4)
       expect(labsBox.x).toBeGreaterThan(categoriesBox.x)
-      await navigation.getByRole('button', { name: 'Classical' }).click()
-      await expect(navigation.getByRole('button', { name: 'Affine Cipher' })).toBeVisible()
+      await navigation.getByRole('button', { name: 'Classical Cryptography Foundations' }).click()
+      await expect(navigation.getByRole('button', { name: 'Affine Cipher With An Intentionally Long English Lab Title' })).toBeVisible()
+    }
+  })
+
+  test('keeps route-aware shell controls contained and reachable', async ({ page }) => {
+    await mockGraphQL(page)
+
+    const languages = [
+      {
+        language: 'en-US',
+        home: 'Home',
+        practice: 'Practice',
+        feedback: 'Feedback',
+        theme: 'Dark',
+        languageControl: 'Language',
+        completion: 'Completion Records',
+        desktopBreadcrumb: 'Practice > Classical Cryptography Foundations > Affine Cipher With An Intentionally Long English Lab Title',
+        phoneBreadcrumb: 'Practice > Affine Cipher With An Intentionally Long English Lab Title',
+      },
+      {
+        language: 'zh-CN',
+        home: '主页',
+        practice: '实践',
+        feedback: '反馈',
+        theme: '夜间模式',
+        languageControl: '语言',
+        completion: '完成记录',
+        desktopBreadcrumb: '实践 > 古典密码学基础与入门 > 仿射密码长标题实验',
+        phoneBreadcrumb: '实践 > 仿射密码长标题实验',
+      },
+    ]
+
+    for (const labels of languages) {
+      await page.addInitScript((language) => localStorage.setItem('i18nextLng', language), labels.language)
+      for (const viewport of [{ width: 320, height: 844 }, { width: 390, height: 844 }, { width: 1280, height: 900 }]) {
+        await page.setViewportSize(viewport)
+        await page.goto('/practice/classical/affine')
+
+        const trigger = page.getByRole('button', { name: labels.desktopBreadcrumb })
+        await expect(trigger).toBeVisible()
+        expect((await trigger.innerText()).replace(/\s+/g, ' ').trim()).toBe(
+          viewport.width <= 520 ? labels.phoneBreadcrumb : labels.desktopBreadcrumb,
+        )
+        await expect(page.getByRole('button', { name: labels.home })).toBeVisible()
+        await expect(page.getByRole('button', { name: labels.feedback })).toBeVisible()
+        await expect(page.getByRole('button', { name: labels.theme })).toBeVisible()
+        await expect(page.getByRole('button', { name: labels.languageControl })).toBeVisible()
+        await expect(page.getByRole('button', { name: labels.completion })).toHaveCount(0)
+
+        const controls = [
+          page.getByRole('button', { name: labels.home }),
+          trigger,
+          page.getByRole('button', { name: labels.feedback }),
+          page.getByRole('button', { name: labels.theme }),
+          page.getByRole('button', { name: labels.languageControl }),
+        ]
+        const boxes = await Promise.all(controls.map((control) => control.boundingBox()))
+        expect(boxes.every((box) => box !== null)).toBe(true)
+        for (let index = 1; index < boxes.length; index += 1) {
+          const previous = boxes[index - 1]
+          const current = boxes[index]
+          if (previous === null || current === null) {
+            throw new Error('Shared shell control geometry unavailable')
+          }
+          expect(previous.x + previous.width).toBeLessThanOrEqual(current.x + 1)
+        }
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width)
+      }
     }
   })
 })

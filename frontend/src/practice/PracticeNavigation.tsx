@@ -10,10 +10,12 @@ import {
 import { IconNames } from '@blueprintjs/icons'
 import styled from '@emotion/styled'
 import { useTranslation } from 'react-i18next'
-import { useHistory } from 'react-router-dom'
+import { matchPath, useHistory, useLocation } from 'react-router-dom'
+import { COMPLETION_PATTERN } from 'completion_board'
 import { PracticesDocument } from '../transport/generated/graphql'
+import type { PracticeMenuCategory } from './domain'
 import { mapPracticeMenu } from './map'
-import { labPath } from './routes'
+import { LAB_PATTERN, labPath, type LabRouteParams } from './routes'
 
 const Panel = styled.div`
   background: #fff;
@@ -63,13 +65,101 @@ const NavigationState = styled.div`
   min-height: 72px;
 `
 
-export const PracticeNavigation: React.FC = () => {
+const Breadcrumb = styled.span`
+  display: flex;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+`
+
+const BreadcrumbSegment = styled.span<{ $hiddenOnPhone?: boolean }>`
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  @media (max-width: 520px) {
+    display: ${({ $hiddenOnPhone }) => $hiddenOnPhone ? 'none' : 'inline'};
+  }
+`
+
+const BreadcrumbSeparator = styled.span<{ $hiddenOnPhone?: boolean }>`
+  flex: 0 0 auto;
+
+  @media (max-width: 520px) {
+    display: ${({ $hiddenOnPhone }) => $hiddenOnPhone ? 'none' : 'inline'};
+  }
+`
+
+const Trigger = styled(Button)`
+  && {
+    min-width: 0;
+    overflow: hidden;
+    width: 100%;
+
+    .bp6-button-text {
+      min-width: 0;
+      overflow: hidden;
+    }
+  }
+`
+
+const TriggerContainer = styled.div`
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+
+  .bp6-popover-target {
+    display: block;
+    min-width: 0;
+    width: 100%;
+  }
+`
+
+const breadcrumbFor = (
+  pathname: string,
+  categories: PracticeMenuCategory[],
+  practiceLabel: string,
+  completionLabel: string,
+): { segments: string[]; hidesCategoryOnPhone: boolean } => {
+  const labMatch = matchPath<LabRouteParams>(pathname, { exact: true, path: LAB_PATTERN })
+  if (labMatch) {
+    const { category: categoryId, lab: labId } = labMatch.params
+    const category = categories.find(({ id }) => id === categoryId)
+    const lab = category?.labs.find(({ id }) => id === labId)
+    return {
+      segments: [practiceLabel, category?.name ?? categoryId, lab?.name ?? labId],
+      hidesCategoryOnPhone: true,
+    }
+  }
+
+  if (matchPath(pathname, { exact: true, path: COMPLETION_PATTERN })) {
+    return { segments: [practiceLabel, completionLabel], hidesCategoryOnPhone: false }
+  }
+
+  return { segments: [practiceLabel], hidesCategoryOnPhone: false }
+}
+
+type PracticeNavigationProps = {
+  className?: string
+}
+
+export const PracticeNavigation: React.FC<PracticeNavigationProps> = ({ className }) => {
   const { t, i18n } = useTranslation()
   const history = useHistory()
+  const location = useLocation()
   const [isOpen, setIsOpen] = useState(false)
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>()
-  const { data, error, loading } = useQuery(PracticesDocument, { skip: !isOpen })
+  const isLabRoute = Boolean(matchPath(location.pathname, { exact: true, path: LAB_PATTERN }))
+  const { data, error, loading } = useQuery(PracticesDocument, { skip: !isOpen && !isLabRoute })
   const categories = data ? mapPracticeMenu(data, i18n.language) : []
+  const breadcrumb = breadcrumbFor(
+    location.pathname,
+    categories,
+    t('nav.practice'),
+    t('nav.completion'),
+  )
+  const breadcrumbLabel = breadcrumb.segments.join(' > ')
 
   const openLab = (categoryId: string, labId: string) => {
     setIsOpen(false)
@@ -128,7 +218,7 @@ export const PracticeNavigation: React.FC = () => {
     </Panel>
   )
 
-  return (
+  return <TriggerContainer className={className}>
     <PopoverNext
       content={content}
       isOpen={isOpen}
@@ -137,13 +227,27 @@ export const PracticeNavigation: React.FC = () => {
       popupKind={PopupKind.DIALOG}
       transitionDuration={0}
     >
-      <Button
+      <Trigger
         minimal
         large
         icon={IconNames.FLAG}
-        text={t('nav.practice')}
-        aria-label={t('nav.practice')}
-      />
+        aria-label={breadcrumbLabel}
+      >
+        <Breadcrumb aria-hidden="true">
+          {breadcrumb.segments.map((segment, index) => (
+            <React.Fragment key={`${index}:${segment}`}>
+              {index > 0 && (
+                <BreadcrumbSeparator $hiddenOnPhone={breadcrumb.hidesCategoryOnPhone && index === 1}>
+                  {' > '}
+                </BreadcrumbSeparator>
+              )}
+              <BreadcrumbSegment $hiddenOnPhone={breadcrumb.hidesCategoryOnPhone && index === 1}>
+                {segment}
+              </BreadcrumbSegment>
+            </React.Fragment>
+          ))}
+        </Breadcrumb>
+      </Trigger>
     </PopoverNext>
-  )
+  </TriggerContainer>
 }

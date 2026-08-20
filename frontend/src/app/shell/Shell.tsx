@@ -45,12 +45,70 @@ const I18nRender: React.FC<I18nRenderProps> = ({ s, handleClick, modifiers }) =>
 }
 
 const NavMenu = styled(Navbar)`
+  box-sizing: border-box;
   height: ${navbarHeight}px;
   display: flex;
-  justify-content: space-between;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 8px;
   align-items: center;
   background-color: #EEE;
   font-size: 20px;
+
+  && .bp6-navbar-group {
+    float: none;
+    gap: 4px;
+    height: 100%;
+    min-width: 0;
+  }
+
+  @media (max-width: 520px) {
+    height: 56px;
+    padding: 0 4px;
+
+    .bp6-navbar-divider {
+      display: none;
+    }
+
+    .bp6-navbar-heading {
+      margin-right: 4px;
+    }
+  }
+`
+
+const PrimaryNavigation = styled(NavbarGroup)`
+  flex: 1 1 auto;
+`
+
+const UtilityNavigation = styled(NavbarGroup)`
+  flex: 0 0 auto;
+`
+
+const CompactAction = styled(Button)`
+  && {
+    flex: 0 0 auto;
+  }
+
+  @media (max-width: 520px) {
+    && .bp6-button-text {
+      display: none;
+    }
+  }
+`
+
+const PracticeTrigger = styled(PracticeNavigation)`
+  && {
+    flex: 1 1 auto;
+    max-width: 42rem;
+  }
+`
+
+const NavigationActions = styled(Unselectable)`
+  align-items: center;
+  display: flex;
+  flex: 1 1 auto;
+  gap: 4px;
+  min-width: 0;
 `
 
 export const Shell: React.FC<PropsWithChildren> = ({ children }) => {
@@ -68,23 +126,25 @@ export const Shell: React.FC<PropsWithChildren> = ({ children }) => {
   return <Layout className={dark ? Classes.DARK : undefined}>
     <Header>
       <NavMenu className={Classes.DARK}>
-        <NavbarGroup align={Alignment.LEFT}>
+        <PrimaryNavigation align={Alignment.LEFT}>
           <Unselectable>
-            <NavbarHeading><Button minimal large icon={IconNames.HOME} text={t('nav.home')} onClick={() => history.push('/')}/></NavbarHeading>
+            <NavbarHeading><CompactAction minimal large icon={IconNames.HOME} text={t('nav.home')} aria-label={t('nav.homeAction')} onClick={() => history.push('/')}/></NavbarHeading>
           </Unselectable>
           <NavbarDivider />
-          <Unselectable>
+          <NavigationActions>
             {/* <Button minimal large icon={IconNames.HELP} text={t('nav.tutorial')} onClick={() => history.push('/tutorial')} /> */}
             {/* <Button minimal large icon={IconNames.SEARCH} text={t('nav.learning')} onClick={() => history.push('/learning')} /> */}
-            <PracticeNavigation />
-            <Button minimal large icon={IconNames.TH} text={t('nav.completion')} onClick={() => history.push('/completion')} />
-            <Button minimal large icon={IconNames.ENVELOPE} text={t('nav.feedback')} onClick={handleOpenFeedback} />
-          </Unselectable>
-        </NavbarGroup>
-        <NavbarGroup align={Alignment.RIGHT}>
+            <PracticeTrigger />
+            <CompactAction minimal large icon={IconNames.ENVELOPE} text={t('nav.feedback')} aria-label={t('nav.feedback')} onClick={handleOpenFeedback} />
+          </NavigationActions>
+        </PrimaryNavigation>
+        <UtilityNavigation align={Alignment.RIGHT}>
           <NavbarDivider />
-          <Button
+          <CompactAction
+            minimal
+            large
             text={dark ? t('light') : t('dark')}
+            aria-label={dark ? t('light') : t('dark')}
             icon={dark ? 'flash' : 'moon'}
             onClick={() => {setDark(!dark)}}
           />
@@ -95,9 +155,9 @@ export const Shell: React.FC<PropsWithChildren> = ({ children }) => {
             itemRenderer={(s, {handleClick, modifiers}) => <I18nRender s={s} handleClick={handleClick} modifiers={modifiers} />}
             onItemSelect={(i) => {i18n.changeLanguage(i)}}
           >
-            <Button text={t('i18n.'+i18n.language)} rightIcon="double-caret-vertical" />
+            <CompactAction minimal large icon={IconNames.TRANSLATE} text={t('i18n.'+i18n.language)} aria-label={t('nav.language')} rightIcon="double-caret-vertical" />
           </Select>
-        </NavbarGroup>
+        </UtilityNavigation>
       </NavMenu>
     </Header>
     <Body>
