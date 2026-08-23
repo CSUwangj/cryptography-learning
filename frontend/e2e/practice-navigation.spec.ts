@@ -92,6 +92,20 @@ test.describe('Practice Navigation (#57)', () => {
     }
   })
 
+  test('renders fluid welcome route without legacy sidebar or phone overflow', async ({ page }) => {
+    await mockGraphQL(page)
+
+    for (const viewport of [{ width: 320, height: 844 }, { width: 390, height: 844 }, { width: 1280, height: 900 }]) {
+      await page.setViewportSize(viewport)
+      await page.goto('/practice')
+
+      await expect(page.getByRole('heading', { name: 'WELCOME' })).toBeVisible()
+      await expect(page.getByRole('dialog', { name: 'Practice Navigation' })).toHaveCount(0)
+      await expect(page.getByRole('menu')).toHaveCount(0)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width)
+    }
+  })
+
   test('keeps route-aware shell controls contained and reachable', async ({ page }) => {
     await mockGraphQL(page)
 
