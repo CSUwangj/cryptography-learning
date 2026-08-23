@@ -66,7 +66,56 @@ type MarkdownProps = {
 
 const Code = styled.code`
   display: inline-block;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  vertical-align: bottom;
   white-space: pre;
+`
+
+const MarkdownRoot = styled.div`
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+
+  > * {
+    max-width: 100%;
+  }
+
+  pre {
+    box-sizing: border-box;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: pre;
+  }
+
+  table {
+    box-sizing: border-box;
+    display: block;
+    max-width: 100%;
+    min-width: 100%;
+    overflow-x: auto;
+  }
+
+  th,
+  td {
+    white-space: nowrap;
+  }
+
+  .katex-display {
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+`
+
+const InlineMath = styled.span`
+  display: inline-block;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  vertical-align: middle;
 `
 
 const InlineCode: React.FC<React.PropsWithChildren> = ({ children }) => {
@@ -82,22 +131,24 @@ export const Markdown: React.FC<MarkdownProps> = ({ source }) => {
    * for admonitions
    * ICON name could be omit where intent will derive icon
    */
-  return <ReactMarkdown
-    source={source}
-    plugins={[
-      RemarkMathPlugin,
-      AdmonitionsPlugin
-    ]}
-    renderers={{
-      code: CodeBlock,
-      inlineCode: InlineCode,
-      math: ({ value }: { value: string }) => <TeX block>{value}</TeX>,
-      inlineMath: ({ value }: { value: string }) => <TeX>{value}</TeX>,
-      none: (props: AdmonitionRendererProps) => <MarkdownCallout intent='none' {...props} />,
-      primary: (props: AdmonitionRendererProps) => <MarkdownCallout intent='primary' {...props} />,
-      success: (props: AdmonitionRendererProps) => <MarkdownCallout intent='success' {...props} />,
-      warning: (props: AdmonitionRendererProps) => <MarkdownCallout intent='warning' {...props} />,
-      danger: (props: AdmonitionRendererProps) => <MarkdownCallout intent='danger' {...props} />,
-    }}
-  />
+  return <MarkdownRoot data-markdown-root>
+    <ReactMarkdown
+      source={source}
+      plugins={[
+        RemarkMathPlugin,
+        AdmonitionsPlugin
+      ]}
+      renderers={{
+        code: CodeBlock,
+        inlineCode: InlineCode,
+        math: ({ value }: { value: string }) => <TeX block>{value}</TeX>,
+        inlineMath: ({ value }: { value: string }) => <InlineMath data-markdown-inline-math><TeX>{value}</TeX></InlineMath>,
+        none: (props: AdmonitionRendererProps) => <MarkdownCallout intent='none' {...props} />,
+        primary: (props: AdmonitionRendererProps) => <MarkdownCallout intent='primary' {...props} />,
+        success: (props: AdmonitionRendererProps) => <MarkdownCallout intent='success' {...props} />,
+        warning: (props: AdmonitionRendererProps) => <MarkdownCallout intent='warning' {...props} />,
+        danger: (props: AdmonitionRendererProps) => <MarkdownCallout intent='danger' {...props} />,
+      }}
+    />
+  </MarkdownRoot>
 }

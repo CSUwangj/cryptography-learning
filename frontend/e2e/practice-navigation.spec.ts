@@ -34,7 +34,7 @@ const lab = {
   data: {
     lab: {
       __typename: 'LabInstance',
-      content: '# Affine Cipher\n\nOrdinary Lab prose stays readable on narrow screens.\n\n![Lab diagram](https://example.test/lab-diagram.png)',
+      content: '# Affine Cipher\n\nOrdinary Lab prose stays readable on narrow screens.\n\n`copy-this-command-without-changing-its-value-0123456789`\n\nInline math stays intact: $a_0 + a_1 + a_2 + a_3 + a_4 + a_5 + a_6 + a_7 + a_8 + a_9$.\n\n```text\nthis-is-a-wide-command-value-that-must-remain-copyable-0123456789\n```\n\n| Header | Value |\n| --- | --- |\n| wide-row | this-is-a-wide-table-value-that-must-remain-intact-0123456789 |\n\n$$a_0 + a_1 + a_2 + a_3 + a_4 + a_5 + a_6 + a_7 + a_8 + a_9 + a_{10}$$\n\n![Lab diagram](https://example.test/lab-diagram.png)',
       wsEndpoints: [
         { __typename: 'Endpoint', host: 'challenge.example.test', port: 19020 },
         { __typename: 'Endpoint', host: 'challenge.example.test', port: 19021 },
@@ -109,6 +109,51 @@ test.describe('Practice Navigation (#57)', () => {
       await expect(page.getByRole('dialog', { name: 'Practice Navigation' })).toHaveCount(0)
       await expect(page.getByRole('menu')).toHaveCount(0)
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width)
+    }
+  })
+
+  test('contains inherently wide Markdown content in local regions', async ({ page }) => {
+    await mockGraphQL(page)
+
+    for (const viewport of [{ width: 320, height: 844 }, { width: 390, height: 844 }, { width: 1280, height: 900 }]) {
+      await page.setViewportSize(viewport)
+      await page.goto('/practice/classical/affine')
+      await expect(page.getByRole('heading', { name: 'Affine Cipher', exact: true })).toBeVisible()
+
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width)
+      const regions = await page.locator('[data-markdown-root]').evaluateAll((roots, width) => roots.flatMap((root) => {
+        const selectors = ['pre', 'code', 'table', '.katex-display', 'span[data-markdown-inline-math]']
+        return selectors.flatMap((selector) => Array.from(root.querySelectorAll(selector)).map((element) => {
+          const style = getComputedStyle(element)
+          let boundary = element
+          for (let ancestor = element.parentElement; ancestor && ancestor !== root; ancestor = ancestor.parentElement) {
+            const ancestorStyle = getComputedStyle(ancestor)
+            if (ancestorStyle.overflowX === 'auto' || ancestorStyle.overflowX === 'scroll') {
+              boundary = ancestor
+              break
+            }
+          }
+          const boundaryRect = boundary.getBoundingClientRect()
+          return {
+            selector,
+            localOverflow: element.scrollWidth > element.clientWidth,
+            scrollable: style.overflowX === 'auto' || style.overflowX === 'scroll',
+            contained: boundaryRect.left >= 0 && boundaryRect.right <= width,
+          }
+        }))
+      }), viewport.width)
+      expect(regions.filter((region) => !region.contained)).toEqual([])
+      expect(regions.filter((region) => region.localOverflow).every((region) => region.scrollable)).toBe(true)
+      if (viewport.width <= 390) {
+        const overflowSelectors = new Set(regions.filter((region) => region.localOverflow).map((region) => region.selector))
+        expect(overflowSelectors.has('pre')).toBe(true)
+        expect(overflowSelectors.has('table')).toBe(true)
+      }
+      await expect(page.locator('[data-markdown-root] pre').first()).toHaveCSS('white-space', 'pre')
+      await expect(page.locator('[data-markdown-root] code').first()).toHaveCSS('white-space', 'pre')
+      expect(await page.getByText('Ordinary Lab prose stays readable on narrow screens.', { exact: true }).evaluate((element) =>
+        getComputedStyle(element).overflowX,
+      )).toBe('visible')
     }
   })
 
