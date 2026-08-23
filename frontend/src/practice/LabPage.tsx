@@ -11,12 +11,23 @@ import { LabRouteParams } from './routes'
 import { useLabDescription } from './data'
 
 const ScrollCard = styled(Div)`
-  padding: 10px;
-  width: ${contentWidth}px;
+  box-sizing: border-box;
+  margin: 0 auto;
+  max-width: ${contentWidth}px;
+  padding: 10px clamp(12px, 4vw, 32px);
+  width: 100%;
 `
 
 const Container = styled.div`
-  padding: 20px;
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 20px 0;
+  width: 100%;
+
+  > * {
+    min-width: 0;
+  }
+
   blockquote {
     margin: 2em 0;
     padding: 10px 20px;
@@ -27,6 +38,7 @@ const Container = styled.div`
     border: rgba(255,255,255,0.3);
   }
   img {
+    height: auto;
     max-width: 100%;
   }
 `
@@ -35,21 +47,44 @@ const BlockWrapper = styled(Card)`
   margin-top: 20px;
 `
 const WSEndpointContainer = styled(BlockWrapper)`
+  box-sizing: border-box;
+  gap: 12px;
   display: flex;
-  flex-flow: row wrap;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-around;
+  justify-content: flex-start;
+  padding: 16px;
 `
 const TCPEndpointsContainer = styled(BlockWrapper)`
+  box-sizing: border-box;
+  gap: 12px;
   display: flex;
-  flex-flow: column wrap;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-around;
+  padding: 16px;
 `
 
 const TCPEndpointWrapper = styled(Div)`
+  box-sizing: border-box;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 100%;
+
+  h4 {
+    margin: 0;
+  }
+
+  > * {
+    min-width: 0;
+  }
+
+  pre {
+    margin: 0;
+    max-width: 100%;
+    overflow-x: auto;
+  }
 `
 
 const sameEndpoint = (a: ChallengeEndpoint, b: ChallengeEndpoint) =>

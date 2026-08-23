@@ -34,9 +34,15 @@ const lab = {
   data: {
     lab: {
       __typename: 'LabInstance',
-      content: '# Affine Cipher',
-      wsEndpoints: [],
-      tcpEndpoints: [],
+      content: '# Affine Cipher\n\nOrdinary Lab prose stays readable on narrow screens.\n\n![Lab diagram](https://example.test/lab-diagram.png)',
+      wsEndpoints: [
+        { __typename: 'Endpoint', host: 'challenge.example.test', port: 19020 },
+        { __typename: 'Endpoint', host: 'challenge.example.test', port: 19021 },
+      ],
+      tcpEndpoints: [
+        { __typename: 'Endpoint', host: 'challenge.example.test', port: 19000 },
+        { __typename: 'Endpoint', host: 'challenge.example.test', port: 19001 },
+      ],
     },
   },
 }
@@ -171,5 +177,51 @@ test.describe('Practice Navigation (#57)', () => {
         expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width)
       }
     }
+  })
+
+})
+
+test.describe('Responsive Labs (#61)', () => {
+  test.skip(({ browserName }) => browserName !== 'chromium', 'Responsive geometry runs in Chromium')
+
+  test('keeps ordinary Lab content fluid on phones and readable on desktop', async ({ page }) => {
+    await mockGraphQL(page)
+
+    for (const viewport of [{ width: 320, height: 844 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize(viewport)
+      await page.goto('/practice/classical/affine')
+
+      await expect(page.getByRole('heading', { name: 'Affine Cipher' })).toBeVisible()
+      await expect(page.getByText('Ordinary Lab prose stays readable on narrow screens.')).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Web Endpoint 0' })).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Web Endpoint 1' })).toBeVisible()
+      await expect(page.getByText('Raw TCP Endpoint 0:')).toBeVisible()
+
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width)
+      for (const control of [
+        page.getByRole('button', { name: 'Web Endpoint 0' }),
+        page.getByRole('button', { name: 'Web Endpoint 1' }),
+        page.getByRole('button', { name: 'Clear' }),
+      ]) {
+        const box = await control.boundingBox()
+        expect(box).not.toBeNull()
+        if (box !== null) {
+          expect(box.x).toBeGreaterThanOrEqual(0)
+          expect(box.x + box.width).toBeLessThanOrEqual(viewport.width)
+        }
+      }
+    }
+
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.goto('/practice/classical/affine')
+    const labContent = page.getByRole('heading', { name: 'Affine Cipher' }).locator('..').locator('..')
+    const contentBox = await labContent.boundingBox()
+    expect(contentBox).not.toBeNull()
+    if (contentBox !== null) {
+      expect(contentBox.width).toBeLessThanOrEqual(1000)
+      expect(contentBox.x).toBeGreaterThanOrEqual(0)
+      expect(contentBox.x + contentBox.width).toBeLessThanOrEqual(1280)
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1280)
   })
 })
