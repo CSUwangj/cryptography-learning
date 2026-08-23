@@ -11,7 +11,10 @@ import { useHistory } from 'react-router-dom'
 
 const Img = styled.img`
   width: 100%;
-  object-fit: cover;
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+  display: block;
 `
 
 const Container = styled(Div)`
@@ -75,6 +78,11 @@ const FeaturesContainer = styled(Div)`
   align-content: center;
   justify-content: space-between;
   align-items: flex-start;
+
+  @media (max-width: 520px) {
+    display: block;
+    padding: 0 20px;
+  }
 `
 
 const FeatureContainer = styled(Div)`
@@ -82,6 +90,10 @@ const FeatureContainer = styled(Div)`
   margin: 40px;
   line-height: 25px;
   text-align: justify;
+
+  @media (max-width: 520px) {
+    margin: 40px 0;
+  }
 `
 
 const FeatureTitle = styled(H3)`
