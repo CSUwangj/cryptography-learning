@@ -4,6 +4,21 @@ import { FitAddon } from '@xterm/addon-fit'
 import { AttachAddon } from '@xterm/addon-attach'
 import '@xterm/xterm/css/xterm.css'
 
+import styled from '@emotion/styled'
+
+const TerminalRoot = styled.div`
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+
+  > [data-terminal-container] {
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
+  }
+`
+
 export type TerminalProps = {
   /** Complete `ws:` / `wss:` Challenge URL. Preferred over host/port. */
   url?: string
@@ -243,8 +258,8 @@ export const Terminal: React.FC<TerminalViewProps> = ({
   }, [wsUrl, reconnectNonce, localEcho])
 
   return (
-    <div>
-      <div ref={containerRef} id={id ?? 'terminal'} />
+    <TerminalRoot>
+      <div ref={containerRef} data-terminal-container id={id ?? 'terminal'} />
       {status === 'closed' ? (
         <div role="status" aria-live="polite">
           <p>Disconnected from Challenge</p>
@@ -258,6 +273,6 @@ export const Terminal: React.FC<TerminalViewProps> = ({
           ) : null}
         </div>
       ) : null}
-    </div>
+    </TerminalRoot>
   )
 }

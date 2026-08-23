@@ -44,7 +44,11 @@ const Container = styled.div`
 `
 
 const BlockWrapper = styled(Card)`
+  box-sizing: border-box;
+  min-width: 0;
   margin-top: 20px;
+  max-width: 100%;
+  width: 100%;
 `
 const WSEndpointContainer = styled(BlockWrapper)`
   box-sizing: border-box;
@@ -142,7 +146,7 @@ export const LabPage: React.FC = () => {
     <Container>
       { content }
       {
-        terminals.map((endpoint, idx) => <BlockWrapper key={`${endpoint.host}:${endpoint.port}:${idx}`}>
+        terminals.map((endpoint, idx) => <BlockWrapper data-terminal-card key={`${endpoint.host}:${endpoint.port}:${idx}`}>
           <H3>{endpoint.host}</H3>
           <Terminal
             {...endpoint}

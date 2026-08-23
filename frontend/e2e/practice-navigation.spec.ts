@@ -157,6 +157,48 @@ test.describe('Practice Navigation (#57)', () => {
     }
   })
 
+  test('contains a Lab terminal card at phone and desktop widths', async ({ page }) => {
+    await mockGraphQL(page)
+
+    for (const viewport of [
+      { width: 320, height: 844 },
+      { width: 390, height: 844 },
+      { width: 1280, height: 900 },
+    ]) {
+      await page.setViewportSize(viewport)
+      await page.goto('/practice/classical/affine')
+      await page.getByRole('button', { name: 'Web Endpoint 0' }).click()
+      const terminal = page.locator('.xterm').last()
+      const card = page.locator('[data-terminal-card]').last()
+      await expect(terminal).toBeVisible()
+      const geometry = await terminal.evaluate((element, width) => {
+        const terminalRect = element.getBoundingClientRect()
+        const card = element.closest('[data-terminal-card]')
+        const cardRect = card?.getBoundingClientRect()
+        if (!card || !cardRect) {
+          throw new Error('terminal card geometry unavailable')
+        }
+        return {
+          terminalLeft: terminalRect.left,
+          terminalRight: terminalRect.right,
+          cardLeft: cardRect.left,
+          cardRight: cardRect.right,
+          cardClientWidth: card.clientWidth,
+          cardScrollWidth: card.scrollWidth,
+          documentWidth: document.documentElement.scrollWidth,
+          viewportWidth: width,
+        }
+      }, viewport.width)
+      await expect(card).toBeVisible()
+      expect(geometry.terminalLeft).toBeGreaterThanOrEqual(geometry.cardLeft)
+      expect(geometry.terminalRight).toBeLessThanOrEqual(geometry.cardRight)
+      expect(geometry.cardLeft).toBeGreaterThanOrEqual(0)
+      expect(geometry.cardRight).toBeLessThanOrEqual(geometry.viewportWidth)
+      expect(geometry.cardScrollWidth).toBeLessThanOrEqual(geometry.cardClientWidth)
+      expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth)
+    }
+  })
+
   test('keeps route-aware shell controls contained and reachable', async ({ page }) => {
     await mockGraphQL(page)
 

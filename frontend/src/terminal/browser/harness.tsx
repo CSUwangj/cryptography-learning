@@ -63,7 +63,7 @@ window.WebSocket = RecordingWebSocket as unknown as typeof WebSocket
 const Harness: React.FC = () => {
   const [endpoint, setEndpoint] = useState(url)
   return (
-    <div style={{ width: 800, height: 400 }}>
+    <div style={{ width: '100%', height: 400 }}>
       <Terminal
         url={endpoint}
         localEcho={localEcho}

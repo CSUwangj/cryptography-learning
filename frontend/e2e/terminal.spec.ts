@@ -374,6 +374,34 @@ test.describe('Terminal browser acceptance (#17)', () => {
     }
   })
 
+  test('fits terminal within phone and desktop container widths', async ({ page }) => {
+    const fixture = await startFixture()
+    try {
+      for (const viewport of [
+        { width: 320, height: 844 },
+        { width: 390, height: 844 },
+        { width: 1280, height: 900 },
+      ]) {
+        await page.setViewportSize(viewport)
+        await openHarness(page, fixture.url)
+        const geometry = await page.locator('.xterm').evaluate((element, width) => {
+          const rect = element.getBoundingClientRect()
+          return {
+            left: rect.left,
+            right: rect.right,
+            documentWidth: document.documentElement.scrollWidth,
+            viewportWidth: width,
+          }
+        }, viewport.width)
+        expect(geometry.left).toBeGreaterThanOrEqual(0)
+        expect(geometry.right).toBeLessThanOrEqual(geometry.viewportWidth)
+        expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth)
+      }
+    } finally {
+      await fixture.stop()
+    }
+  })
+
   test('replaces a terminal endpoint and cleans up the old connection', async ({ page }) => {
     const first = await startFixture()
     const second = await startFixture()
