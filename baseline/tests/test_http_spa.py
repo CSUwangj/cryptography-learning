@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import unittest
+from pathlib import Path
 
 from helpers import http_get, wait_until_ready
 
@@ -69,6 +70,21 @@ class HttpSpaBaselineTest(unittest.TestCase):
         status, _, body = http_get("/img/baseline.png")
         self.assertEqual(status, 200)
         self.assertTrue(body.startswith(b"\x89PNG\r\n\x1a\n"))
+
+    def test_content_resources_are_served_from_static_tree(self):
+        resources = Path(__file__).resolve().parents[1] / "content" / "resources"
+
+        status, headers, body = http_get("/resources/Book1.txt")
+        self.assertEqual(status, 200)
+        self.assertEqual(body, (resources / "Book1.txt").read_bytes())
+        self.assertIn("text/plain", headers.get("content-type", ""))
+
+        status, headers, body = http_get("/resources/vigenere.png")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get("content-type"), "image/png")
+        self.assertEqual(body, (resources / "vigenere.png").read_bytes())
+        self.assertTrue(body.startswith(b"\x89PNG\r\n\x1a\n"))
+        self.assertTrue(body)
 
 
 if __name__ == "__main__":

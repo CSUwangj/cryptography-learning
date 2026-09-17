@@ -1,0 +1,1 @@
+Baseline content fixture for the content-owned resource namespace.

@@ -8,14 +8,13 @@ ACCESS_POINT="${ACCESS_POINT:-0.0.0.0:8000}"
 BUILD_COMMIT="${BUILD_COMMIT:-unknown}"
 IMAGE_ID="${IMAGE_ID:-unknown}"
 
-# The React bundle references /img/*; serve Lab assets from the mounted
-# content repo by linking it into the static bundle directory.
-if [ -d "${CONTENT_DIR}/img" ]; then
-  # Do not mutate or replace files baked into the image.
-  if [ ! -e "${STATIC_DIR}/img" ]; then
-    ln -s "${CONTENT_DIR}/img" "${STATIC_DIR}/img" || true
+# Serve content-owned public assets from the mounted content repo without
+# mutating or replacing files baked into the image.
+for directory in img resources; do
+  if [ -d "${CONTENT_DIR}/${directory}" ] && [ ! -e "${STATIC_DIR}/${directory}" ]; then
+    ln -s "${CONTENT_DIR}/${directory}" "${STATIC_DIR}/${directory}" || true
   fi
-fi
+done
 
 cd "${CONTENT_DIR}"
 
