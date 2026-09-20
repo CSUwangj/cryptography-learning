@@ -5,6 +5,8 @@ import {
   compile,
   hex,
   operationManifests,
+  serializeTrace,
+  teachingSpnGraph,
   words,
   type AuthoredGraph,
 } from './index'
@@ -146,5 +148,141 @@ describe('CryptoGraph compile/execute seam (#26)', () => {
     if (!compiled.ok) return
     const invalid = compiled.value.execute({ 'source.value': bits(16, Uint8Array.of(0, 1)) })
     expect(!invalid.ok && invalid.diagnostics[0].code).toBe('invalid-execution-input')
+  })
+})
+
+describe('Teaching SPN fixture (#27)', () => {
+  it('executes fixed rounds with stable, selected traces', () => {
+    const compiled = compile({ ...teachingSpnGraph, traceLevel: 'detail' })
+    expect(compiled.ok).toBe(true)
+    if (!compiled.ok) return
+
+    const first = compiled.value.execute()
+    const second = compiled.value.execute()
+    expect(first).toEqual(second)
+    expect(first.ok).toBe(true)
+    if (!first.ok) return
+
+    expect(hex(Object.values(first.value.outputs)[0] as ReturnType<typeof bits>)).toBe('0xcb45')
+    expect(first.value.trace.map((event) => [event.path, 'value' in event && event.value && hex(event.value as ReturnType<typeof bits>)])).toEqual([
+      ['round.1/key-mix', '0x1d3b'],
+      ['round.1/substitute', '0x491c'],
+      ['round.1/permute', '0x419c'],
+      ['round.1/output', '0x419c'],
+      ['round.2/key-mix', '0xb16c'],
+      ['round.2/substitute', '0xc4b5'],
+      ['round.2/permute', '0xcb45'],
+      ['round.2/output', '0xcb45'],
+      ['output', '0xcb45'],
+    ])
+    const trace = first.value.trace as readonly import('./index').TraceEvent[]
+    const clonedTrace = structuredClone(trace)
+    expect(hex(clonedTrace[0].value as ReturnType<typeof bits>)).toBe('0x1d3b')
+    expect(JSON.parse(JSON.stringify(serializeTrace(trace)))[0].value).toEqual({
+      type: { family: 'bits', size: 16 },
+      hex: '0x1d3b',
+    })
+
+    for (const [level, paths] of [
+      ['summary', [['output', '0xcb45']]],
+      ['round', [['round.1/output', '0x419c'], ['round.2/output', '0xcb45'], ['output', '0xcb45']]],
+    ] as const) {
+      const selected = compile({ ...teachingSpnGraph, traceLevel: level })
+      expect(selected.ok).toBe(true)
+      if (!selected.ok) continue
+      const execution = selected.value.execute()
+      expect(execution.ok).toBe(true)
+      if (execution.ok) expect(execution.value.trace.map((event) => [event.path, 'value' in event && event.value && hex(event.value as ReturnType<typeof bits>)])).toEqual(paths)
+    }
+  })
+
+  it('rejects invalid SPN structures at compilation', () => {
+    const invalid = (graph: AuthoredGraph): string =>
+      (() => {
+        const result = compile(graph)
+        return result.ok ? '' : result.diagnostics[0].code
+      })()
+    expect(invalid({
+      ...teachingSpnGraph,
+      nodes: [{ id: 'rounds', repeat: { subgraph: 'round', count: 0 } }],
+    })).toBe('spn.invalid-round-count')
+    expect(invalid({
+      ...teachingSpnGraph,
+      nodes: [{ id: 'rounds', repeat: { subgraph: 'round' } as never }],
+    })).toBe('graph.unbounded-repetition')
+    expect(invalid({
+      ...teachingSpnGraph,
+      nodes: [{ id: 'rounds', repeat: { subgraph: 'round', count: 'two' } as never }],
+    })).toBe('graph.dynamic-loop')
+    expect(invalid({
+      ...teachingSpnGraph,
+      nodes: teachingSpnGraph.nodes,
+      subgraphs: {
+        round: {
+          ...teachingSpnGraph.subgraphs!.round,
+          nodes: teachingSpnGraph.subgraphs!.round.nodes.map((node) =>
+            node.operation === 'spn.substitute@1' ? { ...node, parameters: { sBox: Array(16).fill(0) } } : node,
+          ),
+        },
+      },
+    })).toBe('spn.invalid-s-box')
+    expect(invalid({
+      ...teachingSpnGraph,
+      nodes: teachingSpnGraph.nodes,
+      subgraphs: {
+        round: {
+          ...teachingSpnGraph.subgraphs!.round,
+          nodes: teachingSpnGraph.subgraphs!.round.nodes.map((node) =>
+            node.operation === 'spn.permute@1' ? { ...node, parameters: { permutation: [0, 0, 1, 2] } } : node,
+          ),
+        },
+      },
+    })).toBe('spn.invalid-permutation')
+    expect(invalid({
+      ...teachingSpnGraph,
+      nodes: [{ id: 'rounds', repeat: { subgraph: 'round', count: 2 }, inputs: {} }],
+    })).toBe('graph.structural-mismatch')
+    expect(invalid({ ...teachingSpnGraph, traceLevel: 'all' as never })).toBe('trace.unsupported-level')
+  })
+
+  it('binds each repeated subgraph input and exposes each declared output', () => {
+    const repeated: AuthoredGraph = {
+      nodes: [
+        source('left', bits(16, Uint8Array.of(0x0f, 0x0f))),
+        source('right', bits(16, Uint8Array.of(0x00, 0xff))),
+        { id: 'twice', repeat: { subgraph: 'xor', count: 2 }, inputs: { left: { node: 'left', port: 'value' }, right: { node: 'right', port: 'value' } } },
+        { id: 'again', repeat: { subgraph: 'xor', count: 2 }, inputs: { left: { node: 'left', port: 'value' }, right: { node: 'right', port: 'value' } } },
+        { id: 'final', operation: 'core.output@1', inputs: { value: { node: 'twice', port: 'mixed' } } },
+      ],
+      outputs: [{ node: 'final', port: 'value' }, { node: 'twice', port: 'preserved' }],
+      subgraphs: {
+        xor: {
+          inputs: [{ name: 'left', type: { family: 'bits', size: 16 } }, { name: 'right', type: { family: 'bits', size: 16 } }],
+          outputs: [{ name: 'mixed', type: { family: 'bits', size: 16 } }, { name: 'preserved', type: { family: 'bits', size: 16 } }],
+          nodes: [
+            { id: 'mixed', operation: 'core.xor@1', inputs: { left: { node: '@input', port: 'left' }, right: { node: '@input', port: 'right' } } },
+            { id: 'preserved', operation: 'core.output@1', inputs: { value: { node: '@input', port: 'left' } } },
+          ],
+        },
+      },
+    }
+    const compiled = compile(repeated)
+    expect(compiled.ok).toBe(true)
+    if (compiled.ok) {
+      const execution = compiled.value.execute()
+      expect(execution.ok).toBe(true)
+      if (execution.ok) expect(Object.values(execution.value.outputs).map((value) => hex(value as ReturnType<typeof bits>))).toEqual(['0x0ff0', '0x0f0f'])
+    }
+
+    const invalidInput = compile({
+      ...repeated,
+      subgraphs: {
+        xor: {
+          ...repeated.subgraphs!.xor,
+          nodes: [{ id: 'mixed', operation: 'core.xor@1', inputs: { left: { node: '@input', port: 'missing' }, right: { node: '@input', port: 'right' } } }],
+        },
+      },
+    })
+    expect(!invalidInput.ok && invalidInput.diagnostics[0].code).toBe('graph.structural-mismatch')
   })
 })

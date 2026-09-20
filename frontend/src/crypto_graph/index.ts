@@ -66,16 +66,25 @@ export type AuthoredInput = {
 
 export type AuthoredNode = {
   id: string
-  operation: string
+  operation?: string
+  repeat?: { subgraph: string; count?: unknown }
   inputs?: Record<string, AuthoredInput>
   parameters?: Record<string, unknown>
   origin?: SourceOrigin
+}
+
+export type AuthoredSubgraph = {
+  inputs: readonly Port[]
+  outputs: readonly Port[]
+  nodes: readonly AuthoredNode[]
 }
 
 export type AuthoredGraph = {
   nodes: readonly AuthoredNode[]
   outputs: readonly AuthoredInput[]
   alphabetMappings?: readonly AlphabetMapping[]
+  subgraphs?: Readonly<Record<string, AuthoredSubgraph>>
+  traceLevel?: TraceLevel
 }
 
 export type TraceCheckpoint = {
@@ -84,9 +93,23 @@ export type TraceCheckpoint = {
   readonly summary: string
 }
 
+export type TraceLevel = 'summary' | 'round' | 'detail'
+
+export type TraceEvent = {
+  readonly path: string
+  readonly level: TraceLevel
+  readonly round?: number
+  readonly stage?: 'key-mix' | 'substitute' | 'permute' | 'output'
+  readonly value?: CryptoValue
+}
+
+export type SerializedTraceEvent = Omit<TraceEvent, 'value'> & {
+  readonly value?: { readonly type: CryptoValue['type']; readonly hex: string }
+}
+
 export type ExecutionSnapshot = {
   readonly outputs: Readonly<Record<string, CryptoValue>>
-  readonly trace: readonly TraceCheckpoint[]
+  readonly trace: readonly (TraceCheckpoint | TraceEvent)[]
 }
 
 type Result<T> = { ok: true; value: T } | { ok: false; diagnostics: readonly Diagnostic[] }
@@ -206,6 +229,12 @@ export const alphabetSymbol = (mapping: AlphabetMapping, symbol: string): Result
 export const hex = (value: BitsValue | BytesValue): string =>
   `0x${[...value.bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('').slice(-(value.type.family === 'bits' ? Math.ceil(value.type.size / 4) : value.type.size * 2))}`
 
+export const serializeTrace = (trace: readonly TraceEvent[]): readonly SerializedTraceEvent[] =>
+  trace.map(({ value, ...event }) => ({
+    ...event,
+    ...(value && 'bytes' in value ? { value: { type: value.type, hex: hex(value) } } : {}),
+  }))
+
 const source: Operation = {
   manifest: {
     identity: 'core.source@1',
@@ -240,6 +269,52 @@ const xor: Operation = {
   },
 }
 
+const validPermutation = (values: unknown, size: number): values is readonly number[] =>
+  Array.isArray(values)
+  && values.length === size
+  && values.every((value) => Number.isInteger(value) && value >= 0 && value < size)
+  && new Set(values).size === size
+
+const substitute: Operation = {
+  manifest: {
+    identity: 'spn.substitute@1',
+    inputs: [{ name: 'value', type: { family: 'bits', size: 16 } }],
+    outputs: [{ name: 'value', type: { family: 'bits', size: 16 } }],
+  },
+  validateParameters(parameters, node) {
+    return validPermutation(parameters.sBox, 16)
+      ? []
+      : [diagnostic('spn.invalid-s-box', 'S-box must be a permutation of 0 through 15.', `${node.id}.parameters.sBox`, node)]
+  },
+  execute(inputs, parameters) {
+    const sBox = parameters.sBox as readonly number[]
+    const input = inputs.value as BitsValue
+    return {
+      value: bits(16, input.bytes.map((byte) => (sBox[byte >> 4] << 4) | sBox[byte & 0x0f])),
+    }
+  },
+}
+
+const permute: Operation = {
+  manifest: {
+    identity: 'spn.permute@1',
+    inputs: [{ name: 'value', type: { family: 'bits', size: 16 } }],
+    outputs: [{ name: 'value', type: { family: 'bits', size: 16 } }],
+  },
+  validateParameters(parameters, node) {
+    return validPermutation(parameters.permutation, 4)
+      ? []
+      : [diagnostic('spn.invalid-permutation', 'Permutation must be a permutation of 0 through 3.', `${node.id}.parameters.permutation`, node)]
+  },
+  execute(inputs, parameters) {
+    const input = inputs.value as BitsValue
+    const nibbles = [input.bytes[0] >> 4, input.bytes[0] & 0x0f, input.bytes[1] >> 4, input.bytes[1] & 0x0f]
+    const output = new Uint8Array(4)
+    for (const [index, destination] of (parameters.permutation as readonly number[]).entries()) output[destination] = nibbles[index]
+    return { value: bits(16, Uint8Array.of((output[0] << 4) | output[1], (output[2] << 4) | output[3])) }
+  },
+}
+
 const output: Operation = {
   manifest: { identity: 'core.output@1', inputs: [{ name: 'value', type: { family: 'bits', size: 'N' } }], outputs: [{ name: 'value', type: { family: 'bits', size: 'N' } }] },
   execute(inputs) {
@@ -254,15 +329,115 @@ const throwing: Operation = {
   },
 }
 
-const operations = new Map<string, Operation>([source, xor, output, throwing].map((operation) => [operation.manifest.identity, operation]))
+const operations = new Map<string, Operation>([source, xor, substitute, permute, output, throwing].map((operation) => [operation.manifest.identity, operation]))
 
 export const operationManifests: readonly OperationManifest[] = [...operations.values()]
   .filter((operation) => !operation.manifest.identity.startsWith('test.'))
   .map((operation) => operation.manifest)
 
+const spnSBox = [0xe, 0x4, 0xd, 0x1, 0x2, 0xf, 0xb, 0x8, 0x3, 0xa, 0x6, 0xc, 0x5, 0x9, 0x0, 0x7]
+
+export const teachingSpnGraph: AuthoredGraph = {
+  nodes: [
+    { id: 'state', operation: 'core.source@1', parameters: { type: { family: 'bits', size: 16 }, value: bits(16, Uint8Array.of(0x12, 0x34)) } },
+    { id: 'round', repeat: { subgraph: 'round', count: 2 }, inputs: { permute: { node: 'state', port: 'value' } } },
+  ],
+  outputs: [{ node: 'round', port: 'permute' }],
+  traceLevel: 'detail',
+  subgraphs: {
+    round: {
+      inputs: [{ name: 'permute', type: { family: 'bits', size: 16 } }],
+      outputs: [{ name: 'permute', type: { family: 'bits', size: 16 } }],
+      nodes: [
+        { id: 'key', operation: 'core.source@1', parameters: { type: { family: 'bits', size: 16 }, roundKeys: [bits(16, Uint8Array.of(0x0f, 0x0f)), bits(16, Uint8Array.of(0xf0, 0xf0))] } },
+        { id: 'key-mix', operation: 'core.xor@1', inputs: { left: { node: '@previous', port: 'permute' }, right: { node: 'key', port: 'value' } } },
+        { id: 'substitute', operation: 'spn.substitute@1', inputs: { value: { node: 'key-mix', port: 'value' } }, parameters: { sBox: spnSBox } },
+        { id: 'permute', operation: 'spn.permute@1', inputs: { value: { node: 'substitute', port: 'value' } }, parameters: { permutation: [0, 2, 1, 3] } },
+      ],
+    },
+  },
+}
+
+const expandGraph = (graph: AuthoredGraph, diagnostics: Diagnostic[]): AuthoredGraph => {
+  const nodes: AuthoredNode[] = []
+  const aliases = new Map<string, Map<string, AuthoredInput>>()
+  for (const node of graph.nodes) {
+    if (!node.repeat) {
+      nodes.push(node)
+      continue
+    }
+    const repeat = node.repeat
+    if (!('count' in repeat)) {
+      diagnostics.push(diagnostic('graph.unbounded-repetition', 'Repeated subgraph needs a literal count.', `${node.id}.repeat.count`, node))
+      continue
+    }
+    if (typeof repeat.count !== 'number') {
+      diagnostics.push(diagnostic('graph.dynamic-loop', 'Repeated subgraph count must be a numeric literal.', `${node.id}.repeat.count`, node))
+      continue
+    }
+    if (!Number.isSafeInteger(repeat.count) || repeat.count <= 0) {
+      diagnostics.push(diagnostic('spn.invalid-round-count', 'Repeated subgraph count must be a positive safe integer.', `${node.id}.repeat.count`, node))
+      continue
+    }
+    const subgraph = graph.subgraphs?.[repeat.subgraph]
+    if (!subgraph) {
+      diagnostics.push(diagnostic('graph.structural-mismatch', 'Repeated node references an unknown subgraph.', `${node.id}.repeat.subgraph`, node))
+      continue
+    }
+    const inputNames = new Set(subgraph.inputs.map((port) => port.name))
+    if (Object.keys(node.inputs ?? {}).some((name) => !inputNames.has(name)) || [...inputNames].some((name) => !node.inputs?.[name])) {
+      diagnostics.push(diagnostic('graph.structural-mismatch', 'Repeated node inputs do not match subgraph inputs.', `${node.id}.inputs`, node))
+      continue
+    }
+    let previous = new Map(Object.entries(node.inputs ?? {}))
+    for (let index = 0; index < repeat.count; index += 1) {
+      const prefix = `${node.id}.${index + 1}`
+      for (const inner of subgraph.nodes) {
+        const parameters = { ...(inner.parameters ?? {}) }
+        if (Array.isArray(parameters.roundKeys)) {
+          parameters.value = parameters.roundKeys[index]
+          delete parameters.roundKeys
+        }
+        const inputs = Object.fromEntries(Object.entries(inner.inputs ?? {}).flatMap(([name, input]) => {
+          if (input.node === '@input') {
+            const bound = node.inputs?.[input.port]
+            if (!bound) diagnostics.push(diagnostic('graph.structural-mismatch', 'Subgraph input is not declared by repeated node.', `${node.id}.inputs.${input.port}`, node))
+            return bound ? [[name, bound]] : []
+          }
+          if (input.node === '@previous') {
+            const bound = previous.get(input.port)
+            if (!bound) diagnostics.push(diagnostic('graph.structural-mismatch', 'Previous round output is not declared by subgraph.', `${node.id}.repeat.${input.port}`, node))
+            return bound ? [[name, bound]] : []
+          }
+          return [[name, { node: `${prefix}/${input.node}`, port: input.port }]]
+        }))
+        nodes.push({ ...inner, id: `${prefix}/${inner.id}`, inputs, parameters })
+      }
+      if (!subgraph.outputs.length) {
+        diagnostics.push(diagnostic('graph.structural-mismatch', 'Repeated subgraph needs an output.', `${node.id}.repeat.subgraph`, node))
+        continue
+      }
+      previous = new Map(subgraph.outputs.map((output) => [output.name, { node: `${prefix}/${output.name}`, port: 'value' }]))
+    }
+    aliases.set(node.id, previous)
+  }
+  const resolve = (input: AuthoredInput): AuthoredInput => aliases.get(input.node)?.get(input.port) ?? input
+  return {
+    ...graph,
+    nodes: nodes.map((node) => ({
+      ...node,
+      inputs: Object.fromEntries(Object.entries(node.inputs ?? {}).map(([name, input]) => [name, resolve(input)])),
+    })),
+    outputs: graph.outputs.map(resolve),
+  }
+}
+
 export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
-  const compiledGraph = structuredClone(graph)
   const diagnostics: Diagnostic[] = []
+  if (graph.traceLevel !== undefined && !['summary', 'round', 'detail'].includes(graph.traceLevel)) {
+    diagnostics.push(diagnostic('trace.unsupported-level', 'Trace level is not supported.', 'traceLevel'))
+  }
+  const compiledGraph = structuredClone(expandGraph(graph, diagnostics))
   const nodes = new Map<string, AuthoredNode>()
   const resolved = new Map<string, Operation>()
   const mappings = new Map<string, AlphabetMapping>()
@@ -276,8 +451,8 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
   for (const node of compiledGraph.nodes) {
     if (nodes.has(node.id)) diagnostics.push(diagnostic('duplicate-node-id', 'Graph node IDs must be unique.', node.id, node))
     nodes.set(node.id, node)
-    const operation = operations.get(node.operation)
-    if (!operation) diagnostics.push(diagnostic('unknown-operation', 'Operation is not registered.', `${node.id}.operation`, node, { operation: node.operation }))
+    const operation = node.operation ? operations.get(node.operation) : undefined
+    if (!operation) diagnostics.push(diagnostic('unknown-operation', 'Operation is not registered.', `${node.id}.operation`, node, { operation: node.operation ?? null }))
     else resolved.set(node.id, operation)
   }
 
@@ -307,7 +482,17 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
         continue
       }
       const outputTypeParameter = upstreamOperation?.manifest.outputTypeParameter
-      const upstreamType = outputTypeParameter && isPortType(upstream?.parameters?.[outputTypeParameter])
+      const xorInput = upstreamOperation?.manifest.identity === 'core.xor@1' ? upstream?.inputs?.left : undefined
+      const xorSource = xorInput && nodes.get(xorInput.node)
+      const xorSourceOperation = xorSource && resolved.get(xorSource.id)
+      const xorSourceType = xorSource?.parameters?.type
+      const xorInputPort = xorSourceOperation?.manifest.outputs.find((candidate) => candidate.name === xorInput?.port)
+      const inferredXorType = xorSourceOperation?.manifest.identity === 'core.source@1' && isPortType(xorSourceType)
+        ? xorSourceType
+        : xorInputPort?.type
+      const upstreamType = inferredXorType
+        ? inferredXorType
+        : outputTypeParameter && isPortType(upstream?.parameters?.[outputTypeParameter])
         ? upstream.parameters[outputTypeParameter]
         : upstreamPort.type
       if (!typeMatches(port.type, upstreamType, bindings)) {
@@ -345,7 +530,7 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
       graph: compiledGraph,
       execute(executionInputs = {}) {
         const values = new Map<string, Record<string, CryptoValue>>()
-        const trace: TraceCheckpoint[] = []
+        const trace: (TraceCheckpoint | TraceEvent)[] = []
         for (const id of order) {
             const node = nodes.get(id)!
             const operation = resolved.get(id)!
@@ -373,10 +558,29 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
               if (!validSizedValue(value)) return { ok: false, diagnostics: [diagnostic('invalid-value', 'Operation returned an invalid value.', `${id}.${port}`, node)] }
             }
             values.set(id, result)
-            for (const port of Object.keys(result)) trace.push({ path: `${id}.${port}`, stage: 'output', summary: `${id}.${port}` })
+            const roundStage = /^round\.(\d+)\/(key-mix|substitute|permute)$/.exec(id)
+            if (roundStage) {
+              const round = Number(roundStage[1])
+              const stage = roundStage[2] as 'key-mix' | 'substitute' | 'permute'
+              const value = cloneValue(result.value)
+              trace.push({ path: `round.${round}/${stage}`, level: 'detail', round, stage, value })
+              if (stage === 'permute') trace.push({ path: `round.${round}/output`, level: 'round', round, stage: 'output', value: cloneValue(result.value) })
+            } else if (compiledGraph.traceLevel === undefined) {
+              for (const port of Object.keys(result)) trace.push({ path: `${id}.${port}`, stage: 'output', summary: `${id}.${port}` })
+            }
         }
         const outputs: Record<string, CryptoValue> = {}
         for (const ref of compiledGraph.outputs) outputs[`${ref.node}.${ref.port}`] = cloneValue(values.get(ref.node)![ref.port])
+        if (compiledGraph.traceLevel !== undefined) {
+          const output = Object.values(outputs)[0]
+          trace.push({ path: 'output', level: 'summary', stage: 'output', value: cloneValue(output) })
+          const level = compiledGraph.traceLevel
+          const selected = trace.filter((event) => {
+            if (!('level' in event)) return false
+            return level === 'detail' || (level === 'round' && event.level !== 'detail') || (level === 'summary' && event.level === 'summary')
+          })
+          return { ok: true, value: { outputs, trace: selected } }
+        }
         return { ok: true, value: { outputs, trace } }
       },
     },
