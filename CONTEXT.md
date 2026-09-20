@@ -18,6 +18,12 @@
   execute a CryptoGraph, visualize a trace, or provide local feedback.
 - **CryptoGraph** — A typed graph of cryptographic operations whose execution
   produces values and teaching traces.
+- **Alphabet Mapping** — An explicit ordered set of unique symbols with consecutive
+  numeric positions. Its order defines the symbol positions used by classical ciphers.
+- **Alphabet Symbol** — A member of an Alphabet Mapping, distinct from the text
+  encoding used to enter or display it.
+- **Teaching SPN** — A small substitution-permutation network designed to make
+  substitutions, permutations, key mixing, and round state inspectable.
 - **Visualizer** — A compiled-in, versioned teaching view that transforms typed
   CryptoGraph values and semantic traces into an interactive presentation.
 - **Mobile Practice View** — The narrow-viewport presentation of Practice in
