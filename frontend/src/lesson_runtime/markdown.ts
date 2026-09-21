@@ -46,4 +46,9 @@ export const lessonAssetUrl = (lessonId: string, url: string): string =>
     ? `/learning-assets/${encodeURIComponent(lessonId)}/${url.slice('assets/'.length).split('/').map(encodeURIComponent).join('/')}`
     : url
 
-export const isExternalLessonUrl = (url: string): boolean => /^https:\/\//i.test(url)
+export const rewriteLessonAssets = (source: string, lessonId: string): string =>
+  source
+    .replace(/(!?\[[^\]]*]\()\<?assets\/([^)\s>]+)>?(?=(?:\s+["'][^"']*["'])?\))/g, (_, start: string, path: string) =>
+      `${start}${lessonAssetUrl(lessonId, `assets/${path}`)}`)
+    .replace(/^(\s*\[[^\]]+]:\s*)<?assets\/([^\s>]+)>?/gm, (_, start: string, path: string) =>
+      `${start}${lessonAssetUrl(lessonId, `assets/${path}`)}`)

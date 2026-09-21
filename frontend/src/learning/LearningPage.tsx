@@ -7,8 +7,8 @@ import { Markdown } from 'practice'
 import { NotFound } from 'ui'
 import {
   createBrowserLessonSession,
-  lessonAssetUrl,
   lessonDefaultLocale,
+  rewriteLessonAssets,
   type BrowserLessonSession,
   type LessonDocuments as RuntimeLessonDocuments,
   type LessonSessionState,
@@ -29,13 +29,6 @@ const diagnostic = (message: string): Diagnostic => ({
   path: '',
   details: {},
 })
-
-const text = (source: string, lessonId: string): string =>
-  source
-    .replace(/(!?\[[^\]]*]\()\<?assets\/([^)\s>]+)>?(?=(?:\s+["'][^"']*["'])?\))/g, (_, start: string, path: string) =>
-    `${start}${lessonAssetUrl(lessonId, `assets/${path}`)}`)
-    .replace(/^(\s*\[[^\]]+]:\s*)<?assets\/([^\s>]+)>?/gm, (_, start: string, path: string) =>
-      `${start}${lessonAssetUrl(lessonId, `assets/${path}`)}`)
 
 const hexValue = (value: Exclude<CryptoValue, { symbol: string }>): string =>
   'words' in value ? `0x${[...value.words].map((byte) => byte.toString(16).padStart(2, '0')).join('')}` : hex(value)
@@ -164,7 +157,7 @@ const LessonView: React.FC = () => {
     <Link to="/learning">{t('learning.backToCatalog')}</Link>
     <H2>{locale.title}</H2>
     <p>{locale.summary}</p>
-    {step.prose && <Markdown source={text(locale.texts[step.prose] ?? '', lessonId)} />}
+    {step.prose && <Markdown source={rewriteLessonAssets(locale.texts[step.prose] ?? '', lessonId)} />}
     {step.inputs?.map((input) => {
       const raw = state.inputs[input.input]
       const value = inputText(raw)

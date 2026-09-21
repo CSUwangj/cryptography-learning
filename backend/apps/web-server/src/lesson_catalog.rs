@@ -86,27 +86,15 @@ pub struct CatalogTranslation {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CatalogLesson {
     pub id: String,
-}
-
-#[derive(Debug, Clone)]
-struct StoredLesson {
-    id: String,
     directory: PathBuf,
-}
-
-#[derive(Debug, Clone)]
-struct StoredCategory {
-    id: String,
-    name: Vec<CatalogTranslation>,
-    lessons: Vec<StoredLesson>,
 }
 
 /// Immutable configured Lesson directory catalog. Content is read at request time
 /// so document changes after startup are isolated to the selected Lesson.
 #[derive(Debug, Clone, Default)]
 pub struct LessonCatalog {
-    categories: Vec<StoredCategory>,
-    lessons: HashMap<String, StoredLesson>,
+    categories: Vec<CatalogCategory>,
+    lessons: HashMap<String, CatalogLesson>,
 }
 
 impl LessonCatalog {
@@ -188,14 +176,14 @@ impl LessonCatalog {
                         message: "path escapes configured Lesson directory".to_string(),
                     });
                 }
-                let stored = StoredLesson {
+                let stored = CatalogLesson {
                     id: lesson.id.clone(),
                     directory,
                 };
                 lessons.insert(lesson.id, stored.clone());
                 category_lessons.push(stored);
             }
-            categories.push(StoredCategory {
+            categories.push(CatalogCategory {
                 id: category.id,
                 name: names,
                 lessons: category_lessons,
@@ -208,20 +196,7 @@ impl LessonCatalog {
     }
 
     pub fn learning(&self) -> Vec<CatalogCategory> {
-        self.categories
-            .iter()
-            .map(|category| CatalogCategory {
-                id: category.id.clone(),
-                name: category.name.clone(),
-                lessons: category
-                    .lessons
-                    .iter()
-                    .map(|lesson| CatalogLesson {
-                        id: lesson.id.clone(),
-                    })
-                    .collect(),
-            })
-            .collect()
+        self.categories.clone()
     }
 
     pub fn documents(
@@ -283,7 +258,7 @@ impl LessonCatalog {
         })
     }
 
-    fn lesson(&self, id: &str) -> Result<&StoredLesson, LessonResolveError> {
+    fn lesson(&self, id: &str) -> Result<&CatalogLesson, LessonResolveError> {
         self.lessons
             .get(id)
             .ok_or_else(|| LessonResolveError::NotFound(id.to_string()))
@@ -291,7 +266,7 @@ impl LessonCatalog {
 
     fn read_text(
         &self,
-        lesson: &StoredLesson,
+        lesson: &CatalogLesson,
         path: &Path,
         absent_is_none: bool,
     ) -> Result<Option<String>, LessonResolveError> {

@@ -9,6 +9,7 @@ import {
   createBrowserLessonSession,
   lessonDefaultLocale,
   lessonAssetUrl,
+  rewriteLessonAssets,
   validateLessonDocuments,
   validateLessonMarkdown,
   type LessonDocuments,
@@ -90,6 +91,8 @@ describe('Lesson Runtime compiler (#29)', () => {
       'texts.introduction',
     )).toEqual([])
     expect(lessonAssetUrl('xor-intro', 'assets/xor.png')).toBe('/learning-assets/xor-intro/xor.png')
+    expect(rewriteLessonAssets('[image](<assets/xor.png>)\n[image]: assets/xor.png', 'xor-intro'))
+      .toBe('[image](/learning-assets/xor-intro/xor.png)\n[image]: /learning-assets/xor-intro/xor.png')
     expect(validateLessonMarkdown('<script>alert(1)</script>\n[bad](javascript:alert(1))', 'texts.introduction'))
       .toEqual(expect.arrayContaining([
         expect.objectContaining({ code: 'lesson.unsafe-markdown' }),

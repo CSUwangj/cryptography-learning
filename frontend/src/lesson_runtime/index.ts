@@ -9,4 +9,4 @@ export {
 } from './compiler'
 export { BrowserLessonSession, createBrowserLessonSession, type LessonSessionState } from './browser'
 export { validateLessonDocuments, type LessonValidationReport } from './node_adapter'
-export { isExternalLessonUrl, lessonAssetUrl, validateLessonMarkdown } from './markdown'
+export { lessonAssetUrl, rewriteLessonAssets, validateLessonMarkdown } from './markdown'

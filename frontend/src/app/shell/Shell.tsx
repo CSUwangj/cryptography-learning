@@ -103,18 +103,18 @@ const PracticeTrigger = styled(PracticeNavigation)`
   }
 `
 
-const LearningAction = styled(CompactAction)`
-  @media (max-width: 520px) {
-    display: none;
-  }
-`
-
 const NavigationActions = styled(Unselectable)`
   align-items: center;
   display: flex;
   flex: 1 1 auto;
   gap: 4px;
   min-width: 0;
+
+  @media (max-width: 520px) {
+    [data-learning] {
+      display: none;
+    }
+  }
 `
 
 export const Shell: React.FC<PropsWithChildren> = ({ children }) => {
@@ -139,7 +139,7 @@ export const Shell: React.FC<PropsWithChildren> = ({ children }) => {
           <NavbarDivider />
           <NavigationActions>
             {/* <Button minimal large icon={IconNames.HELP} text={t('nav.tutorial')} onClick={() => history.push('/tutorial')} /> */}
-            <LearningAction minimal large icon={IconNames.SEARCH} text={t('nav.learning')} aria-label={t('nav.learning')} onClick={() => history.push('/learning')} />
+            <CompactAction data-learning minimal large icon={IconNames.SEARCH} text={t('nav.learning')} aria-label={t('nav.learning')} onClick={() => history.push('/learning')} />
             <PracticeTrigger />
             <CompactAction minimal large icon={IconNames.ENVELOPE} text={t('nav.feedback')} aria-label={t('nav.feedback')} onClick={handleOpenFeedback} />
           </NavigationActions>
