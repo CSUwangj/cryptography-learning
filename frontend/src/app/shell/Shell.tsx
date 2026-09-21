@@ -103,6 +103,12 @@ const PracticeTrigger = styled(PracticeNavigation)`
   }
 `
 
+const LearningAction = styled(CompactAction)`
+  @media (max-width: 520px) {
+    display: none;
+  }
+`
+
 const NavigationActions = styled(Unselectable)`
   align-items: center;
   display: flex;
@@ -133,7 +139,7 @@ export const Shell: React.FC<PropsWithChildren> = ({ children }) => {
           <NavbarDivider />
           <NavigationActions>
             {/* <Button minimal large icon={IconNames.HELP} text={t('nav.tutorial')} onClick={() => history.push('/tutorial')} /> */}
-            {/* <Button minimal large icon={IconNames.SEARCH} text={t('nav.learning')} onClick={() => history.push('/learning')} /> */}
+            <LearningAction minimal large icon={IconNames.SEARCH} text={t('nav.learning')} aria-label={t('nav.learning')} onClick={() => history.push('/learning')} />
             <PracticeTrigger />
             <CompactAction minimal large icon={IconNames.ENVELOPE} text={t('nav.feedback')} aria-label={t('nav.feedback')} onClick={handleOpenFeedback} />
           </NavigationActions>

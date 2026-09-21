@@ -14,6 +14,7 @@ import {
   type SourceOrigin,
   type WorkerLimits,
 } from '../crypto_graph'
+import { validateLessonMarkdown } from './markdown'
 
 export type Result<T> = { ok: true; value: T } | { ok: false; diagnostics: readonly Diagnostic[] }
 
@@ -142,6 +143,14 @@ const parseYaml = (file: string, source: string): Result<ParsedYaml> => {
   const spans = new Map<string, SourceOrigin>()
   collectSpans(file, document.contents, '', counter, spans)
   return { ok: true, value: { value: document.toJS({ maxAliasCount: 0 }), spans } }
+}
+
+/** Read the fallback locale with the same strict YAML parser as compilation. */
+export const lessonDefaultLocale = (source: string): string | undefined => {
+  const parsed = parseYaml('lesson.yaml', source)
+  if (!parsed.ok) return undefined
+  const root = fields(parsed.value.value)
+  return typeof root?.default_locale === 'string' ? root.default_locale : undefined
 }
 
 const checkFields = (
@@ -641,6 +650,15 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
       `texts.${id}`,
       parsed.value.spans.get(`texts.${id}`) ?? parsed.value.spans.get('texts'),
     ))
+    for (const [id, text] of Object.entries(texts)) {
+      if (typeof text === 'string') {
+        diagnostics.push(...validateLessonMarkdown(
+          text,
+          `texts.${id}`,
+          parsed.value.spans.get(`texts.${id}`),
+        ))
+      }
+    }
     locales[locale] = { title: String(localeRoot.title ?? ''), summary: String(localeRoot.summary ?? ''), texts: Object.fromEntries(Object.entries(texts).filter(([, text]) => typeof text === 'string')) as Record<string, string> }
   }
   if (typeof root.default_locale === 'string' && !locales[root.default_locale]) diagnostics.push(diagnostic('lesson.invalid-input', 'Default locale document is required.', 'default_locale', lesson.spans.get('default_locale')))

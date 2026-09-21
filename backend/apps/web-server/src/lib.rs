@@ -2,6 +2,7 @@ pub mod bootstrap;
 pub(crate) mod completion;
 pub mod errors;
 pub mod http;
+pub mod lesson_catalog;
 pub mod logging;
 pub mod model;
 pub mod opts;

@@ -486,6 +486,7 @@ mod tests {
             practice: RawPractice {
                 lab_categories: vec![],
             },
+            learning: Default::default(),
         };
         assert_eq!(
             unsupported.validate_schema_version(),

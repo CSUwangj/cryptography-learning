@@ -1,0 +1,44 @@
+version: 1
+id: fallback-xor
+default_locale: en-US
+inputs:
+  plaintext:
+    type: {family: bits, size: 16}
+    encoding: hex
+    default: "0x0f0f"
+constants:
+  mask:
+    type: {family: bits, size: 16}
+    encoding: hex
+    value: "0x00ff"
+graphs:
+  xor:
+    nodes:
+      - id: left
+        operation: core.source@1
+        parameters:
+          type: {family: bits, size: 16}
+      - id: right
+        operation: core.source@1
+        parameters:
+          type: {family: bits, size: 16}
+      - id: mixed
+        operation: core.xor@1
+        inputs:
+          left: {node: left, port: value}
+          right: {node: right, port: value}
+    outputs:
+      - {node: mixed, port: value}
+    traceLevel: summary
+steps:
+  - id: introduction
+    prose: introduction
+  - id: enter-input
+    inputs:
+      - {input: plaintext, prompt: plaintext-prompt}
+  - id: calculate
+    execute:
+      graph: xor
+      bindings:
+        left.value: {input: plaintext}
+        right.value: {constant: mask}

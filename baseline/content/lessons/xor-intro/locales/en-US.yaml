@@ -1,0 +1,5 @@
+title: "Explore XOR"
+summary: "Change a 16-bit input and inspect its XOR result."
+texts:
+  introduction: "XOR changes each bit selected by the mask."
+  plaintext-prompt: "Enter exactly four hexadecimal digits after 0x."

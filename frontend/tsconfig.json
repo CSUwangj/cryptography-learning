@@ -24,9 +24,13 @@
     "paths": {
       "app": ["./src/app"],
       "completion_board": ["./src/completion_board"],
+      "crypto_graph": ["./src/crypto_graph"],
+      "learning": ["./src/learning"],
+      "lesson_runtime": ["./src/lesson_runtime"],
       "practice": ["./src/practice"],
       "terminal": ["./src/terminal"],
       "transport": ["./src/transport"],
+      "transport/*": ["./src/transport/*"],
       "ui": ["./src/ui"]
     }
   },

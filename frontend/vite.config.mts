@@ -34,6 +34,9 @@ export default defineConfig({
     alias: {
       app: path.resolve(rootDir, 'src/app'),
       completion_board: path.resolve(rootDir, 'src/completion_board'),
+      crypto_graph: path.resolve(rootDir, 'src/crypto_graph'),
+      learning: path.resolve(rootDir, 'src/learning'),
+      lesson_runtime: path.resolve(rootDir, 'src/lesson_runtime'),
       practice: path.resolve(rootDir, 'src/practice'),
       terminal: path.resolve(rootDir, 'src/terminal'),
       transport: path.resolve(rootDir, 'src/transport'),
@@ -48,6 +51,10 @@ export default defineConfig({
         ws: true,
       },
       '/img': {
+        target: 'http://localhost:8000',
+        ws: true,
+      },
+      '/learning-assets': {
         target: 'http://localhost:8000',
         ws: true,
       },

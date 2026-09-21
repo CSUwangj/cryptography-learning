@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::lesson_catalog::RawLearning;
+
 /// Root RON document consumed at process startup.
 ///
 /// Host-generated manifests continue to use the `Configuration(...)` RON form.
@@ -9,6 +11,8 @@ use serde::{Deserialize, Serialize};
 pub struct RawConfiguration {
     pub schema_version: u32,
     pub practice: RawPractice,
+    #[serde(default)]
+    pub learning: RawLearning,
 }
 
 impl RawConfiguration {

@@ -99,5 +99,21 @@ Configuration(
         ]
       )
     ]
+  ),
+  learning: (
+    lesson_categories: [
+      (
+        id: "fundamentals",
+        name: [
+          (language: "en-US", text: "Fundamentals"),
+          (language: "zh-CN", text: "基础")
+        ],
+        lessons: [
+          (id: "xor-intro", directory: "/content/lessons/xor-intro"),
+          (id: "fallback-xor", directory: "/content/lessons/fallback-xor"),
+          (id: "malformed-yaml", directory: "/content/lessons/malformed-yaml")
+        ]
+      )
+    ]
   )
 )

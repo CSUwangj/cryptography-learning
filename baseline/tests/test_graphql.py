@@ -35,6 +35,22 @@ query Lab($categoryId: String!, $labId: String!, $language: String) {
 }
 """
 
+LEARNING_QUERY = """
+query Learning($lessonId: String!, $language: String!) {
+  learning {
+    lessonCategories {
+      id
+      name { lang text }
+      lessons { id }
+    }
+  }
+  lessonDocuments(lessonId: $lessonId, language: $language) {
+    lesson
+    locale
+  }
+}
+"""
+
 
 class GraphqlBaselineTest(unittest.TestCase):
     @classmethod
@@ -76,6 +92,20 @@ class GraphqlBaselineTest(unittest.TestCase):
         )
         self.assertEqual(body["data"]["lab"]["lang"], "zh-CN")
         self.assertEqual(body["data"]["lab"]["name"], "仿射加密")
+
+    def test_learning_catalog_and_opaque_documents_load_from_lesson_directory(self):
+        body = graphql(
+            LEARNING_QUERY,
+            {"lessonId": "xor-intro", "language": "zh-CN"},
+        )
+        category = body["data"]["learning"]["lessonCategories"][0]
+        self.assertEqual(category["id"], "fundamentals")
+        self.assertEqual(
+            category["lessons"],
+            [{"id": "xor-intro"}, {"id": "fallback-xor"}, {"id": "malformed-yaml"}],
+        )
+        self.assertIn("default_locale: en-US", body["data"]["lessonDocuments"]["lesson"])
+        self.assertIn("探索异或", body["data"]["lessonDocuments"]["locale"])
 
     def test_missing_lab_returns_graphql_error(self):
         body = graphql(

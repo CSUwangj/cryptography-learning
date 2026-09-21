@@ -12,6 +12,31 @@ paths, non-empty display data, and endpoints with a host and a port in
 `1..=65535`. Validation errors include the relevant collection/index path (or
 the conflicting IDs) so a Host operator can correct the generated input.
 
+`learning` is optional and defaults to an empty catalog. When present, it
+contains ordered `lesson_categories`, each with localized `name` entries and
+ordered Lessons:
+
+```ron
+learning: (
+    lesson_categories: [(
+        id: "fundamentals",
+        name: [
+            (language: "en-US", text: "Fundamentals"),
+            (language: "zh-CN", text: "基础"),
+        ],
+        lessons: [(
+            id: "xor-intro",
+            directory: "/mounted/lessons/xor-intro",
+        )],
+    )],
+)
+```
+
+Lesson IDs are globally unique. Each configured directory is the containment
+boundary for its opaque `lesson.yaml`, `locales/*.yaml`, and `assets/` files.
+The application validates directory and `lesson.yaml` availability before
+serving, but does not parse Lesson YAML semantics.
+
 ## Generator and Host responsibilities
 
 The public application owns the schema and validation rules. The Host-only

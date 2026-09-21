@@ -20,6 +20,7 @@ use crate::completion::{
     ClaimStore, ClaimStoreError, Clock, CompletionConfigError, CompletionPolicy, CompletionService,
     SystemClock,
 };
+use crate::lesson_catalog::{LessonCatalog, LessonCatalogError};
 use crate::model::Query;
 use crate::opts::CompletionModulePaths;
 use crate::practice_catalog::{
@@ -57,6 +58,7 @@ pub struct BootstrapPaths {
 #[derive(Clone)]
 pub struct Application {
     practice_catalog: PracticeCatalog,
+    lesson_catalog: LessonCatalog,
     schema: AppSchema,
     static_root: PathBuf,
     identity: ProcessIdentity,
@@ -77,6 +79,9 @@ pub enum BootstrapError {
 
     #[error("Practice Catalog initialization failed: {0}")]
     Catalog(#[from] PracticeCatalogError),
+
+    #[error("Lesson Catalog initialization failed: {0}")]
+    LessonCatalog(#[from] LessonCatalogError),
 
     #[error("static root is missing or not a directory: {path}")]
     StaticRootMissing { path: String },
@@ -133,6 +138,7 @@ impl Application {
             )?;
         validate_static_root(static_root)?;
         let practice_catalog = PracticeCatalog::try_from_raw(raw.practice, content_source)?;
+        let lesson_catalog = LessonCatalog::try_from_raw(raw.learning)?;
 
         let completion = if let Some(paths) = completion_paths {
             Some(build_completion_service(&practice_catalog, paths, clock).await?)
@@ -140,8 +146,9 @@ impl Application {
             None
         };
 
-        let mut schema_builder =
-            Schema::build(Query, EmptyMutation, EmptySubscription).data(practice_catalog.clone());
+        let mut schema_builder = Schema::build(Query, EmptyMutation, EmptySubscription)
+            .data(practice_catalog.clone())
+            .data(lesson_catalog.clone());
         if let Some(service) = completion.clone() {
             schema_builder = schema_builder.data(service);
         }
@@ -149,6 +156,7 @@ impl Application {
 
         Ok(Self {
             practice_catalog,
+            lesson_catalog,
             schema,
             static_root: static_root.to_path_buf(),
             identity,
@@ -158,6 +166,10 @@ impl Application {
 
     pub fn practice_catalog(&self) -> &PracticeCatalog {
         &self.practice_catalog
+    }
+
+    pub fn lesson_catalog(&self) -> &LessonCatalog {
+        &self.lesson_catalog
     }
 
     pub fn schema(&self) -> &AppSchema {
@@ -274,6 +286,7 @@ mod tests {
                     }],
                 }],
             },
+            learning: Default::default(),
         }
     }
 
@@ -490,6 +503,7 @@ mod tests {
                     },
                 ],
             },
+            learning: Default::default(),
         };
 
         let pubkey = "D75A980182B10AB7D54BFED3C964073A0EE172F3DAA62325AF021A68F707511A";

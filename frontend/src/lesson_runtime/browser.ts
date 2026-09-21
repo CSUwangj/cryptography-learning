@@ -53,8 +53,8 @@ export class BrowserLessonSession {
   private generation = 0
 
   constructor(
-    readonly lesson: CompiledLesson,
-    readonly locale: string,
+    public lesson: CompiledLesson,
+    public locale: string,
   ) {
     this.inputs = Object.fromEntries(Object.entries(lesson.inputs).map(([id, input]) => [id, cloneValue(input.default)]))
   }
@@ -68,6 +68,19 @@ export class BrowserLessonSession {
       inputDiagnostics: { ...this.inputDiagnostics },
       snapshots: Object.fromEntries(this.snapshots),
     }
+  }
+
+  updateDocuments(documents: LessonDocuments, requestedLocale: string, catalog?: VisualizerCatalog): Result<void> {
+    const compiled = compileLesson(documents, catalog)
+    if (!compiled.ok) return { ok: false, diagnostics: compiled.diagnostics.map((item) => localized(item, requestedLocale)) }
+    if (compiled.value.id !== this.lesson.id) {
+      return { ok: false, diagnostics: [localized(diagnostic('lesson.invalid-input', 'Loaded Lesson does not match the current Lesson.', 'id'), requestedLocale)] }
+    }
+    const stepId = this.lesson.steps[this.index]?.id
+    this.lesson = compiled.value
+    this.locale = compiled.value.locales[requestedLocale] ? requestedLocale : compiled.value.defaultLocale
+    this.index = Math.max(0, this.lesson.steps.findIndex((step) => step.id === stepId))
+    return { ok: true, value: undefined }
   }
 
   setInput(id: string, value: CryptoValue | string): Result<void> {

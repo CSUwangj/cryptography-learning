@@ -37,6 +37,25 @@ type LabInstance {
   tcpEndpoints: [Endpoint!]!
 }
 
+type Learning {
+  lessonCategories: [LearningCategory!]!
+}
+
+type LearningCategory {
+  id: String!
+  name: [Translation!]!
+  lessons: [Lesson!]!
+}
+
+type Lesson {
+  id: String!
+}
+
+type LessonDocuments {
+  lesson: String!
+  locale: String
+}
+
 type Practice {
   labCategories: [LabCategory!]!
 }
@@ -44,6 +63,8 @@ type Practice {
 type Query {
   hello: String!
   practice: Practice!
+  learning: Learning!
+  lessonDocuments(lessonId: String!, language: String!): LessonDocuments!
   lab(categoryId: String!, labId: String!, language: String): LabInstance!
   completionBoard(courseRunId: String): CompletionBoard!
 }

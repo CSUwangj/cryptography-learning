@@ -1,4 +1,8 @@
 use crate::errors::QueryError;
+use crate::lesson_catalog::{
+    CatalogCategory as LearningCatalogCategory, CatalogLesson,
+    CatalogTranslation as LearningTranslation, LessonCatalog, LessonResolveError,
+};
 use crate::practice_catalog::{
     CatalogCategory, CatalogEndpoint, CatalogLabSummary, CatalogResourceSummary,
     CatalogTranslation, PracticeCatalog, ResolveError, ResolvedLab,
@@ -16,6 +20,24 @@ impl Query {
     async fn practice(&self, ctx: &Context<'_>) -> FieldResult<Practice> {
         let catalog = ctx.data::<PracticeCatalog>()?;
         Ok(Practice::from_catalog(catalog))
+    }
+
+    async fn learning(&self, ctx: &Context<'_>) -> FieldResult<Learning> {
+        let catalog = ctx.data::<LessonCatalog>()?;
+        Ok(Learning::from_catalog(catalog))
+    }
+
+    async fn lesson_documents(
+        &self,
+        ctx: &Context<'_>,
+        lesson_id: String,
+        language: String,
+    ) -> FieldResult<LessonDocuments> {
+        let catalog = ctx.data::<LessonCatalog>()?;
+        let (lesson, locale) = catalog
+            .documents(&lesson_id, &language)
+            .map_err(lesson_error_to_field)?;
+        Ok(LessonDocuments { lesson, locale })
     }
 
     async fn lab(
@@ -75,6 +97,66 @@ fn resolve_error_to_field(err: ResolveError) -> async_graphql::Error {
         }
         ResolveError::LabNotFound { .. } => QueryError::NotFoundError("lab".to_string()).extend(),
     }
+}
+
+fn lesson_error_to_field(err: LessonResolveError) -> async_graphql::Error {
+    match err {
+        LessonResolveError::NotFound(_) => QueryError::NotFoundError("lesson".to_string()).extend(),
+        LessonResolveError::Unavailable { .. } | LessonResolveError::InvalidPath { .. } => {
+            async_graphql::Error::new("Lesson document is unavailable.")
+        }
+    }
+}
+
+#[derive(SimpleObject, Debug, Clone)]
+struct Learning {
+    lesson_categories: Vec<LearningCategory>,
+}
+
+impl Learning {
+    fn from_catalog(catalog: &LessonCatalog) -> Self {
+        Self {
+            lesson_categories: catalog
+                .learning()
+                .into_iter()
+                .map(LearningCategory::from)
+                .collect(),
+        }
+    }
+}
+
+#[derive(SimpleObject, Debug, Clone)]
+struct LearningCategory {
+    id: String,
+    name: Vec<Translation>,
+    lessons: Vec<Lesson>,
+}
+
+impl From<LearningCatalogCategory> for LearningCategory {
+    fn from(category: LearningCatalogCategory) -> Self {
+        Self {
+            id: category.id,
+            name: category.name.into_iter().map(Translation::from).collect(),
+            lessons: category.lessons.into_iter().map(Lesson::from).collect(),
+        }
+    }
+}
+
+#[derive(SimpleObject, Debug, Clone)]
+struct Lesson {
+    id: String,
+}
+
+impl From<CatalogLesson> for Lesson {
+    fn from(lesson: CatalogLesson) -> Self {
+        Self { id: lesson.id }
+    }
+}
+
+#[derive(SimpleObject, Debug, Clone)]
+struct LessonDocuments {
+    lesson: String,
+    locale: Option<String>,
 }
 
 #[derive(SimpleObject, Debug, Clone)]
@@ -185,6 +267,15 @@ impl From<CatalogTranslation> for Translation {
     }
 }
 
+impl From<LearningTranslation> for Translation {
+    fn from(translation: LearningTranslation) -> Self {
+        Self {
+            lang: translation.lang,
+            text: translation.text,
+        }
+    }
+}
+
 #[derive(SimpleObject, Debug, Clone)]
 struct ResourceWithTranslation {
     lang: String,
@@ -216,4 +307,48 @@ pub struct StudentCompletion {
 pub struct CompletionRecord {
     lab_id: String,
     completed_at: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lesson_catalog::{RawLearning, RawLesson, RawLessonCategory};
+    use async_graphql::{EmptyMutation, EmptySubscription, Schema};
+
+    #[tokio::test]
+    async fn exposes_ordered_catalog_and_nullable_missing_locale() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(directory.path().join("locales")).unwrap();
+        std::fs::write(directory.path().join("lesson.yaml"), "version: 1").unwrap();
+        std::fs::write(directory.path().join("locales/en-US.yaml"), "title: XOR").unwrap();
+        let catalog = LessonCatalog::try_from_raw(RawLearning {
+            lesson_categories: vec![RawLessonCategory {
+                id: "fundamentals".into(),
+                name: vec![crate::practice_catalog::RawTranslation {
+                    lang: "en-US".into(),
+                    text: "Fundamentals".into(),
+                }],
+                lessons: vec![RawLesson {
+                    id: "xor-intro".into(),
+                    directory: directory.path().display().to_string(),
+                }],
+            }],
+        })
+        .unwrap();
+        let schema = Schema::build(Query, EmptyMutation, EmptySubscription)
+            .data(catalog)
+            .finish();
+        let response = schema.execute(
+            "{ learning { lessonCategories { id lessons { id } } } lessonDocuments(lessonId: \"xor-intro\", language: \"zh-CN\") { lesson locale } }",
+        ).await;
+
+        assert!(response.errors.is_empty());
+        assert_eq!(
+            response.data.into_json().unwrap(),
+            serde_json::json!({
+                "learning": {"lessonCategories": [{"id": "fundamentals", "lessons": [{"id": "xor-intro"}]}]},
+                "lessonDocuments": {"lesson": "version: 1", "locale": null},
+            }),
+        );
+    }
 }

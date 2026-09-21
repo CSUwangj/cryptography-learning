@@ -7,7 +7,10 @@ import { bits, executeWorkerRequest, hex } from '../crypto_graph'
 import {
   compileLesson,
   createBrowserLessonSession,
+  lessonDefaultLocale,
+  lessonAssetUrl,
   validateLessonDocuments,
+  validateLessonMarkdown,
   type LessonDocuments,
 } from './index'
 
@@ -63,6 +66,11 @@ describe('Lesson Runtime compiler (#29)', () => {
     expect(browserMalformed.diagnostics[0].message).toBe('不支持的课程版本。')
   })
 
+  it('reads the default locale through the strict Lesson YAML parser', () => {
+    expect(lessonDefaultLocale('default_locale : "en-US"')).toBe('en-US')
+    expect(lessonDefaultLocale('default_locale: [')).toBeUndefined()
+  })
+
   it('validates Lesson directories through the Node command', () => {
     expect(JSON.parse(execFileSync(process.execPath, ['scripts/validate_lessons.mjs', 'src/lesson_runtime/fixture'], {
       cwd: frontendDirectory,
@@ -74,6 +82,23 @@ describe('Lesson Runtime compiler (#29)', () => {
     })
     expect(missing.status).toBe(1)
     expect(JSON.parse(missing.stdout)).toMatchObject({ ok: false })
+  })
+
+  it('accepts contained assets and HTTPS links while rejecting unsafe prose', () => {
+    expect(validateLessonMarkdown(
+      '# Intro\n![Diagram](assets/xor.png)\n[Reference](https://example.test/reference)',
+      'texts.introduction',
+    )).toEqual([])
+    expect(lessonAssetUrl('xor-intro', 'assets/xor.png')).toBe('/learning-assets/xor-intro/xor.png')
+    expect(validateLessonMarkdown('<script>alert(1)</script>\n[bad](javascript:alert(1))', 'texts.introduction'))
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({ code: 'lesson.unsafe-markdown' }),
+      ]))
+    expect(validateLessonMarkdown('[bad][url]\n[url]: http://example.test', 'texts.introduction'))
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({ code: 'lesson.unsafe-markdown' }),
+      ]))
+    expect(validateLessonMarkdown('`<script>`', 'texts.introduction')).toEqual([])
   })
 
   it('rejects schema, binding, limit, and Catalog errors', () => {

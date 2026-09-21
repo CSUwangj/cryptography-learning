@@ -1,0 +1,21 @@
+query LearningCatalog {
+  learning {
+    lessonCategories {
+      id
+      name {
+        lang
+        text
+      }
+      lessons {
+        id
+      }
+    }
+  }
+}
+
+query LessonDocuments($lessonId: String!, $language: String!) {
+  lessonDocuments(lessonId: $lessonId, language: $language) {
+    lesson
+    locale
+  }
+}

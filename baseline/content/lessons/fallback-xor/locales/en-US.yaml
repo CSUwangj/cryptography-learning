@@ -1,0 +1,5 @@
+title: "Fallback XOR"
+summary: "This Lesson has only its default locale."
+texts:
+  introduction: "The default locale loads when a translation is absent."
+  plaintext-prompt: "Enter exactly four hexadecimal digits after 0x."

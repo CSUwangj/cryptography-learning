@@ -102,6 +102,7 @@ fn practice_raw() -> RawConfiguration {
                 ],
             }],
         },
+        learning: Default::default(),
     }
 }
 

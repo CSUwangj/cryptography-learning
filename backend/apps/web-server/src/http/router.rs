@@ -2,7 +2,7 @@ use std::path::{Component, Path, PathBuf};
 
 use async_graphql::http::{GraphQLPlaygroundConfig, playground_source};
 use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
-use axum::extract::State;
+use axum::extract::{Path as AxumPath, State};
 use axum::http::{Method, StatusCode, Uri, header};
 use axum::middleware::{self, Next};
 use axum::response::{Html, IntoResponse, Response};
@@ -23,6 +23,7 @@ pub fn app_router(app: Application) -> Router {
         .route("/health/ready", get(ready))
         .route("/query", post(graphql_handler))
         .route("/playground", get(playground))
+        .route("/learning-assets/{lesson_id}/{*path}", get(lesson_asset))
         .fallback(spa_fallback)
         .with_state(AppState {
             application: app,
@@ -65,6 +66,22 @@ async fn graphql_handler(State(state): State<AppState>, req: GraphQLRequest) -> 
 
 async fn playground() -> impl IntoResponse {
     Html(playground_source(GraphQLPlaygroundConfig::new("/query")))
+}
+
+async fn lesson_asset(
+    State(state): State<AppState>,
+    AxumPath((lesson_id, path)): AxumPath<(String, String)>,
+) -> Response {
+    match state.application.lesson_catalog().asset(&lesson_id, &path) {
+        Ok(bytes) => {
+            let mime = mime_guess::from_path(&path)
+                .first_or_octet_stream()
+                .essence_str()
+                .to_string();
+            (StatusCode::OK, [(header::CONTENT_TYPE, mime)], bytes).into_response()
+        }
+        Err(_) => StatusCode::NOT_FOUND.into_response(),
+    }
 }
 
 async fn spa_fallback(State(state): State<AppState>, method: Method, uri: Uri) -> Response {
@@ -123,6 +140,8 @@ async fn log_failed_requests(req: Request<Body>, next: Next) -> Response {
 fn is_reserved_prefix(path: &str) -> bool {
     path == "/query"
         || path == "/playground"
+        || path == "/learning-assets"
+        || path.starts_with("/learning-assets/")
         || path == "/health"
         || path.starts_with("/health/")
         || path == "/api/completion-claims"
@@ -162,6 +181,7 @@ mod tests {
     use super::*;
     use crate::bootstrap::{Application, ProcessIdentity};
     use crate::completion::SystemClock;
+    use crate::lesson_catalog::{RawLearning, RawLesson, RawLessonCategory};
     use crate::practice_catalog::{
         InMemoryLabContentSource, RawConfiguration, RawLab, RawLabCategory, RawPractice,
         RawResource, RawTranslation,
@@ -200,6 +220,12 @@ mod tests {
         fs::write(static_root.join("app.js"), "console.log('bundle');").unwrap();
         fs::create_dir_all(static_root.join("assets")).unwrap();
         fs::write(static_root.join("assets/main.js"), "export {};").unwrap();
+        let lesson_directory = static_root.parent().unwrap().join("lesson");
+        fs::create_dir_all(lesson_directory.join("locales")).unwrap();
+        fs::create_dir_all(lesson_directory.join("assets")).unwrap();
+        fs::write(lesson_directory.join("lesson.yaml"), "version: 1").unwrap();
+        fs::write(lesson_directory.join("locales/en-US.yaml"), "title: XOR").unwrap();
+        fs::write(lesson_directory.join("assets/xor.txt"), "xor asset").unwrap();
 
         let mut files = HashMap::new();
         files.insert("affine.md".to_string(), "affine-body".to_string());
@@ -221,6 +247,16 @@ mod tests {
                             port: 19000,
                         }],
                         resources: vec![resource("en-US", "Affine", "affine.md")],
+                    }],
+                }],
+            },
+            learning: RawLearning {
+                lesson_categories: vec![RawLessonCategory {
+                    id: "fundamentals".into(),
+                    name: vec![translation("en-US", "Fundamentals")],
+                    lessons: vec![RawLesson {
+                        id: "xor-intro".into(),
+                        directory: lesson_directory.display().to_string(),
                     }],
                 }],
             },
@@ -459,6 +495,35 @@ mod tests {
             .unwrap();
         assert_eq!(root.status(), StatusCode::OK);
         assert!(body_text(root).await.contains("Crypto Learn"));
+    }
+
+    #[tokio::test]
+    async fn lesson_assets_stay_in_the_selected_lesson_directory() {
+        let tmp = tempfile::tempdir().unwrap();
+        let router = app_router(sample_app(tmp.path()).await);
+        let asset = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/learning-assets/xor-intro/xor.txt")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(asset.status(), StatusCode::OK);
+        assert_eq!(body_text(asset).await, "xor asset");
+
+        let escaped = router
+            .oneshot(
+                Request::builder()
+                    .uri("/learning-assets/xor-intro/%2E%2E/lesson.yaml")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(escaped.status(), StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]

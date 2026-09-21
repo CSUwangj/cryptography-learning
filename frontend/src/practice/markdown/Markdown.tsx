@@ -54,6 +54,11 @@ type CodeBlockProps = {
   language?: string
 }
 
+const Link: React.FC<React.PropsWithChildren<{ href?: string }>> = ({ children, href }) =>
+  href?.startsWith('https://')
+    ? <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>
+    : <a href={href}>{children}</a>
+
 const CodeBlock: React.FC<CodeBlockProps> = ({ value, language }) => {
   return <><SyntaxHighlighter language={language}>
     {value}
@@ -140,6 +145,7 @@ export const Markdown: React.FC<MarkdownProps> = ({ source }) => {
       ]}
       renderers={{
         code: CodeBlock,
+        link: Link,
         inlineCode: InlineCode,
         math: ({ value }: { value: string }) => <TeX block>{value}</TeX>,
         inlineMath: ({ value }: { value: string }) => <InlineMath data-markdown-inline-math><TeX>{value}</TeX></InlineMath>,

@@ -1,0 +1,5 @@
+title: "探索异或"
+summary: "修改一个 16 位输入并查看异或结果。"
+texts:
+  introduction: "异或会翻转掩码选中的每一位。"
+  plaintext-prompt: "请输入以 0x 开头的四位十六进制数。"
