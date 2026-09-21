@@ -74,8 +74,7 @@ Use `npm run lint` cautiously: the configured script includes `--fix` and modifi
   - Checks not run: `<reason or none>`
   ```
 
-  It should only summary one edit(means one prompt) not whole session.
-
+- It should only summary one edit(means one prompt) not whole session.
 - For a no-change task, don't include this section.
 
 ## Requirement authority and complexity

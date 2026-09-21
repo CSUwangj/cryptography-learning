@@ -3,7 +3,9 @@ import {
   bits,
   bytes,
   compile,
+  executeWorkerRequest,
   hex,
+  maxWorkerLimits,
   operationManifests,
   serializeTrace,
   teachingSpnGraph,
@@ -284,5 +286,234 @@ describe('Teaching SPN fixture (#27)', () => {
       },
     })
     expect(!invalidInput.ok && invalidInput.diagnostics[0].code).toBe('graph.structural-mismatch')
+  })
+})
+
+describe('CryptoGraph Worker contract (#28)', () => {
+  it('compares semantic checkpoints with avalanche difference data', () => {
+    const graph = (value: ReturnType<typeof bits>): AuthoredGraph => ({
+      nodes: [
+        source('input', value),
+        { id: 'output', operation: 'core.output@1', inputs: { value: { node: 'input', port: 'value' } } },
+      ],
+      outputs: [{ node: 'output', port: 'value' }],
+      traceLevel: 'summary',
+    })
+    const response = executeWorkerRequest({
+      requestId: 'avalanche-fixture',
+      kind: 'compare',
+      payload: {
+        left: { graph: graph(bits(16, Uint8Array.of(0x0f, 0x0f))) },
+        right: { graph: graph(bits(16, Uint8Array.of(0x00, 0xff))) },
+      },
+    })
+
+    expect(response.kind).toBe('comparison')
+    if (response.kind !== 'comparison') return
+    expect(response.comparison.checkpoints).toHaveLength(1)
+    expect(response.comparison.checkpoints[0]).toMatchObject({
+      path: 'output',
+      changedBits: 8,
+      ratio: 0.5,
+    })
+    expect(hex(response.comparison.checkpoints[0].mask)).toBe('0x0ff0')
+  })
+
+  it('marks deterministic trace prefixes as truncated', () => {
+    const response = executeWorkerRequest({
+      requestId: 'truncated-trace',
+      kind: 'execute',
+      payload: { graph: { ...teachingSpnGraph, traceLevel: 'detail' }, limits: { traceEvents: 1 } },
+    })
+
+    expect(response.kind).toBe('snapshot')
+    if (response.kind !== 'snapshot') return
+    expect(response.snapshot.trace).toHaveLength(1)
+    expect(response.snapshot.traceStatus).toEqual({ truncated: true, retained: 1, dropped: 8 })
+  })
+
+  it('rejects raised limits and incomplete or incompatible comparisons', () => {
+    expect(Object.isFrozen(maxWorkerLimits)).toBe(true)
+    const raised = executeWorkerRequest({
+      requestId: 'raised-limit',
+      kind: 'execute',
+      payload: { graph: teachingSpnGraph, limits: { traceEvents: 513 } },
+    })
+    expect(raised).toMatchObject({ kind: 'diagnostic', diagnostics: [{ code: 'execution.limit-exceeds-global' }] })
+
+    const incomplete = executeWorkerRequest({
+      requestId: 'incomplete-comparison',
+      kind: 'compare',
+      payload: {
+        left: { graph: { ...teachingSpnGraph, traceLevel: 'detail' }, limits: { traceEvents: 1 } },
+        right: { graph: { ...teachingSpnGraph, traceLevel: 'detail' } },
+      },
+    })
+    expect(incomplete).toMatchObject({ kind: 'diagnostic', diagnostics: [{ code: 'comparison.incomplete-trace' }] })
+
+    const incompatible = executeWorkerRequest({
+      requestId: 'incompatible-comparison',
+      kind: 'compare',
+      payload: {
+        left: { graph: { ...teachingSpnGraph, traceLevel: 'detail' } },
+        right: {
+          graph: {
+            nodes: [source('input', bits(16, Uint8Array.of(0, 1)))],
+            outputs: [{ node: 'input', port: 'value' }],
+            traceLevel: 'detail',
+          },
+        },
+      },
+    })
+    expect(incompatible).toMatchObject({ kind: 'diagnostic', diagnostics: [{ code: 'comparison.incompatible-structure' }] })
+  })
+
+  it('bounds inputs and expanded repetitions before execution', () => {
+    const oversizedInput = executeWorkerRequest({
+      requestId: 'oversized-input',
+      kind: 'execute',
+      payload: { graph: teachingSpnGraph, limits: { inputBytes: 5 } },
+    })
+    expect(oversizedInput).toMatchObject({ kind: 'diagnostic', diagnostics: [{ code: 'execution.input-limit' }] })
+
+    const unexpandedRepeat = executeWorkerRequest({
+      requestId: 'oversized-repeat',
+      kind: 'execute',
+      payload: {
+        graph: {
+          ...teachingSpnGraph,
+          nodes: [
+            teachingSpnGraph.nodes[0],
+            { ...teachingSpnGraph.nodes[1], repeat: { subgraph: 'round', count: Number.MAX_SAFE_INTEGER } },
+          ],
+        },
+      },
+    })
+    expect(unexpandedRepeat).toMatchObject({ kind: 'diagnostic', diagnostics: [{ code: 'execution.node-limit' }] })
+  })
+
+  it('shares request caps and compares equivalent relative subgraph paths', () => {
+    const renamed: AuthoredGraph = {
+      ...teachingSpnGraph,
+      nodes: [
+        teachingSpnGraph.nodes[0],
+        { ...teachingSpnGraph.nodes[1], id: 'cipher' },
+      ],
+      outputs: [{ node: 'cipher', port: 'permute' }],
+      traceLevel: 'detail',
+    }
+    const equivalent = executeWorkerRequest({
+      requestId: 'relative-paths',
+      kind: 'compare',
+      payload: {
+        left: { graph: { ...teachingSpnGraph, traceLevel: 'detail' } },
+        right: { graph: renamed },
+      },
+    })
+    expect(equivalent.kind).toBe('comparison')
+
+    const sharedNodes = executeWorkerRequest({
+      requestId: 'shared-nodes',
+      kind: 'compare',
+      payload: {
+        left: { graph: { ...teachingSpnGraph, traceLevel: 'detail' } },
+        right: { graph: { ...teachingSpnGraph, traceLevel: 'detail' } },
+        limits: { expandedNodes: 9 },
+      },
+    })
+    expect(sharedNodes).toMatchObject({ kind: 'diagnostic', diagnostics: [{ code: 'execution.node-limit' }] })
+
+    const incompatibleSummary = executeWorkerRequest({
+      requestId: 'incompatible-summary',
+      kind: 'compare',
+      payload: {
+        left: { graph: { ...teachingSpnGraph, traceLevel: 'summary' } },
+        right: {
+          graph: {
+            nodes: [source('input', bits(16, Uint8Array.of(0, 1)))],
+            outputs: [{ node: 'input', port: 'value' }],
+            traceLevel: 'summary',
+          },
+        },
+      },
+    })
+    expect(incompatibleSummary).toMatchObject({ kind: 'diagnostic', diagnostics: [{ code: 'comparison.incompatible-structure' }] })
+  })
+
+  it('compares equivalent reordered graphs and repeat IDs containing slashes', () => {
+    const reordered: AuthoredGraph = {
+      ...teachingSpnGraph,
+      nodes: [...teachingSpnGraph.nodes].reverse(),
+      traceLevel: 'detail',
+    }
+    const slashNamed: AuthoredGraph = {
+      ...teachingSpnGraph,
+      nodes: [
+        teachingSpnGraph.nodes[0],
+        { ...teachingSpnGraph.nodes[1], id: 'cipher/round' },
+      ],
+      outputs: [{ node: 'cipher/round', port: 'permute' }],
+      traceLevel: 'detail',
+    }
+    for (const right of [reordered, slashNamed]) {
+      const comparison = executeWorkerRequest({
+        requestId: `equivalent-${right.nodes[0].id}`,
+        kind: 'compare',
+        payload: {
+          left: { graph: { ...teachingSpnGraph, traceLevel: 'detail' } },
+          right: { graph: right },
+        },
+      })
+      expect(comparison.kind).toBe('comparison')
+    }
+  })
+
+  it('aligns repeat nodes independently of declaration order', () => {
+    const repeated: AuthoredGraph = {
+      nodes: [
+        source('state-a', bits(16, Uint8Array.of(0x12, 0x34))),
+        source('state-b', bits(16, Uint8Array.of(0x56, 0x78))),
+        { id: 'left', repeat: { subgraph: 'round', count: 2 }, inputs: { permute: { node: 'state-a', port: 'value' } } },
+        { id: 'right', repeat: { subgraph: 'round', count: 2 }, inputs: { permute: { node: 'state-b', port: 'value' } } },
+      ],
+      outputs: [{ node: 'left', port: 'permute' }, { node: 'right', port: 'permute' }],
+      subgraphs: teachingSpnGraph.subgraphs,
+      traceLevel: 'detail',
+    }
+    const reordered = { ...repeated, nodes: [repeated.nodes[1], repeated.nodes[3], repeated.nodes[0], repeated.nodes[2]] }
+    const renamedUpstreams: AuthoredGraph = {
+      ...repeated,
+      nodes: [
+        { ...repeated.nodes[0], id: 'z-source' },
+        { ...repeated.nodes[1], id: 'a-source' },
+        { ...repeated.nodes[2], inputs: { permute: { node: 'z-source', port: 'value' } } },
+        { ...repeated.nodes[3], inputs: { permute: { node: 'a-source', port: 'value' } } },
+      ],
+    }
+    for (const right of [reordered, renamedUpstreams]) {
+      const comparison = executeWorkerRequest({
+        requestId: `repeat-alignment-${right.nodes[0].id}`,
+        kind: 'compare',
+        payload: { left: { graph: repeated }, right: { graph: right } },
+      })
+      expect(comparison.kind).toBe('comparison')
+      if (comparison.kind === 'comparison') expect(comparison.comparison.checkpoints.every(({ changedBits }) => changedBits === 0)).toBe(true)
+    }
+
+    const ambiguous: AuthoredGraph = {
+      ...repeated,
+      nodes: [
+        repeated.nodes[0],
+        { ...repeated.nodes[2], inputs: { permute: { node: 'state-a', port: 'value' } } },
+        { ...repeated.nodes[3], inputs: { permute: { node: 'state-a', port: 'value' } } },
+      ],
+      outputs: [{ node: 'state-a', port: 'value' }],
+    }
+    const ambiguousComparison = executeWorkerRequest({
+      requestId: 'ambiguous-repeats',
+      kind: 'compare',
+      payload: { left: { graph: ambiguous }, right: { graph: ambiguous } },
+    })
+    expect(ambiguousComparison).toMatchObject({ kind: 'diagnostic', diagnostics: [{ code: 'comparison.incompatible-structure' }] })
   })
 })
