@@ -32,7 +32,8 @@
     "react-syntax-highlighter": "^13.5.3",
     "remark-containers": "^1.2.0",
     "remark-math": "^3.0.1",
-    "rxjs": "^7.8.2"
+    "rxjs": "^7.8.2",
+    "yaml": "^2.9.1"
   },
   "scripts": {
     "start": "vite",
@@ -41,6 +42,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "validate-lessons": "node scripts/validate_lessons.mjs",
     "test:terminal-browser": "playwright test",
     "gen": "graphql-codegen --config .codegen.yml",
     "lint": "eslint '*/**/*.{js,ts,tsx}' --quiet --fix"
