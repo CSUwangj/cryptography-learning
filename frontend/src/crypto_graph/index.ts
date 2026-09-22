@@ -94,12 +94,18 @@ export type TraceCheckpoint = {
 }
 
 export type TraceLevel = 'summary' | 'round' | 'detail'
+export type TraceStage = 'input' | 'round-key' | 'key-mix' | 'substitute' | 'permute' | 'output'
+export type TraceOperation = {
+  readonly sBox?: readonly number[]
+  readonly permutation?: readonly number[]
+}
 
 export type TraceEvent = {
   readonly path: string
   readonly level: TraceLevel
   readonly round?: number
-  readonly stage?: 'key-mix' | 'substitute' | 'permute' | 'output'
+  readonly stage?: TraceStage
+  readonly operation?: TraceOperation
   readonly value?: CryptoValue
 }
 
@@ -153,8 +159,12 @@ export type WorkerExecutionSnapshot = ExecutionSnapshot & {
   readonly traceStatus: TraceStatus
 }
 
-export type AvalancheCheckpoint = {
+type CompleteAvalancheCheckpoint = {
   readonly path: string
+  readonly round?: number
+  readonly stage?: TraceStage
+  readonly operation?: TraceOperation
+  readonly complete: true
   readonly left: BitsValue
   readonly right: BitsValue
   readonly mask: BitsValue
@@ -162,9 +172,23 @@ export type AvalancheCheckpoint = {
   readonly ratio: number
 }
 
+type AvalancheGap = {
+  readonly path: string
+  readonly round?: number
+  readonly stage?: TraceStage
+  readonly complete: false
+}
+
+export type AvalancheCheckpoint = CompleteAvalancheCheckpoint | AvalancheGap
+
 export type AvalancheComparison = {
   readonly traceLevel: TraceLevel
   readonly checkpoints: readonly AvalancheCheckpoint[]
+  readonly executions: {
+    readonly baseline: WorkerExecutionSnapshot
+    readonly changed: WorkerExecutionSnapshot
+  }
+  readonly truncated: boolean
 }
 
 export type WorkerResponse =
@@ -674,16 +698,20 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
         continue
       }
       const outputTypeParameter = upstreamOperation?.manifest.outputTypeParameter
-      const xorInput = upstreamOperation?.manifest.identity === 'core.xor@1' ? upstream?.inputs?.left : undefined
-      const xorSource = xorInput && nodes.get(xorInput.node)
-      const xorSourceOperation = xorSource && resolved.get(xorSource.id)
-      const xorSourceType = xorSource?.parameters?.type
-      const xorInputPort = xorSourceOperation?.manifest.outputs.find((candidate) => candidate.name === xorInput?.port)
-      const inferredXorType = xorSourceOperation?.manifest.identity === 'core.source@1' && isPortType(xorSourceType)
-        ? xorSourceType
-        : xorInputPort?.type
-      const upstreamType = inferredXorType
-        ? inferredXorType
+      const forwardedInput = upstreamOperation?.manifest.identity === 'core.xor@1'
+        ? upstream?.inputs?.left
+        : upstreamOperation?.manifest.identity === 'core.output@1'
+          ? upstream?.inputs?.value
+          : undefined
+      const forwardedSource = forwardedInput && nodes.get(forwardedInput.node)
+      const forwardedOperation = forwardedSource && resolved.get(forwardedSource.id)
+      const forwardedSourceType = forwardedSource?.parameters?.type
+      const forwardedPort = forwardedOperation?.manifest.outputs.find((candidate) => candidate.name === forwardedInput?.port)
+      const inferredForwardedType = forwardedOperation?.manifest.identity === 'core.source@1' && isPortType(forwardedSourceType)
+        ? forwardedSourceType
+        : forwardedPort?.type
+      const upstreamType = inferredForwardedType
+        ? inferredForwardedType
         : outputTypeParameter && isPortType(upstream?.parameters?.[outputTypeParameter])
         ? upstream.parameters[outputTypeParameter]
         : upstreamPort.type
@@ -764,12 +792,29 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
             }
             values.set(id, result)
             const roundStage = /^(.*)\.(\d+)\/(key-mix|substitute|permute)$/.exec(id)
-            if (roundStage) {
+            const roundKey = /^(.*)\.(\d+)\/key$/.exec(id)
+            if (compiledGraph.traceLevel === 'detail' && node.operation === 'core.source@1' && (id === 'plaintext' || id === 'state')) {
+              appendTrace({ path: 'plaintext', level: 'detail', stage: 'input', value: cloneValue(result.value) })
+            } else if (compiledGraph.traceLevel === 'detail' && roundKey) {
+              appendTrace({ path: `${roundKey[1]}.${roundKey[2]}/key`, level: 'detail', round: Number(roundKey[2]), stage: 'round-key', value: cloneValue(result.value) })
+            } else if (roundStage) {
               const instance = roundStage[1]
               const round = Number(roundStage[2])
               const stage = roundStage[3] as 'key-mix' | 'substitute' | 'permute'
               const value = cloneValue(result.value)
-              if (compiledGraph.traceLevel === 'detail') appendTrace({ path: `${instance}.${round}/${stage}`, level: 'detail', round, stage, value })
+              const traceOperation = stage === 'substitute'
+                ? { sBox: [...parameters.sBox as readonly number[]] }
+                : stage === 'permute'
+                  ? { permutation: [...parameters.permutation as readonly number[]] }
+                  : undefined
+              if (compiledGraph.traceLevel === 'detail') appendTrace({
+                path: `${instance}.${round}/${stage}`,
+                level: 'detail',
+                round,
+                stage,
+                ...(traceOperation ? { operation: traceOperation } : {}),
+                value,
+              })
               if (stage === 'permute' && (compiledGraph.traceLevel === 'detail' || compiledGraph.traceLevel === 'round')) {
                 appendTrace({ path: `${instance}.${round}/output`, level: 'round', round, stage: 'output', value: cloneValue(result.value) })
               }
@@ -955,11 +1000,9 @@ const compareSnapshots = (
   if (ambiguousRepeatIdentities.get(left) || ambiguousRepeatIdentities.get(right)) {
     return { ok: false, diagnostics: [diagnostic('comparison.incompatible-structure', 'Repeat identities cannot be aligned structurally.', 'trace')] }
   }
-  if (left.traceStatus.truncated || right.traceStatus.truncated) {
-    return { ok: false, diagnostics: [diagnostic('comparison.incomplete-trace', 'Comparison requires complete traces.', 'trace', undefined, { leftTruncated: left.traceStatus.truncated, rightTruncated: right.traceStatus.truncated })] }
-  }
-  const checkpoints = (snapshot: WorkerExecutionSnapshot): Result<Map<string, BitsValue>> => {
-    const values = new Map<string, BitsValue>()
+  const truncated = left.traceStatus.truncated || right.traceStatus.truncated
+  const checkpoints = (snapshot: WorkerExecutionSnapshot): Result<Map<string, { readonly value: BitsValue; readonly event: TraceEvent }>> => {
+    const values = new Map<string, { readonly value: BitsValue; readonly event: TraceEvent }>()
     const paths = relativeTracePaths.get(snapshot)
     for (const event of snapshot.trace) {
       if (!('value' in event) || !event.value) continue
@@ -971,7 +1014,7 @@ const compareSnapshots = (
       if (values.has(path)) {
         return { ok: false, diagnostics: [diagnostic('comparison.incompatible-structure', 'Trace paths must be unique.', path)] }
       }
-      values.set(path, value)
+      values.set(path, { value, event })
     }
     return { ok: true, value: values }
   }
@@ -979,15 +1022,26 @@ const compareSnapshots = (
   if (!leftCheckpoints.ok) return leftCheckpoints
   const rightCheckpoints = checkpoints(right)
   if (!rightCheckpoints.ok) return rightCheckpoints
-  if (leftCheckpoints.value.size !== rightCheckpoints.value.size) {
+  if (!truncated && leftCheckpoints.value.size !== rightCheckpoints.value.size) {
     return { ok: false, diagnostics: [diagnostic('comparison.incompatible-structure', 'Trace checkpoint paths do not match.', 'trace')] }
   }
   const differences: AvalancheCheckpoint[] = []
-  for (const [path, leftValue] of leftCheckpoints.value) {
-    const rightValue = rightCheckpoints.value.get(path)
-    if (!rightValue) {
+  for (const [path, left] of leftCheckpoints.value) {
+    const right = rightCheckpoints.value.get(path)
+    if (!right) {
+      if (truncated) {
+        differences.push({
+          path,
+          ...(left.event.round === undefined ? {} : { round: left.event.round }),
+          ...(left.event.stage === undefined ? {} : { stage: left.event.stage }),
+          complete: false,
+        })
+        continue
+      }
       return { ok: false, diagnostics: [diagnostic('comparison.incompatible-structure', 'Trace checkpoint paths do not match.', `trace.${path}`)] }
     }
+    const leftValue = left.value
+    const rightValue = right.value
     if (leftValue.type.size !== rightValue.type.size) {
       return { ok: false, diagnostics: [diagnostic('comparison.incompatible-value', 'Checkpoint widths do not match.', `trace.${path}`)] }
     }
@@ -995,6 +1049,10 @@ const compareSnapshots = (
     const changedBits = [...mask.bytes].reduce((count, byte) => count + bitCount(byte), 0)
     differences.push({
       path,
+      ...(left.event.round === undefined ? {} : { round: left.event.round }),
+      ...(left.event.stage === undefined ? {} : { stage: left.event.stage }),
+      ...(left.event.operation === undefined ? {} : { operation: left.event.operation }),
+      complete: true,
       left: cloneValue(leftValue) as BitsValue,
       right: cloneValue(rightValue) as BitsValue,
       mask,
@@ -1002,7 +1060,24 @@ const compareSnapshots = (
       ratio: changedBits / leftValue.type.size,
     })
   }
-  return { ok: true, value: { traceLevel: level, checkpoints: differences } }
+  if (truncated) for (const [path, right] of rightCheckpoints.value) {
+    if (leftCheckpoints.value.has(path)) continue
+    differences.push({
+      path,
+      ...(right.event.round === undefined ? {} : { round: right.event.round }),
+      ...(right.event.stage === undefined ? {} : { stage: right.event.stage }),
+      complete: false,
+    })
+  }
+  return {
+    ok: true,
+    value: {
+      traceLevel: level,
+      checkpoints: differences,
+      executions: { baseline: left, changed: right },
+      truncated,
+    },
+  }
 }
 
 export const executeWorkerRequest = (request: WorkerRequest): WorkerResponse => {

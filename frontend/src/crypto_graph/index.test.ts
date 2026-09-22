@@ -167,10 +167,13 @@ describe('Teaching SPN fixture (#27)', () => {
 
     expect(hex(Object.values(first.value.outputs)[0] as ReturnType<typeof bits>)).toBe('0xcb45')
     expect(first.value.trace.map((event) => [event.path, 'value' in event && event.value && hex(event.value as ReturnType<typeof bits>)])).toEqual([
+      ['plaintext', '0x1234'],
+      ['round.1/key', '0x0f0f'],
       ['round.1/key-mix', '0x1d3b'],
       ['round.1/substitute', '0x491c'],
       ['round.1/permute', '0x419c'],
       ['round.1/output', '0x419c'],
+      ['round.2/key', '0xf0f0'],
       ['round.2/key-mix', '0xb16c'],
       ['round.2/substitute', '0xc4b5'],
       ['round.2/permute', '0xcb45'],
@@ -179,11 +182,12 @@ describe('Teaching SPN fixture (#27)', () => {
     ])
     const trace = first.value.trace as readonly import('./index').TraceEvent[]
     const clonedTrace = structuredClone(trace)
-    expect(hex(clonedTrace[0].value as ReturnType<typeof bits>)).toBe('0x1d3b')
+    expect(hex(clonedTrace[0].value as ReturnType<typeof bits>)).toBe('0x1234')
     expect(JSON.parse(JSON.stringify(serializeTrace(trace)))[0].value).toEqual({
       type: { family: 'bits', size: 16 },
-      hex: '0x1d3b',
+      hex: '0x1234',
     })
+    expect(trace.find((event) => event.stage === 'permute')?.operation).toEqual({ permutation: [0, 2, 1, 3] })
 
     for (const [level, paths] of [
       ['summary', [['output', '0xcb45']]],
@@ -316,7 +320,15 @@ describe('CryptoGraph Worker contract (#28)', () => {
       changedBits: 8,
       ratio: 0.5,
     })
+    if (!response.comparison.checkpoints[0].complete) return
     expect(hex(response.comparison.checkpoints[0].mask)).toBe('0x0ff0')
+    expect(response.comparison).toMatchObject({
+      truncated: false,
+      executions: {
+        baseline: { traceStatus: { truncated: false } },
+        changed: { traceStatus: { truncated: false } },
+      },
+    })
   })
 
   it('marks deterministic trace prefixes as truncated', () => {
@@ -329,10 +341,10 @@ describe('CryptoGraph Worker contract (#28)', () => {
     expect(response.kind).toBe('snapshot')
     if (response.kind !== 'snapshot') return
     expect(response.snapshot.trace).toHaveLength(1)
-    expect(response.snapshot.traceStatus).toEqual({ truncated: true, retained: 1, dropped: 8 })
+    expect(response.snapshot.traceStatus).toEqual({ truncated: true, retained: 1, dropped: 11 })
   })
 
-  it('rejects raised limits and incomplete or incompatible comparisons', () => {
+  it('retains raw snapshots when a comparison trace is incomplete', () => {
     expect(Object.isFrozen(maxWorkerLimits)).toBe(true)
     const raised = executeWorkerRequest({
       requestId: 'raised-limit',
@@ -349,7 +361,20 @@ describe('CryptoGraph Worker contract (#28)', () => {
         right: { graph: { ...teachingSpnGraph, traceLevel: 'detail' } },
       },
     })
-    expect(incomplete).toMatchObject({ kind: 'diagnostic', diagnostics: [{ code: 'comparison.incomplete-trace' }] })
+    expect(incomplete).toMatchObject({
+      kind: 'comparison',
+      comparison: {
+        truncated: true,
+        checkpoints: expect.arrayContaining([expect.objectContaining({ path: 'plaintext', changedBits: 0 })]),
+        executions: {
+          baseline: { traceStatus: { truncated: true } },
+          changed: { traceStatus: { truncated: false } },
+        },
+      },
+    })
+  })
+
+  it('rejects incompatible comparisons', () => {
 
     const incompatible = executeWorkerRequest({
       requestId: 'incompatible-comparison',
@@ -497,7 +522,9 @@ describe('CryptoGraph Worker contract (#28)', () => {
         payload: { left: { graph: repeated }, right: { graph: right } },
       })
       expect(comparison.kind).toBe('comparison')
-      if (comparison.kind === 'comparison') expect(comparison.comparison.checkpoints.every(({ changedBits }) => changedBits === 0)).toBe(true)
+      if (comparison.kind === 'comparison') expect(comparison.comparison.checkpoints.every((checkpoint) =>
+        !checkpoint.complete || checkpoint.changedBits === 0,
+      )).toBe(true)
     }
 
     const ambiguous: AuthoredGraph = {

@@ -26,6 +26,9 @@
   substitutions, permutations, key mixing, and round state inspectable.
 - **Visualizer** — A compiled-in, versioned teaching view that transforms typed
   CryptoGraph values and semantic traces into an interactive presentation.
+- **Bit Lineage** — The structural dependency relationships connecting a selected
+  bit to its ancestors and descendants through cryptographic operations. Lineage
+  does not assert that the selected bit individually caused an observed difference.
 - **Mobile Practice View** — The narrow-viewport presentation of Practice in
   which one selected Lab is the primary surface and Lab navigation is secondary.
   _Avoid:_ mobile Practice page, phone layout

@@ -29,6 +29,12 @@ export type VisualizerDescriptor = {
   readonly traceLevels: readonly ('summary' | 'round' | 'detail')[]
   readonly tracePaths: readonly string[]
   readonly options?: Readonly<Record<string, 'string' | 'number' | 'boolean'>>
+  readonly major?: number
+  readonly slots?: Readonly<Record<string, { readonly family: string }>>
+  readonly trace?: { readonly family: 'comparison'; readonly level: 'detail' }
+  readonly limits?: { readonly bits: number }
+  readonly dimensions?: { readonly minWidth: number; readonly minHeight: number }
+  readonly accessibility?: { readonly summary: string }
 }
 
 export type VisualizerCatalog = {
@@ -53,12 +59,29 @@ export type LessonCheck =
     readonly correct: string
   }
 
+export type LessonComparisonBinding = {
+  readonly baseline: LessonValueReference
+  readonly changed: LessonValueReference
+}
+
+export type LessonComparison = {
+  readonly kind: 'avalanche' | 'generic'
+  readonly graph: string
+  readonly bindings: Readonly<Record<string, LessonComparisonBinding>>
+  readonly traceLevel: 'detail'
+}
+
 export type CompiledStep = {
   readonly id: string
   readonly prose?: string
   readonly inputs?: readonly { readonly input: string; readonly prompt: string }[]
   readonly execute?: { readonly graph: string; readonly bindings: Readonly<Record<string, LessonValueReference>> }
-  readonly visualizer?: { readonly id: string; readonly bindings: Readonly<Record<string, unknown>>; readonly options: unknown }
+  readonly visualizer?: {
+    readonly id: string
+    readonly bindings?: Readonly<Record<string, unknown>>
+    readonly compare?: LessonComparison
+    readonly options: unknown
+  }
   readonly acceptedErrorCodes?: readonly string[]
   readonly check?: LessonCheck
 }
@@ -453,6 +476,27 @@ const bindingAt = (
   return undefined
 }
 
+const comparisonBindingAt = (
+  value: unknown,
+  path: string,
+  spans: ReadonlyMap<string, SourceOrigin>,
+  diagnostics: Diagnostic[],
+): LessonComparisonBinding | undefined => {
+  const map = fields(value)
+  if (!map) {
+    diagnostics.push(diagnostic('lesson.invalid-step-reference', 'Invalid comparison binding.', path, spans.get(path)))
+    return undefined
+  }
+  if (!('baseline' in map) && !('changed' in map)) {
+    const shared = bindingAt(value, path, spans, diagnostics)
+    return shared ? { baseline: shared, changed: shared } : undefined
+  }
+  checkFields(map, ['baseline', 'changed'], path, spans, diagnostics)
+  const baseline = bindingAt(map.baseline, `${path}.baseline`, spans, diagnostics)
+  const changed = bindingAt(map.changed, `${path}.changed`, spans, diagnostics)
+  return baseline && changed ? { baseline, changed } : undefined
+}
+
 const forbiddenAcceptedCode = (code: string): boolean =>
   /(?:syntax|type|reference|cancel|resource|limit|timeout|invalid|missing|unknown|unsupported)/.test(code)
 
@@ -606,11 +650,11 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
     if (step.visualizer !== undefined) {
       const visualizer = requireMap(step.visualizer, `${path}.visualizer`, lesson.spans, diagnostics)
       if (visualizer) {
-        checkFields(visualizer, ['id', 'bindings', 'options'], `${path}.visualizer`, lesson.spans, diagnostics)
+        checkFields(visualizer, ['id', 'bindings', 'compare', 'options'], `${path}.visualizer`, lesson.spans, diagnostics)
         const descriptor = typeof visualizer.id === 'string' ? catalog?.get(visualizer.id) : undefined
         if (!descriptor) diagnostics.push(diagnostic('lesson.invalid-input', 'Visualizer is not registered.', `${path}.visualizer.id`, lesson.spans.get(`${path}.visualizer.id`)))
         else {
-          const bindings = requireMap(visualizer.bindings, `${path}.visualizer.bindings`, lesson.spans, diagnostics) ?? {}
+          const bindings = visualizer.bindings === undefined ? {} : requireMap(visualizer.bindings, `${path}.visualizer.bindings`, lesson.spans, diagnostics) ?? {}
           const execution = compiled.execute ? graphInfo[compiled.execute.graph] : undefined
           for (const [slot, rawBinding] of Object.entries(bindings)) {
             const bindingPath = `${path}.visualizer.bindings.${slot}`
@@ -643,7 +687,60 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
           for (const [name, type] of Object.entries(descriptor.options ?? {})) {
             if (name in options && typeof options[name] !== type) diagnostics.push(diagnostic('lesson.invalid-input', 'Visualizer option type is invalid.', `${path}.visualizer.options.${name}`, lesson.spans.get(`${path}.visualizer.options.${name}`)))
           }
-          compiled.visualizer = { id: descriptor.id, bindings, options }
+          compiled.visualizer = { id: visualizer.id as string, bindings, options }
+          if (descriptor.trace?.family === 'comparison' && visualizer.compare === undefined) {
+            diagnostics.push(diagnostic('lesson.invalid-step-reference', 'Visualizer comparison is required.', `${path}.visualizer.compare`, lesson.spans.get(`${path}.visualizer`)))
+          } else if (visualizer.compare !== undefined) {
+            const comparePath = `${path}.visualizer.compare`
+            const compare = requireMap(visualizer.compare, comparePath, lesson.spans, diagnostics)
+            if (compare) {
+              checkFields(compare, ['kind', 'graph', 'bindings', 'traceLevel'], comparePath, lesson.spans, diagnostics)
+              const graph = typeof compare.graph === 'string' ? graphInfo[compare.graph] : undefined
+              const compareBindings = requireMap(compare.bindings, `${comparePath}.bindings`, lesson.spans, diagnostics) ?? {}
+              const resolvedBindings: Record<string, LessonComparisonBinding> = {}
+              const changedInputs: string[] = []
+              const referenceType = (reference: LessonValueReference): PortType | undefined =>
+                'input' in reference ? inputs[reference.input]?.type
+                  : 'constant' in reference ? constants[reference.constant]?.type
+                    : executionSteps.get(reference.step)?.outputTypes[reference.output]
+              for (const [target, rawBinding] of Object.entries(compareBindings)) {
+                const bindingPath = `${comparePath}.bindings.${target}`
+                const binding = comparisonBindingAt(rawBinding, bindingPath, lesson.spans, diagnostics)
+                const expected = graph?.sourceTypes[target]
+                const baselineType = binding && referenceType(binding.baseline)
+                const changedType = binding && referenceType(binding.changed)
+                if (!binding || !expected || !baselineType || !changedType
+                  || !equalTypes(expected, baselineType) || !equalTypes(expected, changedType)) {
+                  diagnostics.push(diagnostic('lesson.invalid-step-reference', 'Comparison binding is invalid.', bindingPath, lesson.spans.get(bindingPath)))
+                  continue
+                }
+                resolvedBindings[target] = binding
+                if (JSON.stringify(binding.baseline) !== JSON.stringify(binding.changed)) changedInputs.push(target)
+              }
+              for (const input of Object.keys(graph?.sourceTypes ?? {})) {
+                if (!resolvedBindings[input]) diagnostics.push(diagnostic('lesson.invalid-step-reference', 'Every comparison graph source needs a binding.', `${comparePath}.bindings`, lesson.spans.get(`${comparePath}.bindings`)))
+              }
+              if ((compare.kind !== 'avalanche' && compare.kind !== 'generic')
+                || (compare.kind === 'avalanche' && (changedInputs.length !== 1 || changedInputs[0] !== 'plaintext'))) {
+                diagnostics.push(diagnostic('lesson.invalid-input', 'Avalanche comparisons must vary only the plaintext binding.', comparePath, lesson.spans.get(comparePath)))
+              }
+              if (!graph || graph.traceLevel !== 'detail' || compare.traceLevel !== 'detail'
+                || descriptor.trace?.family !== 'comparison' || descriptor.trace.level !== 'detail') {
+                diagnostics.push(diagnostic('lesson.invalid-step-reference', 'Visualizer comparison trace is invalid.', comparePath, lesson.spans.get(comparePath)))
+              } else {
+                compiled.visualizer = {
+                  id: visualizer.id as string,
+                  compare: {
+                    kind: compare.kind as LessonComparison['kind'],
+                    graph: compare.graph as string,
+                    bindings: resolvedBindings,
+                    traceLevel: 'detail',
+                  },
+                  options,
+                }
+              }
+            }
+          }
         }
       }
     }

@@ -1,5 +1,6 @@
 import {
   CryptoGraphWorkerClient,
+  type AvalancheComparison,
   type CryptoValue,
   type Diagnostic,
   type WorkerExecutionSnapshot,
@@ -17,6 +18,8 @@ export type LessonSessionState = {
   readonly inputs: Readonly<Record<string, CryptoValue | string>>
   readonly inputDiagnostics: Readonly<Record<string, Diagnostic>>
   readonly snapshots: Readonly<Record<string, WorkerExecutionSnapshot>>
+  readonly comparisons: Readonly<Record<string, AvalancheComparison>>
+  readonly executionIdentities: Readonly<Record<string, string>>
   readonly checkResults: Readonly<Record<string, LessonCheckResult>>
   readonly acceptedDiagnostics: Readonly<Record<string, Diagnostic>>
   readonly executionDiagnostics: Readonly<Record<string, Diagnostic>>
@@ -31,11 +34,13 @@ const localized = (value: Diagnostic, locale: string): Diagnostic => ({
         'lesson.execution-cancelled': '课程执行已取消。',
         'lesson.invalid-input': '输入不符合声明的类型和编码。',
         'lesson.invalid-step-reference': '课程步骤引用无效。',
+        'lesson.comparison-input-unavailable': '比较输入不可用。',
         'lesson.missing-step-result': '引用的步骤结果不可用。',
         'lesson.missing-text': '语言文件缺少引用的文本。',
         'operation-failed': '操作执行失败。',
         'lesson.unknown-field': '包含不支持的字段。',
         'lesson.unsupported-version': '不支持的课程版本。',
+        'lesson.visualizer-unavailable': '可视化比较不可用。',
         'lesson.yaml-restriction': 'YAML 使用了不支持的功能。',
         'lesson.yaml-syntax': 'YAML 文档无效。',
       }[value.code] ?? '课程验证失败。')
@@ -55,6 +60,8 @@ export class BrowserLessonSession {
   private readonly inputs: Record<string, CryptoValue | string>
   private readonly inputDiagnostics: Record<string, Diagnostic> = {}
   private readonly snapshots = new Map<string, WorkerExecutionSnapshot>()
+  private readonly comparisons = new Map<string, AvalancheComparison>()
+  private readonly executionIdentities = new Map<string, string>()
   private readonly checkResults = new Map<string, LessonCheckResult>()
   private readonly acceptedDiagnostics = new Map<string, Diagnostic>()
   private readonly executionDiagnostics = new Map<string, Diagnostic>()
@@ -78,6 +85,8 @@ export class BrowserLessonSession {
       inputs: Object.fromEntries(Object.entries(this.inputs).map(([id, value]) => [id, typeof value === 'string' ? value : cloneValue(value)])),
       inputDiagnostics: { ...this.inputDiagnostics },
       snapshots: Object.fromEntries(this.snapshots),
+      comparisons: Object.fromEntries(this.comparisons),
+      executionIdentities: Object.fromEntries(this.executionIdentities),
       checkResults: Object.fromEntries(this.checkResults),
       acceptedDiagnostics: Object.fromEntries(this.acceptedDiagnostics),
       executionDiagnostics: Object.fromEntries(this.executionDiagnostics),
@@ -136,6 +145,10 @@ export class BrowserLessonSession {
       this.acceptedDiagnostics.delete(step)
       this.executionDiagnostics.delete(step)
     }
+    for (const step of this.lesson.steps) if (step.visualizer?.compare) {
+      this.comparisons.delete(step.id)
+      this.executionIdentities.delete(step.id)
+    }
     this.checkResults.clear()
   }
 
@@ -146,6 +159,51 @@ export class BrowserLessonSession {
         ? this.lesson.constants[reference.constant]
         : this.snapshots.get(reference.step)?.outputs[reference.output]
     return value && typeof value !== 'string' ? value : undefined
+  }
+
+  private async executeComparison(stepId: string): Promise<Result<LessonSessionState>> {
+    const compare = this.lesson.steps.find((step) => step.id === stepId)?.visualizer?.compare
+    const graph = compare && this.lesson.graphs[compare.graph]
+    if (!compare || !graph) {
+      return { ok: false, diagnostics: [localized(diagnostic('lesson.visualizer-unavailable', 'Visualizer comparison is unavailable.', `steps.${stepId}.visualizer`), this.locale)] }
+    }
+    const baseline: Record<string, CryptoValue> = {}
+    const changed: Record<string, CryptoValue> = {}
+    for (const [source, binding] of Object.entries(compare.bindings)) {
+      const left = this.referenceValue(binding.baseline)
+      const right = this.referenceValue(binding.changed)
+      if (!left || !right) {
+        return { ok: false, diagnostics: [localized(
+          diagnostic('lesson.comparison-input-unavailable', 'Comparison input is unavailable.', `steps.${stepId}.visualizer.compare.bindings.${source}`),
+          this.locale,
+        )] }
+      }
+      baseline[`${source}.value`] = cloneValue(left)
+      changed[`${source}.value`] = cloneValue(right)
+    }
+    const requestId = `${stepId}-${++this.request}`
+    const generation = this.generation
+    const response = await this.worker.execute({
+      requestId,
+      kind: 'compare',
+      payload: {
+        left: { graph: graph.graph, inputs: baseline, ...(this.lesson.limits ? { limits: this.lesson.limits } : {}) },
+        right: { graph: graph.graph, inputs: changed, ...(this.lesson.limits ? { limits: this.lesson.limits } : {}) },
+        ...(this.lesson.limits ? { limits: this.lesson.limits } : {}),
+      },
+    }).result
+    if (response.kind === 'comparison' && this.index === this.lesson.steps.findIndex((step) => step.id === stepId)
+      && generation === this.generation && requestId === `${stepId}-${this.request}`) {
+      this.comparisons.set(stepId, response.comparison)
+      this.executionIdentities.set(stepId, requestId)
+      return { ok: true, value: this.state() }
+    }
+    if (response.kind === 'diagnostic') {
+      const outcome = response.diagnostics[0]
+      if (outcome) this.executionDiagnostics.set(stepId, localized(outcome, this.locale))
+      return { ok: true, value: this.state() }
+    }
+    return { ok: false, diagnostics: [localized(diagnostic('lesson.execution-cancelled', 'Lesson execution was cancelled.', `steps.${stepId}`), this.locale)] }
   }
 
   private evaluateCheck(stepId: string): void {
@@ -172,14 +230,27 @@ export class BrowserLessonSession {
     return { ok: true, value: this.state() }
   }
 
-  previous(): LessonSessionState {
+  async previous(): Promise<LessonSessionState> {
     this.generation += 1
     this.worker.cancel()
     this.index = Math.max(0, this.index - 1)
+    const step = this.lesson.steps[this.index]
+    if (step.visualizer?.compare) {
+      const result = await this.executeComparison(step.id)
+      return result.ok ? result.value : this.state()
+    }
     return this.state()
   }
 
+  async enter(): Promise<Result<LessonSessionState>> {
+    const step = this.lesson.steps[this.index]
+    if (step.visualizer?.compare && !this.comparisons.has(step.id)) return this.executeComparison(step.id)
+    return { ok: true, value: this.state() }
+  }
+
   async next(): Promise<Result<LessonSessionState>> {
+    const current = this.lesson.steps[this.index]
+    if (current.visualizer?.compare && !this.comparisons.has(current.id)) return this.executeComparison(current.id)
     const target = Math.min(this.lesson.steps.length - 1, this.index + 1)
     if (target !== this.index) {
       this.generation += 1
@@ -187,6 +258,7 @@ export class BrowserLessonSession {
     }
     this.index = target
     const step = this.lesson.steps[target]
+    if (step.visualizer?.compare) return this.executeComparison(step.id)
     if (!step.execute) {
       this.evaluateCheck(step.id)
       return { ok: true, value: this.state() }

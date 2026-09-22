@@ -14,6 +14,7 @@ import {
   type LessonSessionState,
 } from 'lesson_runtime'
 import { hex, type CryptoValue, type Diagnostic } from 'crypto_graph'
+import { RenderHost, visualizerCatalog } from '../visualizers'
 import { loadLessonDocuments, useLearningCatalog } from './data'
 
 type LessonRoute = { lessonId: string }
@@ -70,28 +71,54 @@ const LessonView: React.FC = () => {
   const session = useRef<BrowserLessonSession | null>(null)
   const activeLesson = useRef<string | null>(null)
   const [load, setLoad] = useState<LoadState>({ status: 'loading' })
+  const [visualizerSurface, setVisualizerSurface] = useState<HTMLDivElement | null>(null)
+  const [visualizerDimensions, setVisualizerDimensions] = useState({ width: 0, height: 0 })
+  const [reducedMotion, setReducedMotion] = useState(false)
+
+  useEffect(() => {
+    if (!visualizerSurface || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(([entry]) => setVisualizerDimensions({
+      width: Math.round(entry.contentRect.width),
+      height: Math.round(entry.contentRect.height),
+    }))
+    observer.observe(visualizerSurface)
+    return () => observer.disconnect()
+  }, [visualizerSurface])
+
+  useEffect(() => {
+    const query = window.matchMedia?.('(prefers-reduced-motion: reduce)')
+    if (!query) return
+    const update = () => setReducedMotion(query.matches)
+    update()
+    query.addEventListener('change', update)
+    return () => query.removeEventListener('change', update)
+  }, [])
 
   useEffect(() => {
     let disposed = false
     setLoad({ status: 'loading' })
-    const apply = (documents: RuntimeLessonDocuments) => {
+    const apply = async (documents: RuntimeLessonDocuments) => {
       if (activeLesson.current === lessonId && session.current) {
-        const updated = session.current.updateDocuments(documents, i18n.language)
+        const updated = session.current.updateDocuments(documents, i18n.language, visualizerCatalog)
         if (!updated.ok) {
-          setLoad({ status: 'error', diagnostics: updated.diagnostics })
+          if (!disposed) setLoad({ status: 'error', diagnostics: updated.diagnostics })
           return
         }
       } else {
-        const created = createBrowserLessonSession(documents, i18n.language)
+        const created = createBrowserLessonSession(documents, i18n.language, visualizerCatalog)
         if (!created.ok) {
-          setLoad({ status: 'error', diagnostics: created.diagnostics })
+          if (!disposed) setLoad({ status: 'error', diagnostics: created.diagnostics })
           return
         }
         session.current?.dispose()
         session.current = created.value
         activeLesson.current = lessonId
       }
-      setLoad({ status: 'ready', state: session.current!.state() })
+      const entered = await session.current!.enter()
+      if (!disposed) {
+        if (entered.ok) setLoad({ status: 'ready', state: entered.value })
+        else setLoad({ status: 'error', diagnostics: entered.diagnostics })
+      }
     }
     const loadDocuments = async () => {
       try {
@@ -102,7 +129,7 @@ const LessonView: React.FC = () => {
         }
         const fallback = lessonDefaultLocale(selectedDocuments.lesson)
         if (!fallback) {
-          if (!disposed) apply({
+          if (!disposed) void apply({
             lesson: selectedDocuments.lesson,
             locales: selectedDocuments.locale === null ? {} : { [i18n.language]: selectedDocuments.locale },
           })
@@ -116,7 +143,7 @@ const LessonView: React.FC = () => {
             setLoad({ status: 'error', diagnostics: [diagnostic(t('learning.missingDefaultLocale'))] })
             return
           }
-          if (!disposed) apply({
+          if (!disposed) void apply({
             lesson: selectedDocuments.lesson,
             locales: locale === null
               ? { [fallback]: fallbackLocale }
@@ -124,7 +151,7 @@ const LessonView: React.FC = () => {
           })
           return
         }
-        if (!disposed) apply({ lesson: selectedDocuments.lesson, locales: { [i18n.language]: locale } })
+        if (!disposed) void apply({ lesson: selectedDocuments.lesson, locales: { [i18n.language]: locale } })
       } catch (error) {
         const graphQLErrors = (error as { errors?: readonly { extensions?: { code?: string } }[] }).errors
         if (!disposed) setLoad(graphQLErrors?.some((item) => item.extensions?.code?.endsWith(' not found'))
@@ -175,6 +202,16 @@ const LessonView: React.FC = () => {
       <thead><tr><th>{t('learning.output')}</th><th>{t('learning.value')}</th></tr></thead>
       <tbody>{Object.entries(state.snapshots[step.id].outputs).map(([name, value]) => <tr key={name}><th>{name}</th><td>{valueText(value)}</td></tr>)}</tbody>
     </table>}
+    {step.visualizer?.compare && state.comparisons[step.id] && <div ref={setVisualizerSurface}>
+      <RenderHost
+        comparison={state.comparisons[step.id]}
+        dimensions={visualizerDimensions}
+        executionIdentity={state.executionIdentities[step.id] ?? step.id}
+        invocation={step.visualizer}
+        locale={state.locale}
+        reducedMotion={reducedMotion}
+      />
+    </div>}
     {acceptedDiagnostic && <Callout intent="primary">{diagnosticText(acceptedDiagnostic)}</Callout>}
     {executionDiagnostic && <Callout intent="danger">{diagnosticText(executionDiagnostic)}</Callout>}
     {step.check?.kind === 'choice' && <fieldset>
@@ -193,7 +230,7 @@ const LessonView: React.FC = () => {
       {locale.texts[checkResult.feedback]}
     </Callout>}
     <p>
-      <Button disabled={state.stepIndex === 0} onClick={() => { current.previous(); refresh() }}>{t('learning.previous')}</Button>
+      <Button disabled={state.stepIndex === 0} onClick={() => void current.previous().then((previous) => setLoad({ status: 'ready', state: previous }))}>{t('learning.previous')}</Button>
       <Button onClick={() => void next()}>{t('learning.next')}</Button>
     </p>
   </section>
