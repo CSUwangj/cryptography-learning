@@ -1,0 +1,40 @@
+/* Wireframe styling only; geometry and continuity are defined in app.js. */
+* { box-sizing: border-box; }
+body { margin: 0; background: #fff; color: #17212b; font: 16px/1.5 system-ui, sans-serif; }
+header, main { margin: 24px auto; padding: 0 24px; max-width: 1440px; }
+h1 { font-size: 26px; margin: 12px 0; }
+p { max-width: 1100px; margin: 10px 0; }
+select { font: inherit; margin-left: 8px; padding: 4px; }
+#selection { border-left: 4px solid #075bba; padding-left: 12px; }
+#diagram { overflow: auto; border: 1px solid #bcc4cc; padding: 16px 0; }
+svg { display: block; }
+text { fill: #17212b; font: 13px system-ui, sans-serif; pointer-events: none; }
+.heading { font-size: 14px; font-weight: 650; }
+.mono { font-family: ui-monospace, monospace; font-size: 14px; }
+.small { font-size: 12px; }
+.center { text-anchor: middle; }
+.muted, .bit-index { fill: #52606c; }
+.bit-index { font-size: 10px; }
+.wire { stroke: #d0d6dc; stroke-width: 1; fill: none; }
+.wire.related { stroke: #075bba; stroke-width: 2; }
+.divider { stroke: #adb7c0; stroke-dasharray: 5 5; }
+.byte-divider { stroke: #17212b; stroke-width: 2; }
+.cell, .operation, .xor, .key-box { fill: white; stroke: #939faa; }
+.cell.different { fill: #fff0ba; }
+.difference-value { text-decoration: underline; font-weight: 700; }
+.active { stroke: #075bba; stroke-width: 2; }
+.chosen { stroke: #17212b; stroke-width: 3; }
+.key-wire { stroke: #54697b; stroke-width: 2; fill: none; stroke-dasharray: 6 3; }
+.key-wire.key-selected { stroke: #075bba; stroke-width: 4; stroke-dasharray: none; }
+.key-bit, .lookup { fill: #075bba; font: bold 14px ui-monospace, monospace; text-decoration: underline; }
+[role="button"] { cursor: pointer; }
+[role="button"]:focus { outline: none; }
+[role="button"]:focus-visible rect { stroke: #17212b; stroke-width: 4; stroke-dasharray: 3 2; }
+:focus-visible { outline: 3px solid #075bba; outline-offset: 3px; }
+#footnote { color: #52606c; font-size: 14px; }
+#key-case { overflow-x: auto; margin-top: 28px; }
+.key-showcase-cell.different { fill: #ffd9d2; }
+.key-showcase-wire { stroke: #b42318; }
+.key-showcase-box { stroke: #b42318; }
+.key-showcase-text { fill: #b42318; font-weight: 700; }
+@media (max-width: 600px) { header, main { padding: 0 12px; } }
