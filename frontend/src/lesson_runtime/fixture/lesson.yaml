@@ -11,6 +11,10 @@ constants:
     type: {family: bits, size: 16}
     encoding: hex
     value: "0x00ff"
+  expected:
+    type: {family: bits, size: 16}
+    encoding: hex
+    value: "0x0ff0"
 graphs:
   xor:
     nodes:
@@ -42,3 +46,19 @@ steps:
       bindings:
         left.value: {input: plaintext}
         right.value: {constant: mask}
+    check:
+      kind: equal
+      actual: {step: calculate, output: mixed.value}
+      expected: {constant: expected}
+      feedback: {match: check-xor-match, mismatch: check-xor-mismatch}
+  - id: identify-operation
+    check:
+      kind: choice
+      options:
+        - id: xor
+          label: choice-xor
+          feedback: feedback-xor
+        - id: and
+          label: choice-and
+          feedback: feedback-and
+      correct: xor

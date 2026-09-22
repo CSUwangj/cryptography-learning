@@ -70,6 +70,7 @@ i18n
             'outputs': 'Graph outputs',
             'output': 'Output',
             'value': 'Value',
+            'check': 'Check your answer',
           },
           'notFound': {
             'title': 'Not Found',
@@ -172,6 +173,7 @@ i18n
             'outputs': '图输出',
             'output': '输出',
             'value': '值',
+            'check': '检查答案',
           },
           'notFound': {
             'title': '未找到',

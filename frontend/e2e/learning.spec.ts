@@ -9,6 +9,12 @@ const locales = {
 
 test.describe('Learning Lesson (#30)', () => {
   test('loads catalog and deep link, retains input, and executes the XOR Step', async ({ page }) => {
+    const progressRequests: string[] = []
+    page.on('request', (request) => {
+      if (request.url().endsWith('/query') && /completion|progress|practice/i.test(request.postDataJSON()?.query ?? '')) {
+        progressRequests.push(request.postDataJSON()?.query ?? '')
+      }
+    })
     if (!process.env.PLAYWRIGHT_BASE_URL) {
       await page.route('**/query', async (route) => {
         const variables = route.request().postDataJSON()?.variables
@@ -54,7 +60,12 @@ test.describe('Learning Lesson (#30)', () => {
     await expect(input).toHaveValue('0x0f0f')
     await page.getByRole('button', { name: 'Next' }).click()
     await expect(page.getByText('0x0ff0 (bits<16>)')).toBeVisible()
+    await expect(page.getByText('Correct output.')).toBeVisible()
+    await page.getByRole('button', { name: 'Next' }).click()
+    await page.getByRole('button', { name: 'XOR' }).click()
+    await expect(page.getByText('This graph applies XOR.')).toBeVisible()
 
+    await page.getByRole('button', { name: 'Previous' }).click()
     await page.getByRole('button', { name: 'Previous' }).click()
     await input.fill('0x0000')
     await page.getByRole('button', { name: 'Language' }).click()
@@ -66,6 +77,83 @@ test.describe('Learning Lesson (#30)', () => {
 
     await page.goto('/learning/xor-intro')
     await expect(page.getByRole('heading', { name: '探索异或' })).toBeVisible()
+    expect(progressRequests).toEqual([])
+  })
+
+  test('keeps navigation available after an accepted operation diagnostic', async ({ page }) => {
+    test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses the synthetic Worker fixture')
+    const acceptedLesson = lesson.replace(
+      '    check:\n      kind: equal',
+      '    accepted_error_codes: [operation-failed]\n    check:\n      kind: equal',
+    )
+    await page.addInitScript(() => {
+      class WorkerStub {
+        private listeners: Array<(event: MessageEvent<unknown>) => void> = []
+
+        addEventListener(type: string, listener: (event: MessageEvent<unknown>) => void): void {
+          if (type === 'message') this.listeners.push(listener)
+        }
+
+        postMessage(request: { requestId: string }): void {
+          queueMicrotask(() => this.listeners.forEach((listener) => listener({
+            data: {
+              requestId: request.requestId,
+              kind: 'diagnostic',
+              diagnostics: [{ code: 'operation-failed', message: 'Operation execution failed.', path: 'mixed', details: {} }],
+            },
+          } as MessageEvent<unknown>)))
+        }
+
+        terminate(): void {}
+      }
+      Object.defineProperty(window, 'Worker', { value: WorkerStub })
+    })
+    await page.route('**/query', async (route) => {
+      const variables = route.request().postDataJSON()?.variables
+      await route.fulfill({
+        json: {
+          data: {
+            lessonDocuments: {
+              lesson: acceptedLesson,
+              locale: locales[variables.language as keyof typeof locales] ?? null,
+            },
+          },
+        },
+      })
+    })
+
+    await page.goto('/learning/xor-intro')
+    await page.getByRole('button', { name: 'Next' }).click()
+    await page.getByRole('button', { name: 'Next' }).click()
+    await expect(page.getByText('operation-failed: Operation execution failed. (mixed)')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Previous' })).toBeEnabled()
+    await page.getByRole('button', { name: 'Next' }).click()
+    await expect(page.getByRole('button', { name: 'XOR' })).toBeVisible()
+  })
+
+  test('keeps navigation available after a bounded execution failure', async ({ page }) => {
+    test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses the synthetic Lesson fixture')
+    const boundedLesson = lesson.replace('steps:\n', 'limits: {inputBytes: 1}\nsteps:\n')
+    await page.route('**/query', async (route) => {
+      const variables = route.request().postDataJSON()?.variables
+      await route.fulfill({
+        json: {
+          data: {
+            lessonDocuments: {
+              lesson: boundedLesson,
+              locale: locales[variables.language as keyof typeof locales] ?? null,
+            },
+          },
+        },
+      })
+    })
+
+    await page.goto('/learning/xor-intro')
+    await page.getByRole('button', { name: 'Next' }).click()
+    await page.getByRole('button', { name: 'Next' }).click()
+    await expect(page.getByText(/execution\.input-limit/)).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Previous' })).toBeEnabled()
+    await expect(page.getByRole('button', { name: 'Next' })).toBeEnabled()
   })
 
   test('container handles locale fallback, malformed content, and unknown Lessons', async ({ page }) => {

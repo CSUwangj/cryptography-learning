@@ -4,7 +4,11 @@ import {
   type Diagnostic,
   type WorkerExecutionSnapshot,
 } from '../crypto_graph'
-import { compileLesson, decodeLessonValue, type CompiledLesson, type LessonDocuments, type Result, type VisualizerCatalog } from './compiler'
+import { compileLesson, decodeLessonValue, equalCryptoValues, type CompiledLesson, type LessonDocuments, type LessonValueReference, type Result, type VisualizerCatalog } from './compiler'
+
+export type LessonCheckResult =
+  | { readonly kind: 'equal'; readonly matched: boolean; readonly feedback: string }
+  | { readonly kind: 'choice'; readonly selected: string; readonly correct: boolean; readonly feedback: string }
 
 export type LessonSessionState = {
   readonly locale: string
@@ -13,6 +17,9 @@ export type LessonSessionState = {
   readonly inputs: Readonly<Record<string, CryptoValue | string>>
   readonly inputDiagnostics: Readonly<Record<string, Diagnostic>>
   readonly snapshots: Readonly<Record<string, WorkerExecutionSnapshot>>
+  readonly checkResults: Readonly<Record<string, LessonCheckResult>>
+  readonly acceptedDiagnostics: Readonly<Record<string, Diagnostic>>
+  readonly executionDiagnostics: Readonly<Record<string, Diagnostic>>
 }
 
 const diagnostic = (code: string, message: string, path: string): Diagnostic => ({ code, message, path, details: {} })
@@ -26,6 +33,7 @@ const localized = (value: Diagnostic, locale: string): Diagnostic => ({
         'lesson.invalid-step-reference': '课程步骤引用无效。',
         'lesson.missing-step-result': '引用的步骤结果不可用。',
         'lesson.missing-text': '语言文件缺少引用的文本。',
+        'operation-failed': '操作执行失败。',
         'lesson.unknown-field': '包含不支持的字段。',
         'lesson.unsupported-version': '不支持的课程版本。',
         'lesson.yaml-restriction': 'YAML 使用了不支持的功能。',
@@ -47,6 +55,9 @@ export class BrowserLessonSession {
   private readonly inputs: Record<string, CryptoValue | string>
   private readonly inputDiagnostics: Record<string, Diagnostic> = {}
   private readonly snapshots = new Map<string, WorkerExecutionSnapshot>()
+  private readonly checkResults = new Map<string, LessonCheckResult>()
+  private readonly acceptedDiagnostics = new Map<string, Diagnostic>()
+  private readonly executionDiagnostics = new Map<string, Diagnostic>()
   private readonly worker = new CryptoGraphWorkerClient()
   private index = 0
   private request = 0
@@ -67,6 +78,9 @@ export class BrowserLessonSession {
       inputs: Object.fromEntries(Object.entries(this.inputs).map(([id, value]) => [id, typeof value === 'string' ? value : cloneValue(value)])),
       inputDiagnostics: { ...this.inputDiagnostics },
       snapshots: Object.fromEntries(this.snapshots),
+      checkResults: Object.fromEntries(this.checkResults),
+      acceptedDiagnostics: Object.fromEntries(this.acceptedDiagnostics),
+      executionDiagnostics: Object.fromEntries(this.executionDiagnostics),
     }
   }
 
@@ -116,7 +130,46 @@ export class BrowserLessonSession {
         ('input' in binding && binding.input === input) || ('step' in binding && affected.has(binding.step))
       )) affected.add(step.id)
     }
-    for (const step of affected) this.snapshots.delete(step)
+    for (const step of affected) {
+      this.snapshots.delete(step)
+      this.checkResults.delete(step)
+      this.acceptedDiagnostics.delete(step)
+      this.executionDiagnostics.delete(step)
+    }
+    this.checkResults.clear()
+  }
+
+  private referenceValue(reference: LessonValueReference): CryptoValue | undefined {
+    const value = 'input' in reference
+      ? this.inputs[reference.input]
+      : 'constant' in reference
+        ? this.lesson.constants[reference.constant]
+        : this.snapshots.get(reference.step)?.outputs[reference.output]
+    return value && typeof value !== 'string' ? value : undefined
+  }
+
+  private evaluateCheck(stepId: string): void {
+    const check = this.lesson.steps.find((step) => step.id === stepId)?.check
+    if (!check || check.kind !== 'equal') return
+    const actual = this.referenceValue(check.actual)
+    const expected = this.referenceValue(check.expected)
+    if (!actual || !expected) return
+    const matched = equalCryptoValues(actual, expected)
+    this.checkResults.set(stepId, { kind: 'equal', matched, feedback: matched ? check.feedback.match : check.feedback.mismatch })
+  }
+
+  selectChoice(optionId: string): Result<LessonSessionState> {
+    const step = this.lesson.steps[this.index]
+    const check = step.check
+    if (!check || check.kind !== 'choice') {
+      return { ok: false, diagnostics: [localized(diagnostic('lesson.invalid-input', 'Current Step has no choice check.', `steps.${step.id}.check`), this.locale)] }
+    }
+    const option = check.options.find((item) => item.id === optionId)
+    if (!option) {
+      return { ok: false, diagnostics: [localized(diagnostic('lesson.invalid-input', 'Choice option is invalid.', `steps.${step.id}.check.options`), this.locale)] }
+    }
+    this.checkResults.set(step.id, { kind: 'choice', selected: option.id, correct: option.id === check.correct, feedback: option.feedback })
+    return { ok: true, value: this.state() }
   }
 
   previous(): LessonSessionState {
@@ -134,8 +187,16 @@ export class BrowserLessonSession {
     }
     this.index = target
     const step = this.lesson.steps[target]
-    if (!step.execute) return { ok: true, value: this.state() }
-    if (this.snapshots.has(step.id)) return { ok: true, value: this.state() }
+    if (!step.execute) {
+      this.evaluateCheck(step.id)
+      return { ok: true, value: this.state() }
+    }
+    if (this.snapshots.has(step.id)) {
+      this.evaluateCheck(step.id)
+      return { ok: true, value: this.state() }
+    }
+    this.acceptedDiagnostics.delete(step.id)
+    this.executionDiagnostics.delete(step.id)
     const graph = this.lesson.graphs[step.execute.graph]
     const inputs: Record<string, CryptoValue> = {}
     for (const [targetPort, binding] of Object.entries(step.execute.bindings)) {
@@ -165,9 +226,19 @@ export class BrowserLessonSession {
     }).result
     if (response.kind === 'snapshot' && this.index === target && generation === this.generation && requestId === `${step.id}-${this.request}`) {
       this.snapshots.set(step.id, response.snapshot)
+      this.evaluateCheck(step.id)
       return { ok: true, value: this.state() }
     }
-    if (response.kind === 'diagnostic') return { ok: false, diagnostics: response.diagnostics.map((item) => localized(item, this.locale)) }
+    if (response.kind === 'diagnostic') {
+      const outcome = response.diagnostics[0]
+      if (outcome) {
+        const diagnostics = step.acceptedErrorCodes?.includes(outcome.code)
+          ? this.acceptedDiagnostics
+          : this.executionDiagnostics
+        diagnostics.set(step.id, localized(outcome, this.locale))
+      }
+      return { ok: true, value: this.state() }
+    }
     return { ok: false, diagnostics: [localized(diagnostic('lesson.execution-cancelled', 'Lesson execution was cancelled.', `steps.${step.id}`), this.locale)] }
   }
 

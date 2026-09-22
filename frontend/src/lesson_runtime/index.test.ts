@@ -2,7 +2,7 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { bits, executeWorkerRequest, hex } from '../crypto_graph'
 import {
   compileLesson,
@@ -28,6 +28,20 @@ const fixture = (): LessonDocuments => ({
 
 const normalizedLesson = (lesson: unknown): unknown => JSON.parse(JSON.stringify(lesson))
 
+class WorkerStub {
+  private listeners: Array<(event: MessageEvent<unknown>) => void> = []
+
+  addEventListener(type: string, listener: (event: MessageEvent<unknown>) => void): void {
+    if (type === 'message') this.listeners.push(listener)
+  }
+
+  postMessage(request: Parameters<typeof executeWorkerRequest>[0]): void {
+    queueMicrotask(() => this.listeners.forEach((listener) => listener({ data: executeWorkerRequest(request) } as MessageEvent<unknown>)))
+  }
+
+  terminate(): void {}
+}
+
 describe('Lesson Runtime compiler (#29)', () => {
   it('compiles bilingual XOR fixture and executes supplied inputs', () => {
     const compiled = compileLesson(fixture())
@@ -41,11 +55,191 @@ describe('Lesson Runtime compiler (#29)', () => {
     expect(execution.ok).toBe(true)
     if (!execution.ok) return
     expect(hex(execution.value.outputs['mixed.value'] as never)).toBe('0x0ff0')
-    expect(compiled.value.steps.map((step) => step.id)).toEqual(['introduction', 'enter-input', 'calculate'])
+    expect(compiled.value.steps.map((step) => step.id)).toEqual(['introduction', 'enter-input', 'calculate', 'identify-operation'])
+  })
+
+  it('compiles typed equality checks with localized feedback', () => {
+    const documents = fixture()
+
+    expect(compileLesson(documents)).toMatchObject({
+      ok: true,
+      value: {
+        steps: [expect.anything(), expect.anything(), {
+          check: {
+            kind: 'equal',
+            actual: { step: 'calculate', output: 'mixed.value' },
+            expected: { constant: 'expected' },
+            feedback: { match: 'check-xor-match', mismatch: 'check-xor-mismatch' },
+          },
+        }, expect.anything()],
+      },
+    })
+  })
+
+  it('records equality feedback in local Step state', async () => {
+    const documents = fixture()
+    const lesson = documents.lesson.replace('value: "0x0ff0"', 'value: "0x00ff"')
+    const previousWorker = globalThis.Worker
+    globalThis.Worker = WorkerStub as unknown as typeof Worker
+    try {
+      const session = createBrowserLessonSession({ ...documents, lesson }, 'en-US')
+      expect(session.ok).toBe(true)
+      if (!session.ok) return
+      await session.value.next()
+      const result = await session.value.next()
+      expect(result).toMatchObject({
+        ok: true,
+        value: {
+          checkResults: {
+            calculate: { kind: 'equal', matched: false, feedback: 'check-xor-mismatch' },
+          },
+        },
+      })
+      session.value.dispose()
+    } finally {
+      globalThis.Worker = previousWorker
+    }
+  })
+
+  it('evaluates standalone equality checks when their Step opens', async () => {
+    const documents = fixture()
+    const lesson = documents.lesson.replace(/  - id: calculate[\s\S]*/, `  - id: compare-input
+    check:
+      kind: equal
+      actual: {input: plaintext}
+      expected: {constant: expected}
+      feedback: {match: check-xor-match, mismatch: check-xor-mismatch}
+`)
+    const session = createBrowserLessonSession({ ...documents, lesson }, 'en-US')
+    expect(session.ok).toBe(true)
+    if (!session.ok) return
+    await session.value.next()
+    expect(await session.value.next()).toMatchObject({
+      ok: true,
+      value: {
+        checkResults: {
+          'compare-input': { kind: 'equal', matched: false, feedback: 'check-xor-mismatch' },
+        },
+      },
+    })
+    session.value.dispose()
+  })
+
+  it('keeps multiple-choice selection and feedback local to its Step', async () => {
+    const previousWorker = globalThis.Worker
+    globalThis.Worker = WorkerStub as unknown as typeof Worker
+    try {
+      const session = createBrowserLessonSession(fixture(), 'en-US')
+      expect(session.ok).toBe(true)
+      if (!session.ok) return
+      await session.value.next()
+      await session.value.next()
+      await session.value.next()
+      expect(session.value.selectChoice('and')).toMatchObject({
+        ok: true,
+        value: {
+          checkResults: {
+            'identify-operation': { kind: 'choice', selected: 'and', correct: false, feedback: 'feedback-and' },
+          },
+        },
+      })
+      session.value.dispose()
+    } finally {
+      globalThis.Worker = previousWorker
+    }
+  })
+
+  it('keeps accepted operation diagnostics as local teaching outcomes', async () => {
+    const documents = fixture()
+    const lesson = documents.lesson.replace(
+      '    check:\n      kind: equal',
+      '    accepted_error_codes: [operation-failed]\n    check:\n      kind: equal',
+    )
+    const previousWorker = globalThis.Worker
+    class WorkerStub {
+      private listeners: Array<(event: MessageEvent<unknown>) => void> = []
+
+      addEventListener(type: string, listener: (event: MessageEvent<unknown>) => void): void {
+        if (type === 'message') this.listeners.push(listener)
+      }
+
+      postMessage(request: { requestId: string }): void {
+        queueMicrotask(() => this.listeners.forEach((listener) => listener({
+          data: {
+            requestId: request.requestId,
+            kind: 'diagnostic',
+            diagnostics: [{ code: 'operation-failed', message: 'Operation execution failed.', path: 'mixed', details: {} }],
+          },
+        } as MessageEvent<unknown>)))
+      }
+
+      terminate(): void {}
+    }
+    globalThis.Worker = WorkerStub as unknown as typeof Worker
+    try {
+      const session = createBrowserLessonSession({ ...documents, lesson }, 'en-US')
+      expect(session.ok).toBe(true)
+      if (!session.ok) return
+      await session.value.next()
+      expect(await session.value.next()).toMatchObject({
+        ok: true,
+        value: {
+          acceptedDiagnostics: {
+            calculate: { code: 'operation-failed' },
+          },
+        },
+      })
+      session.value.dispose()
+    } finally {
+      globalThis.Worker = previousWorker
+    }
+  })
+
+  it('preserves accepted dry-run diagnostics', () => {
+    const documents = fixture()
+    const lesson = documents.lesson.replace(/steps:[\s\S]*/, `steps:
+  - id: fail
+    execute:
+      graph: failure
+      bindings: {}
+    accepted_error_codes: [operation-failed]
+`).replace('steps:\n', `  failure:
+    nodes:
+      - id: fail
+        operation: test.throw@1
+    outputs:
+      - {node: fail, port: value}
+steps:
+`)
+
+    expect(validateLessonDocuments({ ...documents, lesson })).toMatchObject({
+      ok: true,
+      dryRun: {
+        steps: [{
+          id: 'fail',
+          execution: 'accepted-error',
+          diagnostics: [{ code: 'operation-failed', path: 'fail', details: {} }],
+        }],
+      },
+    })
+  })
+
+  it('enforces declared dry-run time limits', () => {
+    const documents = fixture()
+    const lesson = documents.lesson.replace('steps:\n', 'limits: {timeoutMs: 1}\nsteps:\n')
+    const clock = vi.spyOn(performance, 'now').mockReturnValueOnce(0).mockReturnValueOnce(2)
+    try {
+      expect(validateLessonDocuments({ ...documents, lesson })).toMatchObject({
+        ok: false,
+        diagnostics: [{ code: 'execution.timeout', path: 'steps.calculate.execute' }],
+      })
+    } finally {
+      clock.mockRestore()
+    }
   })
 
   it('gives Node and browser adapters identical validation results', () => {
-    expect(validateLessonDocuments(fixture())).toEqual({ ok: true, diagnostics: [] })
+    expect(validateLessonDocuments(fixture())).toMatchObject({ ok: true, diagnostics: [], dryRun: expect.anything() })
     const browserDocuments = { ...fixture(), locales: { 'en-US': fixture().locales['en-US'] } }
     const browser = createBrowserLessonSession(browserDocuments, 'zh-CN')
     expect(browser.ok).toBe(true)
@@ -76,7 +270,18 @@ describe('Lesson Runtime compiler (#29)', () => {
     expect(JSON.parse(execFileSync(process.execPath, ['scripts/validate_lessons.mjs', 'src/lesson_runtime/fixture'], {
       cwd: frontendDirectory,
       encoding: 'utf8',
-    }))).toEqual({ ok: true, diagnostics: [] })
+    }))).toMatchObject({
+      ok: true,
+      diagnostics: [],
+      dryRun: {
+        steps: [
+          { id: 'introduction' },
+          { id: 'enter-input' },
+          { id: 'calculate', check: { kind: 'equal', matched: true } },
+          { id: 'identify-operation', check: { kind: 'choice' } },
+        ],
+      },
+    })
     const missing = spawnSync(process.execPath, ['scripts/validate_lessons.mjs', 'missing'], {
       cwd: frontendDirectory,
       encoding: 'utf8',
@@ -112,6 +317,8 @@ describe('Lesson Runtime compiler (#29)', () => {
       source.replace('size: 16}\n    encoding: hex\n    value', 'size: 8}\n    encoding: hex\n    value'),
       source.replace('{node: mixed, port: value}', '{node: mixed, port: value, typo: true}'),
       source.replace('        right.value: {constant: mask}', '        right.value: {constant: mask}\n    accepted_error_codes: ["invented"]'),
+      source.replace('correct: xor', 'correct: absent'),
+      source.replace('- id: and', '- id: xor'),
       `${source}\nlimits: {timeoutMs: 1001}\n`,
     ]) expect(compileLesson({ ...fixture(), lesson })).toMatchObject({ ok: false })
 
@@ -139,19 +346,6 @@ describe('Lesson Runtime compiler (#29)', () => {
 
   it('invalidates and recomputes execution snapshots after an input change', async () => {
     const previousWorker = globalThis.Worker
-    class WorkerStub {
-      private listeners: Array<(event: MessageEvent<unknown>) => void> = []
-
-      addEventListener(type: string, listener: (event: MessageEvent<unknown>) => void): void {
-        if (type === 'message') this.listeners.push(listener)
-      }
-
-      postMessage(request: Parameters<typeof executeWorkerRequest>[0]): void {
-        queueMicrotask(() => this.listeners.forEach((listener) => listener({ data: executeWorkerRequest(request) } as MessageEvent<unknown>)))
-      }
-
-      terminate(): void {}
-    }
     globalThis.Worker = WorkerStub as unknown as typeof Worker
     try {
       const session = createBrowserLessonSession(fixture(), 'en-US')
@@ -162,6 +356,7 @@ describe('Lesson Runtime compiler (#29)', () => {
       expect(session.value.setInput('plaintext', bits(16, Uint8Array.of(0, 0))).ok).toBe(true)
       await pending
       expect(session.value.state().snapshots).toEqual({})
+      session.value.previous()
       const first = await session.value.next()
       expect(first.ok && hex(first.value.snapshots.calculate.outputs['mixed.value'] as never)).toBe('0x00ff')
       session.value.previous()

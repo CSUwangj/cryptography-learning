@@ -147,6 +147,9 @@ const LessonView: React.FC = () => {
   const step = current.lesson.steps[state.stepIndex]
   const locale = current.lesson.locales[state.locale]
   const refresh = () => setLoad({ status: 'ready', state: current.state() })
+  const checkResult = state.checkResults[step.id]
+  const acceptedDiagnostic = state.acceptedDiagnostics[step.id]
+  const executionDiagnostic = state.executionDiagnostics[step.id]
   const next = async () => {
     const result = await current.next()
     if (!result.ok) setLoad({ status: 'error', diagnostics: result.diagnostics })
@@ -172,6 +175,23 @@ const LessonView: React.FC = () => {
       <thead><tr><th>{t('learning.output')}</th><th>{t('learning.value')}</th></tr></thead>
       <tbody>{Object.entries(state.snapshots[step.id].outputs).map(([name, value]) => <tr key={name}><th>{name}</th><td>{valueText(value)}</td></tr>)}</tbody>
     </table>}
+    {acceptedDiagnostic && <Callout intent="primary">{diagnosticText(acceptedDiagnostic)}</Callout>}
+    {executionDiagnostic && <Callout intent="danger">{diagnosticText(executionDiagnostic)}</Callout>}
+    {step.check?.kind === 'choice' && <fieldset>
+      <legend>{t('learning.check')}</legend>
+      {step.check.options.map((option) => <Button
+        key={option.id}
+        active={checkResult?.kind === 'choice' && checkResult.selected === option.id}
+        onClick={() => {
+          const result = current.selectChoice(option.id)
+          if (result.ok) setLoad({ status: 'ready', state: result.value })
+          else setLoad({ status: 'error', diagnostics: result.diagnostics })
+        }}
+      >{locale.texts[option.label]}</Button>)}
+    </fieldset>}
+    {checkResult && <Callout intent={checkResult.kind === 'equal' ? (checkResult.matched ? 'success' : 'warning') : (checkResult.correct ? 'success' : 'warning')}>
+      {locale.texts[checkResult.feedback]}
+    </Callout>}
     <p>
       <Button disabled={state.stepIndex === 0} onClick={() => { current.previous(); refresh() }}>{t('learning.previous')}</Button>
       <Button onClick={() => void next()}>{t('learning.next')}</Button>

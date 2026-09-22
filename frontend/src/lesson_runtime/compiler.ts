@@ -35,18 +35,32 @@ export type VisualizerCatalog = {
   readonly get: (id: string) => VisualizerDescriptor | undefined
 }
 
-type Binding =
+export type LessonValueReference =
   | { readonly input: string }
   | { readonly constant: string }
   | { readonly step: string; readonly output: string }
 
-type CompiledStep = {
+export type LessonCheck =
+  | {
+    readonly kind: 'equal'
+    readonly actual: LessonValueReference
+    readonly expected: LessonValueReference
+    readonly feedback: { readonly match: string; readonly mismatch: string }
+  }
+  | {
+    readonly kind: 'choice'
+    readonly options: readonly { readonly id: string; readonly label: string; readonly feedback: string }[]
+    readonly correct: string
+  }
+
+export type CompiledStep = {
   readonly id: string
   readonly prose?: string
   readonly inputs?: readonly { readonly input: string; readonly prompt: string }[]
-  readonly execute?: { readonly graph: string; readonly bindings: Readonly<Record<string, Binding>> }
+  readonly execute?: { readonly graph: string; readonly bindings: Readonly<Record<string, LessonValueReference>> }
   readonly visualizer?: { readonly id: string; readonly bindings: Readonly<Record<string, unknown>>; readonly options: unknown }
   readonly acceptedErrorCodes?: readonly string[]
+  readonly check?: LessonCheck
 }
 
 export type CompiledLesson = {
@@ -232,6 +246,13 @@ export const decodeLessonValue = (type: PortType, encoding: string, value: unkno
 }
 
 const equalTypes = (left: PortType, right: PortType): boolean => JSON.stringify(left) === JSON.stringify(right)
+
+export const equalCryptoValues = (left: CryptoValue, right: CryptoValue): boolean =>
+  equalTypes(left.type, right.type)
+  && ('symbol' in left && 'symbol' in right
+    ? left.symbol === right.symbol
+    : !('symbol' in left) && !('symbol' in right) && [...('words' in left ? left.words : left.bytes)].every((value, index) =>
+      value === ('words' in right ? right.words : right.bytes)[index]))
 
 const validateReference = (
   value: unknown,
@@ -421,7 +442,7 @@ const bindingAt = (
   path: string,
   spans: ReadonlyMap<string, SourceOrigin>,
   diagnostics: Diagnostic[],
-): Binding | undefined => {
+): LessonValueReference | undefined => {
   const binding = requireMap(value, path, spans, diagnostics)
   if (!binding) return undefined
   const keys = Object.keys(binding)
@@ -516,13 +537,13 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
     const path = `steps.${index}`
     const step = requireMap(raw, path, lesson.spans, diagnostics)
     if (!step) continue
-    checkFields(step, ['id', 'prose', 'inputs', 'execute', 'visualizer', 'accepted_error_codes'], path, lesson.spans, diagnostics)
+    checkFields(step, ['id', 'prose', 'inputs', 'execute', 'visualizer', 'accepted_error_codes', 'check'], path, lesson.spans, diagnostics)
     if (typeof step.id !== 'string' || !identifier.test(step.id) || stepIds.has(step.id)) {
       diagnostics.push(diagnostic('lesson.invalid-input', 'Step ID is invalid or duplicated.', `${path}.id`, lesson.spans.get(`${path}.id`)))
       continue
     }
     stepIds.add(step.id)
-    const compiled: { id: string; prose?: string; inputs?: { input: string; prompt: string }[]; execute?: { graph: string; bindings: Record<string, Binding> }; visualizer?: CompiledStep['visualizer']; acceptedErrorCodes?: string[] } = { id: step.id }
+    const compiled: { id: string; prose?: string; inputs?: { input: string; prompt: string }[]; execute?: { graph: string; bindings: Record<string, LessonValueReference> }; visualizer?: CompiledStep['visualizer']; acceptedErrorCodes?: string[]; check?: LessonCheck } = { id: step.id }
     if (typeof step.prose === 'string') {
       compiled.prose = step.prose
       textIds.add(step.prose)
@@ -554,7 +575,7 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
         const bindings = requireMap(execute.bindings, `${path}.execute.bindings`, lesson.spans, diagnostics)
         if (!graph || !bindings) diagnostics.push(diagnostic('lesson.invalid-step-reference', 'Execution references an unknown graph or bindings.', `${path}.execute`, lesson.spans.get(`${path}.execute`)))
         else {
-          const compiledBindings: Record<string, Binding> = {}
+          const compiledBindings: Record<string, LessonValueReference> = {}
           for (const [target, rawBinding] of Object.entries(bindings)) {
             const bindingPath = `${path}.execute.bindings.${target}`
             const binding = bindingAt(rawBinding, bindingPath, lesson.spans, diagnostics)
@@ -633,7 +654,65 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
         diagnostics.push(diagnostic('lesson.invalid-input', 'Accepted error codes are only allowed for operation outcomes.', `${path}.accepted_error_codes`, lesson.spans.get(`${path}.accepted_error_codes`)))
       } else compiled.acceptedErrorCodes = step.accepted_error_codes as string[]
     }
-    if (!compiled.prose && !compiled.inputs && !compiled.execute && !compiled.visualizer) diagnostics.push(diagnostic('lesson.invalid-input', 'Step must contain content.', path, lesson.spans.get(path)))
+    if (step.check !== undefined) {
+      const checkPath = `${path}.check`
+      const check = requireMap(step.check, checkPath, lesson.spans, diagnostics)
+      if (check?.kind === 'equal') {
+        checkFields(check, ['kind', 'actual', 'expected', 'feedback'], checkPath, lesson.spans, diagnostics)
+        const actual = bindingAt(check.actual, `${checkPath}.actual`, lesson.spans, diagnostics)
+        const expected = bindingAt(check.expected, `${checkPath}.expected`, lesson.spans, diagnostics)
+        const feedback = requireMap(check.feedback, `${checkPath}.feedback`, lesson.spans, diagnostics)
+        if (feedback) checkFields(feedback, ['match', 'mismatch'], `${checkPath}.feedback`, lesson.spans, diagnostics)
+        const referenceType = (reference: LessonValueReference | undefined): PortType | undefined =>
+          !reference ? undefined
+            : 'input' in reference ? inputs[reference.input]?.type
+              : 'constant' in reference ? constants[reference.constant]?.type
+                : executionSteps.get(reference.step)?.outputTypes[reference.output]
+        const actualType = referenceType(actual)
+        const expectedType = referenceType(expected)
+        if (!actualType || !expectedType) {
+          diagnostics.push(diagnostic('lesson.invalid-step-reference', 'Check references an unavailable value.', checkPath, lesson.spans.get(checkPath)))
+        } else if (!equalTypes(actualType, expectedType)) {
+          diagnostics.push(diagnostic('lesson.invalid-input', 'Check values must have identical types.', checkPath, lesson.spans.get(checkPath)))
+        }
+        if (typeof feedback?.match !== 'string' || typeof feedback.mismatch !== 'string') {
+          diagnostics.push(diagnostic('lesson.invalid-input', 'Equality feedback requires match and mismatch text IDs.', `${checkPath}.feedback`, lesson.spans.get(`${checkPath}.feedback`)))
+        } else {
+          textIds.add(feedback.match)
+          textIds.add(feedback.mismatch)
+        }
+        if (actual && expected && typeof feedback?.match === 'string' && typeof feedback.mismatch === 'string' && actualType && expectedType && equalTypes(actualType, expectedType)) {
+          compiled.check = { kind: 'equal', actual, expected, feedback: { match: feedback.match, mismatch: feedback.mismatch } }
+        }
+      } else if (check?.kind === 'choice') {
+        checkFields(check, ['kind', 'options', 'correct'], checkPath, lesson.spans, diagnostics)
+        const options: { id: string; label: string; feedback: string }[] = []
+        const optionIds = new Set<string>()
+        if (!Array.isArray(check.options)) {
+          diagnostics.push(diagnostic('lesson.invalid-input', 'Choice check options must be a sequence.', `${checkPath}.options`, lesson.spans.get(`${checkPath}.options`)))
+        } else for (const [optionIndex, rawOption] of check.options.entries()) {
+          const optionPath = `${checkPath}.options.${optionIndex}`
+          const option = requireMap(rawOption, optionPath, lesson.spans, diagnostics)
+          if (!option) continue
+          checkFields(option, ['id', 'label', 'feedback'], optionPath, lesson.spans, diagnostics)
+          if (typeof option.id !== 'string' || !identifier.test(option.id) || optionIds.has(option.id)
+            || typeof option.label !== 'string' || typeof option.feedback !== 'string') {
+            diagnostics.push(diagnostic('lesson.invalid-input', 'Choice options need unique IDs and localized label and feedback text IDs.', optionPath, lesson.spans.get(optionPath)))
+          } else {
+            optionIds.add(option.id)
+            textIds.add(option.label)
+            textIds.add(option.feedback)
+            options.push({ id: option.id, label: option.label, feedback: option.feedback })
+          }
+        }
+        if (typeof check.correct !== 'string' || !optionIds.has(check.correct)) {
+          diagnostics.push(diagnostic('lesson.invalid-input', 'Choice check correct must match one option ID.', `${checkPath}.correct`, lesson.spans.get(`${checkPath}.correct`)))
+        } else if (options.length) compiled.check = { kind: 'choice', options, correct: check.correct }
+      } else {
+        diagnostics.push(diagnostic('lesson.invalid-input', 'Check kind must be equal or choice.', `${checkPath}.kind`, lesson.spans.get(`${checkPath}.kind`)))
+      }
+    }
+    if (!compiled.prose && !compiled.inputs && !compiled.execute && !compiled.visualizer && !compiled.check) diagnostics.push(diagnostic('lesson.invalid-input', 'Step must contain content.', path, lesson.spans.get(path)))
     steps.push(compiled)
   }
   const locales: Record<string, { title: string; summary: string; texts: Record<string, string> }> = {}
