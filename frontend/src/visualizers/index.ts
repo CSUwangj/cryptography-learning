@@ -2,7 +2,7 @@ export type VisualizerDescriptor = {
   readonly id: string
   readonly major: number
   readonly slots: Readonly<Record<string, { readonly family: string }>>
-  readonly trace: { readonly family: 'comparison'; readonly level: 'detail' }
+  readonly trace: { readonly family: 'comparison' | 'execution'; readonly level: 'detail' }
   readonly inputSlots: Readonly<Record<string, never>>
   readonly traceLevels: readonly ('detail')[]
   readonly tracePaths: readonly string[]
@@ -26,7 +26,24 @@ const avalanche: VisualizerDescriptor = Object.freeze({
   accessibility: Object.freeze({ summary: 'avalanche.summary' }),
 })
 
-const descriptors = new Map([[`${avalanche.id}@${avalanche.major}`, avalanche]])
+const teachingSpn: VisualizerDescriptor = Object.freeze({
+  id: 'teaching-spn',
+  major: 1,
+  slots: Object.freeze({}),
+  trace: Object.freeze({ family: 'execution', level: 'detail' }),
+  inputSlots: Object.freeze({}),
+  traceLevels: Object.freeze(['detail'] as const),
+  tracePaths: Object.freeze(['output']),
+  options: Object.freeze({}),
+  limits: Object.freeze({ bits: 128 }),
+  dimensions: Object.freeze({ minWidth: 900, minHeight: 500 }),
+  accessibility: Object.freeze({ summary: 'teaching-spn.summary' }),
+})
+
+const descriptors = new Map([
+  [`${avalanche.id}@${avalanche.major}`, avalanche],
+  [`${teachingSpn.id}@${teachingSpn.major}`, teachingSpn],
+])
 
 export const visualizerCatalog = Object.freeze({
   get: (id: string): VisualizerDescriptor | undefined => descriptors.get(id),

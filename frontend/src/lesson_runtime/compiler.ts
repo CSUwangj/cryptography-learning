@@ -31,7 +31,7 @@ export type VisualizerDescriptor = {
   readonly options?: Readonly<Record<string, 'string' | 'number' | 'boolean'>>
   readonly major?: number
   readonly slots?: Readonly<Record<string, { readonly family: string }>>
-  readonly trace?: { readonly family: 'comparison'; readonly level: 'detail' }
+  readonly trace?: { readonly family: 'comparison' | 'execution'; readonly level: 'detail' }
   readonly limits?: { readonly bits: number }
   readonly dimensions?: { readonly minWidth: number; readonly minHeight: number }
   readonly accessibility?: { readonly summary: string }
@@ -328,8 +328,42 @@ type GraphInfo = {
   readonly graph: CompiledGraph
   readonly sourceTypes: Readonly<Record<string, PortType>>
   readonly outputTypes: Readonly<Record<string, PortType>>
+  readonly traceBitWidths: readonly number[]
   readonly traceLevel?: 'summary' | 'round' | 'detail'
 }
+
+const decodeSourceValues = (
+  rawNodes: unknown[],
+  path: string,
+  spans: ReadonlyMap<string, SourceOrigin>,
+  diagnostics: Diagnostic[],
+): unknown[] => rawNodes.map((rawNode, index) => {
+  const nodePath = `${path}.nodes.${index}`
+  const node = fields(rawNode)
+  const parameters = fields(node?.parameters)
+  if (node?.operation !== 'core.source@1' || !parameters) return rawNode
+  const type = typeAt(parameters.type, `${nodePath}.parameters.type`, spans, diagnostics)
+  if (!type) return rawNode
+  const decoded = { ...parameters }
+  if (typeof parameters.value === 'string') {
+    const value = decodeValue(parameters.value, type, 'hex', `${nodePath}.parameters.value`, spans, diagnostics)
+    if (value) decoded.value = value
+  }
+  if (Array.isArray(parameters.roundKeys)) {
+    const values = parameters.roundKeys.map((value, round) =>
+      decodeValue(value, type, 'hex', `${nodePath}.parameters.roundKeys.${round}`, spans, diagnostics))
+    if (values.every((value): value is CryptoValue => value !== undefined)) decoded.roundKeys = values
+  }
+  return { ...node, parameters: decoded }
+})
+
+const traceBitWidths = (nodes: unknown[]): readonly number[] => nodes.flatMap((rawNode) => {
+  const node = fields(rawNode)
+  const type = fields(fields(node?.parameters)?.type)
+  return node?.operation === 'core.source@1' && type?.family === 'bits' && typeof type.size === 'number'
+    ? [type.size]
+    : []
+})
 
 const compileGraph = (
   id: string,
@@ -401,7 +435,17 @@ const compileGraph = (
       else for (const [index, rawNode] of subgraph.nodes.entries()) validateGraphNode(rawNode, `${subgraphPath}.nodes.${index}`, spans, diagnostics)
     }
   }
-  const result = compile(graph as unknown as AuthoredGraph)
+  const decodedGraph = {
+    ...graph,
+    nodes: decodeSourceValues(graph.nodes, path, spans, diagnostics),
+    subgraphs: Object.fromEntries(Object.entries(fields(graph.subgraphs) ?? {}).map(([name, rawSubgraph]) => {
+      const subgraph = fields(rawSubgraph)
+      return [name, subgraph
+        ? { ...subgraph, nodes: Array.isArray(subgraph.nodes) ? decodeSourceValues(subgraph.nodes, `${path}.subgraphs.${name}`, spans, diagnostics) : subgraph.nodes }
+        : rawSubgraph]
+    })),
+  }
+  const result = compile(decodedGraph as unknown as AuthoredGraph)
   if (!result.ok) {
     const nodeIndexes = new Map(graph.nodes.map((node, index) => [fields(node)?.id, index]))
     diagnostics.push(...result.diagnostics.map((item) => {
@@ -456,6 +500,14 @@ const compileGraph = (
     graph: result.value,
     sourceTypes,
     outputTypes,
+    traceBitWidths: [
+      ...traceBitWidths(graph.nodes),
+      ...Object.values(fields(graph.subgraphs) ?? {}).flatMap((rawSubgraph) => {
+        const subgraph = fields(rawSubgraph)
+        return Array.isArray(subgraph?.nodes) ? traceBitWidths(subgraph.nodes) : []
+      }),
+      ...Object.values(outputTypes).flatMap((type) => type.family === 'bits' && typeof type.size === 'number' ? [type.size] : []),
+    ],
     traceLevel: graph.traceLevel as GraphInfo['traceLevel'],
   }
 }
@@ -681,6 +733,13 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
           }
           for (const slot of Object.keys(descriptor.inputSlots)) {
             if (!(slot in bindings)) diagnostics.push(diagnostic('lesson.invalid-step-reference', 'Visualizer input slot is missing.', `${path}.visualizer.bindings`, lesson.spans.get(`${path}.visualizer.bindings`)))
+          }
+          if (descriptor.trace?.family === 'execution' && !execution) {
+            diagnostics.push(diagnostic('lesson.invalid-step-reference', 'Execution visualizers require an execution in the same Step.', `${path}.visualizer`, lesson.spans.get(`${path}.visualizer`)))
+          }
+          if (descriptor.trace?.family === 'execution' && descriptor.limits?.bits !== undefined && execution
+            && execution.traceBitWidths.some((size) => size > descriptor.limits!.bits)) {
+            diagnostics.push(diagnostic('lesson.invalid-input', 'Visualizer graph exceeds its declared bit limit.', `${path}.visualizer`, lesson.spans.get(`${path}.visualizer`)))
           }
           const options = requireMap(visualizer.options ?? {}, `${path}.visualizer.options`, lesson.spans, diagnostics) ?? {}
           checkFields(options, Object.keys(descriptor.options ?? {}), `${path}.visualizer.options`, lesson.spans, diagnostics)

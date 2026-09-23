@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { hex, type AvalancheCheckpoint, type AvalancheComparison } from 'crypto_graph'
+import { PermutationVisual, SubstitutionVisual, XorVisual } from './OperationVisuals'
+import { formatTracePath, traceGraphLayout, TraceBitCells, TraceBitLinks, traceBitTargets } from './TraceBitGraph'
 
 type Locale = 'en-US' | 'zh-CN'
 type Selection = { readonly row: number; readonly bit: number }
@@ -26,12 +28,12 @@ const copy = {
     changedBits: 'Changed bits',
     ratio: 'Ratio',
     keys: 'Round keys',
+    details: 'Operation details',
     incomplete: 'Trace is incomplete. Raw retained values remain visible; paired differences and lineage stop at the gap.',
     gap: 'Trace gap',
     warning: 'This comparison changes inputs outside the supported plaintext-only scenario.',
     lineage: 'Selected bit lineage',
     noSelection: 'No differing plaintext bit is available.',
-    fixedKey: 'Fixed key operand',
     keyMix: 'XOR operands and result',
     substitution: 'S-box input and output',
     permutation: 'Permutation source to destination',
@@ -53,12 +55,12 @@ const copy = {
     changedBits: '改变位数',
     ratio: '比例',
     keys: '轮密钥',
+    details: '操作详情',
     incomplete: '轨迹不完整。保留的原始值仍可见；配对差异和位谱系会在缺口处停止。',
     gap: '轨迹缺口',
     warning: '此比较改变了不受支持的输入端口，而非仅改变明文。',
     lineage: '所选位的谱系',
     noSelection: '没有可选择的不同明文位。',
-    fixedKey: '固定密钥操作数',
     keyMix: '异或操作数与结果',
     substitution: 'S 盒输入和输出',
     permutation: '置换来源到目标',
@@ -86,43 +88,12 @@ const plaintextSelection = (rows: readonly CompleteCheckpoint[]): Selection | un
   return row < 0 || bit === undefined ? undefined : { row, bit }
 }
 
-const mapping = (checkpoint: CompleteCheckpoint, from: number): readonly number[] => {
-  if (checkpoint.stage === 'substitute') {
-    const nibble = Math.floor(from / 4) * 4
-    return [nibble, nibble + 1, nibble + 2, nibble + 3]
-  }
-  if (checkpoint.stage === 'permute') {
-    const targetNibble = checkpoint.operation?.permutation?.[Math.floor(from / 4)]
-    return targetNibble === undefined ? [] : [targetNibble * 4 + (from % 4)]
-  }
-  return [from]
-}
-
 const stageName = (checkpoint: AvalancheCheckpoint, locale: string): string => {
   const text = textFor(locale)
   if (checkpoint.stage === 'key-mix') return text.keyMix
   if (checkpoint.stage === 'substitute') return text.substitution
   if (checkpoint.stage === 'permute') return text.permutation
-  return checkpoint.path
-}
-
-const operationDetail = (
-  checkpoint: CompleteCheckpoint,
-  before: CompleteCheckpoint | undefined,
-  locale: string,
-  selectedBit?: number,
-  key?: CompleteCheckpoint,
-): string | undefined => {
-  const text = textFor(locale)
-  if (!before) return undefined
-  if (checkpoint.stage === 'key-mix' && key) return `${hex(before.left)} ⊕ ${hex(key.left)} = ${hex(checkpoint.left)} · ${hex(before.right)} ⊕ ${hex(key.right)} = ${hex(checkpoint.right)}`
-  if (checkpoint.stage === 'substitute') {
-    const nibbles = [0, 1, 2, 3].map((index) => `${index}: ${hex(before.left).slice(2)[index]}→${hex(checkpoint.left).slice(2)[index]} | ${hex(before.right).slice(2)[index]}→${hex(checkpoint.right).slice(2)[index]}`)
-    const lookup = selectedBit === undefined ? undefined : `${text.lookup}: S${Math.floor(selectedBit / 4)}`
-    return [lookup, ...nibbles].filter((value): value is string => value !== undefined).join(' · ')
-  }
-  if (checkpoint.stage === 'permute') return checkpoint.operation?.permutation?.map((target, source) => `${source}→${target}`).join(' · ')
-  return undefined
+  return formatTracePath(checkpoint.path, locale)
 }
 
 export const AvalancheRenderer: React.FC<AvalancheRendererProps> = ({
@@ -147,11 +118,11 @@ export const AvalancheRenderer: React.FC<AvalancheRendererProps> = ({
     const paths = rows.map(() => new Set<number>())
     paths[selection.row].add(selection.bit)
     for (let row = selection.row; row < rows.length - 1; row += 1) {
-      for (const bit of paths[row]) for (const target of mapping(rows[row + 1], bit)) paths[row + 1].add(target)
+      for (const bit of paths[row]) for (const target of traceBitTargets(rows[row + 1].stage, rows[row + 1].operation?.permutation, bit)) paths[row + 1].add(target)
     }
     for (let row = selection.row; row > 0; row -= 1) {
       for (let bit = 0; bit < rows[row - 1].left.type.size; bit += 1) {
-        if (mapping(rows[row], bit).some((target) => paths[row].has(target))) paths[row - 1].add(bit)
+        if (traceBitTargets(rows[row].stage, rows[row].operation?.permutation, bit).some((target) => paths[row].has(target))) paths[row - 1].add(bit)
       }
     }
     return paths
@@ -164,7 +135,16 @@ export const AvalancheRenderer: React.FC<AvalancheRendererProps> = ({
       'value' in event && event.value && 'bytes' in event.value ? [{ run, path: event.path, value: hex(event.value) }] : [],
     ))
     : []
-  const width = Math.max(900, dimensions.width || 900)
+  const bitCount = Math.max(0, ...rows.map((row) => row.left.type.size))
+  const layout = traceGraphLayout(
+    rows.flatMap((row) => [
+      stageName(row, locale),
+      `${formatTracePath(row.path, locale)}: ${hex(row.left)} | ${hex(row.right)}`,
+      `${text.mask}: ${hex(row.mask)} · ${row.changedBits}/${row.left.type.size} · ${row.ratio}`,
+    ]),
+    bitCount,
+    Math.max(900, dimensions.width || 900),
+  )
   const rowHeight = 104
   const svgHeight = Math.max(160, rows.length * rowHeight + 64)
 
@@ -179,70 +159,29 @@ export const AvalancheRenderer: React.FC<AvalancheRendererProps> = ({
         aria-label={text.title}
         height={svgHeight}
         role="img"
-        style={{ display: 'block', minWidth: width, background: '#fbfdff' }}
-        viewBox={`0 0 ${width} ${svgHeight}`}
-        width={width}
+        style={{ display: 'block', minWidth: layout.width, background: '#fbfdff' }}
+        viewBox={`0 0 ${layout.width} ${svgHeight}`}
+        width={layout.width}
       >
         <text fill="#17324d" fontSize="16" x="16" y="24">{text.stage}</text>
-        <text fill="#17324d" fontSize="16" x="690" y="24">{text.keys}</text>
+        <text fill="#17324d" fontSize="16" x={layout.keyColumnX + 12} y="24">{text.keys}</text>
         {rows.map((row, rowIndex) => {
           const y = 44 + rowIndex * rowHeight
           const before = rows[rowIndex - 1]
-          const key = row.stage === 'key-mix' ? keys.find((item) => item.round === row.round) : undefined
-          return <g key={row.path}>
-            {before && Array.from({ length: row.left.type.size }, (_, bit) => mapping(row, bit).map((target) => (
-              <line
-                key={`${bit}-${target}`}
-                stroke={active[rowIndex - 1]?.has(bit) && active[rowIndex]?.has(target) ? '#1d70b8' : '#a8b6c5'}
-                strokeWidth={active[rowIndex - 1]?.has(bit) && active[rowIndex]?.has(target) ? 3 : 1}
-                x1={170 + bit * 30}
-                x2={170 + target * 30}
-                y1={y - 56}
-                y2={y}
-              />
-            )))}
-            <text fill="#17324d" fontSize="14" x="16" y={y + 16}>{stageName(row, locale)}</text>
-            <text fill="#4b6075" fontSize="12" x="16" y={y + 34}>{`${text.mask}: ${hex(row.mask)} · ${row.changedBits}/${row.left.type.size} · ${row.ratio}`}</text>
-            {Array.from({ length: row.left.type.size }, (_, bit) => {
-              const difference = bitAt(row.mask.bytes, bit) === 1
-              const chosen = selection?.row === rowIndex && selection.bit === bit
-              const related = active[rowIndex]?.has(bit)
-              return <g
-                aria-label={`${stageName(row, locale)}, ${text.bit} ${bit}: ${bitAt(row.left.bytes, bit)} | ${bitAt(row.right.bytes, bit)}${difference ? `, ${text.different}` : ''}`}
-                aria-pressed={chosen}
-                key={bit}
-                onClick={() => { setSelection({ row: rowIndex, bit }); setSelectedKey(undefined) }}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault()
-                    setSelection({ row: rowIndex, bit })
-                    setSelectedKey(undefined)
-                  }
-                }}
-                role="button"
-                tabIndex={0}
-              >
-                <rect
-                  fill={difference ? '#fde8e7' : '#ffffff'}
-                  height="42"
-                  stroke={chosen ? '#123d63' : related ? '#1d70b8' : '#8aa0b6'}
-                  strokeWidth={chosen ? 3 : related ? 2 : 1}
-                  width="26"
-                  x={157 + bit * 30}
-                  y={y}
-                />
-                <text fill="#17324d" fontSize="10" textAnchor="middle" x={170 + bit * 30} y={y + 13}>{bit}</text>
-                <text
-                  fill="#17324d"
-                  fontSize="13"
-                  style={{ textDecoration: difference ? 'underline' : undefined, transition: reducedMotion ? 'none' : undefined }}
-                  textAnchor="middle"
-                  x={170 + bit * 30}
-                  y={y + 31}
-                >{`${bitAt(row.left.bytes, bit)}|${bitAt(row.right.bytes, bit)}`}</text>
-              </g>
-            })}
-            {operationDetail(row, before, locale, active[rowIndex]?.values().next().value, key) && <text fill="#334e68" fontSize="12" x="16" y={y + 56}>{operationDetail(row, before, locale, active[rowIndex]?.values().next().value, key)}</text>}
+          return <g data-trace-row={row.path} key={row.path}>
+            {before && <TraceBitLinks count={row.left.type.size} fromActive={active[rowIndex - 1] ?? new Set()} map={(bit) => traceBitTargets(row.stage, row.operation?.permutation, bit)} toActive={active[rowIndex] ?? new Set()} fromY={y - 56} toY={y} x={layout.bitGridX} />}
+            <text data-trace-label fill="#17324d" fontSize="14" x="16" y={y + 16}>{stageName(row, locale)}</text>
+            <text data-trace-label fill="#4b6075" fontSize="12" x="16" y={y + 34}>{`${formatTracePath(row.path, locale)}: ${hex(row.left)} | ${hex(row.right)}`}</text>
+            <text data-trace-label fill="#4b6075" fontSize="12" x="16" y={y + 50}>{`${text.mask}: ${hex(row.mask)} · ${row.changedBits}/${row.left.type.size} · ${row.ratio}`}</text>
+            <TraceBitCells
+              active={active[rowIndex] ?? new Set()}
+              ariaLabel={(cell) => `${stageName(row, locale)}, ${text.bit} ${cell.bit}: ${cell.value}${cell.different ? `, ${text.different}` : ''}`}
+              cells={Array.from({ length: row.left.type.size }, (_, bit) => ({ bit, different: bitAt(row.mask.bytes, bit) === 1, value: `${bitAt(row.left.bytes, bit)}|${bitAt(row.right.bytes, bit)}` }))}
+              onSelect={(bit) => { setSelection({ row: rowIndex, bit }); setSelectedKey(undefined) }}
+              selectedBit={selection?.row === rowIndex ? selection.bit : undefined}
+              x={layout.bitGridX}
+              y={y}
+            />
           </g>
         })}
         {keys.map((key, index) => {
@@ -252,8 +191,9 @@ export const AvalancheRenderer: React.FC<AvalancheRendererProps> = ({
           const chosen = selectedKey === key.path
           const related = chosen || (connected && active[mixIndex].size > 0)
           return <g
-            aria-label={`${text.fixedKey}: ${hex(key.left)}`}
+            aria-label={`${text.keys}: ${hex(key.left)}`}
             aria-pressed={chosen}
+            data-round-key={key.round ?? index + 1}
             key={key.path}
             onClick={() => { setSelectedKey(key.path); setSelection(undefined) }}
             onKeyDown={(event) => {
@@ -266,14 +206,30 @@ export const AvalancheRenderer: React.FC<AvalancheRendererProps> = ({
             role="button"
             tabIndex={0}
           >
-            {connected && <line stroke={related ? '#1d70b8' : '#a8b6c5'} strokeWidth={related ? 3 : 1} x1="680" x2="635" y1={y + 27} y2={y + 21} />}
-            <rect fill="#edf4fb" height="54" stroke={related ? '#1d70b8' : '#8aa0b6'} strokeWidth={related ? 3 : 1} width="180" x="680" y={y} />
-            <text fill="#17324d" fontSize="13" x="692" y={y + 20}>{`${text.fixedKey} ${key.round ?? index + 1}`}</text>
-            <text fill="#17324d" fontFamily="monospace" fontSize="13" x="692" y={y + 40}>{hex(key.left)}</text>
+            {connected && <line stroke={related ? '#1d70b8' : '#a8b6c5'} strokeWidth={related ? 3 : 1} x1={layout.keyColumnX} x2={layout.keyColumnX - 40} y1={y + 27} y2={y + 21} />}
+            <rect fill="#edf4fb" height="54" stroke={related ? '#1d70b8' : '#8aa0b6'} strokeWidth={related ? 3 : 1} width="180" x={layout.keyColumnX} y={y} />
+            <text fill="#17324d" fontSize="13" x={layout.keyColumnX + 12} y={y + 20}>{`${text.keys} ${key.round ?? index + 1}`}</text>
+            <text fill="#17324d" fontFamily="monospace" fontSize="13" x={layout.keyColumnX + 12} y={y + 40}>{hex(key.left)}</text>
           </g>
         })}
       </svg>
     </div>
+    <table>
+      <caption>{text.details}</caption>
+      <thead><tr><th>{text.stage}</th><th>{text.details}</th></tr></thead>
+      <tbody>{rows.map((row, rowIndex) => {
+        const before = rows[rowIndex - 1]
+        const key = row.stage === 'key-mix' ? keys.find((item) => item.round === row.round) : undefined
+        const detail = row.stage === 'key-mix' && before && key
+          ? <XorVisual label={text.keyMix} terms={[{ left: hex(before.left), right: hex(key.left), output: hex(row.left) }, { left: hex(before.right), right: hex(key.right), output: hex(row.right) }]} />
+          : row.stage === 'substitute' && before && row.operation?.sBox
+            ? <SubstitutionVisual lanes={[{ input: hex(before.left), output: hex(row.left) }, { input: hex(before.right), output: hex(row.right) }]} lookupLabel={text.lookup} sBox={row.operation.sBox} selectedBit={active[rowIndex]?.values().next().value} />
+            : row.stage === 'permute' && row.operation?.permutation
+              ? <PermutationVisual permutation={row.operation.permutation} />
+              : undefined
+        return detail && <tr key={row.path}><th>{stageName(row, locale)}</th><td>{detail}</td></tr>
+      })}</tbody>
+    </table>
     <table>
       <caption>{text.summary}</caption>
       <thead><tr><th>{text.stage}</th><th>{text.baseline}</th><th>{text.changed}</th><th>{text.mask}</th><th>{text.changedBits}</th><th>{text.ratio}</th></tr></thead>

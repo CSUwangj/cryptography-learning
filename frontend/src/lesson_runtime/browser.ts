@@ -141,6 +141,7 @@ export class BrowserLessonSession {
     }
     for (const step of affected) {
       this.snapshots.delete(step)
+      this.executionIdentities.delete(step)
       this.checkResults.delete(step)
       this.acceptedDiagnostics.delete(step)
       this.executionDiagnostics.delete(step)
@@ -239,19 +240,26 @@ export class BrowserLessonSession {
       const result = await this.executeComparison(step.id)
       return result.ok ? result.value : this.state()
     }
+    if (step.visualizer && !this.snapshots.has(step.id)) {
+      const result = await this.next()
+      return result.ok ? result.value : this.state()
+    }
     return this.state()
   }
 
   async enter(): Promise<Result<LessonSessionState>> {
     const step = this.lesson.steps[this.index]
     if (step.visualizer?.compare && !this.comparisons.has(step.id)) return this.executeComparison(step.id)
+    if (step.visualizer && !this.snapshots.has(step.id)) return this.next()
     return { ok: true, value: this.state() }
   }
 
   async next(): Promise<Result<LessonSessionState>> {
     const current = this.lesson.steps[this.index]
     if (current.visualizer?.compare && !this.comparisons.has(current.id)) return this.executeComparison(current.id)
-    const target = Math.min(this.lesson.steps.length - 1, this.index + 1)
+    const target = current.visualizer && !current.visualizer.compare && !this.snapshots.has(current.id)
+      ? this.index
+      : Math.min(this.lesson.steps.length - 1, this.index + 1)
     if (target !== this.index) {
       this.generation += 1
       this.worker.cancel()
@@ -298,6 +306,7 @@ export class BrowserLessonSession {
     }).result
     if (response.kind === 'snapshot' && this.index === target && generation === this.generation && requestId === `${step.id}-${this.request}`) {
       this.snapshots.set(step.id, response.snapshot)
+      this.executionIdentities.set(step.id, requestId)
       this.evaluateCheck(step.id)
       return { ok: true, value: this.state() }
     }

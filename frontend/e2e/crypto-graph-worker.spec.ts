@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test'
 
 test.describe('CryptoGraph Worker (#28)', () => {
   test('executes, cancels, compares, and marks truncated traces', async ({ page }) => {
+    test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'imports the TypeScript source module served only by Vite')
     await page.goto('/')
     const result = await page.evaluate(async () => {
       const graph = await import('/src/crypto_graph/index.ts')

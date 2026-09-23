@@ -13,6 +13,8 @@ export const Routes: React.FC = () => {
           <RoutePage exact path={LAB_PATTERN} page={import('practice').then(m => ({ Page: m.PracticePage }))} />
           <RoutePage path='/practice' page={import('practice').then(m => ({ Page: m.PracticePage }))} />
           <RoutePage path='/learning' page={import('learning').then(m => ({ Page: m.LearningPage }))} />
+          <RoutePage exact path='/testspn' page={import('./testspn/SpnPrototype').then(m => ({ Page: m.SpnPrototype }))} />
+          <RoutePage exact path='/testavalanche' page={import('./testavalanche/AvalanchePrototype').then(m => ({ Page: m.AvalanchePrototype }))} />
           <RoutePage path='/feedback' page={import('./feedback/FeedbackPage').then(m => ({ Page: m.FeedbackPage }))} />
           <RoutePage exact path={COMPLETION_PATTERN} page={import('completion_board').then(m => ({ Page: m.CompletionRecordsPage }))} />
           <RoutePage exact path='/' page={import('./home/HomePage').then(m => ({ Page: m.HomePage }))} />

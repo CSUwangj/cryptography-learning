@@ -38,6 +38,8 @@
   "scripts": {
     "start": "vite",
     "dev": "vite",
+    "testspn": "vite --host 127.0.0.1",
+    "testavalanche": "vite --host 127.0.0.1",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

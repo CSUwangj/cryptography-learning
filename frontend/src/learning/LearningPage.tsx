@@ -202,10 +202,11 @@ const LessonView: React.FC = () => {
       <thead><tr><th>{t('learning.output')}</th><th>{t('learning.value')}</th></tr></thead>
       <tbody>{Object.entries(state.snapshots[step.id].outputs).map(([name, value]) => <tr key={name}><th>{name}</th><td>{valueText(value)}</td></tr>)}</tbody>
     </table>}
-    {step.visualizer?.compare && state.comparisons[step.id] && <div ref={setVisualizerSurface}>
+    {step.visualizer && (state.comparisons[step.id] || state.snapshots[step.id]) && <div ref={setVisualizerSurface}>
       <RenderHost
         comparison={state.comparisons[step.id]}
         dimensions={visualizerDimensions}
+        execution={state.snapshots[step.id]}
         executionIdentity={state.executionIdentities[step.id] ?? step.id}
         invocation={step.visualizer}
         locale={state.locale}

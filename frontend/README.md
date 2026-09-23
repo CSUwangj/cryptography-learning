@@ -20,6 +20,12 @@ Runs the Vitest suite once (jsdom). Use `npm run test:watch` for watch mode.
 
 Builds the production bundle into the `dist` folder.
 
+### `npm run testspn` / `npm run testavalanche`
+
+Starts the standalone Teaching SPN and Avalanche demos at `/testspn` and
+`/testavalanche`. Both accept editable 16-bit hexadecimal plaintext values and
+run on submit; the Avalanche demo keeps the round key fixed.
+
 ### `npm run gen`
 
 Regenerates GraphQL TypeScript documents from `schema/schema.gql`.
