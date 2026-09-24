@@ -39,9 +39,28 @@ const isWorkerResponse = (value: unknown): value is WorkerResponse =>
 
 export class CryptoGraphWorkerClient {
   private active: ActiveWorkerRequest | undefined
+  private worker: Worker | undefined
 
   get running(): boolean {
     return this.active !== undefined
+  }
+
+  private workerForRequests(): Worker {
+    if (this.worker) return this.worker
+    const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' })
+    worker.addEventListener('message', (event: MessageEvent<unknown>) => {
+      if (!isWorkerResponse(event.data) || event.data.requestId !== this.active?.requestId) return
+      this.active.settle(event.data)
+    })
+    worker.addEventListener('error', () => {
+      if (this.worker !== worker) return
+      const active = this.active
+      this.worker = undefined
+      worker.terminate()
+      if (active) active.settle(workerDiagnostic(active.requestId, 'execution.worker-error', 'Worker execution failed.'))
+    })
+    this.worker = worker
+    return worker
   }
 
   execute(request: WorkerRequest): PendingWorkerRequest {
@@ -59,28 +78,26 @@ export class CryptoGraphWorkerClient {
       return { result, cancel: () => {} }
     }
 
-    const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' })
+    const worker = this.workerForRequests()
     const active: ActiveWorkerRequest = {
       requestId,
       settle: (response) => {
         clearTimeout(timeout)
-        worker.terminate()
         if (this.active === active) this.active = undefined
         settle(structuredClone(response))
       },
     }
     const timeout = window.setTimeout(
-      () => active.settle(workerDiagnostic(requestId, 'execution.timeout', 'Worker execution timed out.')),
+      () => {
+        active.settle(workerDiagnostic(requestId, 'execution.timeout', 'Worker execution timed out.'))
+        if (this.worker === worker) {
+          worker.terminate()
+          this.worker = undefined
+        }
+      },
       timeoutFor(message),
     )
     this.active = active
-    worker.addEventListener('message', (event: MessageEvent<unknown>) => {
-      if (!isWorkerResponse(event.data) || event.data.requestId !== requestId || this.active !== active) return
-      active.settle(event.data)
-    })
-    worker.addEventListener('error', () => {
-      if (this.active === active) active.settle(workerDiagnostic(requestId, 'execution.worker-error', 'Worker execution failed.'))
-    })
     try {
       worker.postMessage(message)
     } catch {
@@ -95,10 +112,13 @@ export class CryptoGraphWorkerClient {
   }
 
   cancel(): void {
-    if (this.active) this.active.settle({ requestId: this.active.requestId, kind: 'cancelled' })
+    if (!this.active) return
+    this.active.settle({ requestId: this.active.requestId, kind: 'cancelled' })
   }
 
   dispose(): void {
     this.cancel()
+    this.worker?.terminate()
+    this.worker = undefined
   }
 }

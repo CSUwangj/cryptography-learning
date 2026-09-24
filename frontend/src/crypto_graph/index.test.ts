@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  alphabetPolicy,
+  alphabetText,
   bits,
   bytes,
   compile,
   executeWorkerRequest,
   hex,
+  integer,
   maxWorkerLimits,
   operationManifests,
   serializeTrace,
@@ -153,6 +156,104 @@ describe('CryptoGraph compile/execute seam (#26)', () => {
   })
 })
 
+describe('Classical cipher operations (#65)', () => {
+  const alphabet = { id: 'latin', symbols: [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'] }
+  const cipherGraph = (operation: 'classical.caesar@1' | 'classical.affine@1'): AuthoredGraph => ({
+    alphabetMappings: [alphabet],
+    nodes: [
+      { id: 'text', operation: 'core.source@1', parameters: { type: { family: 'alphabet-text', mapping: 'latin' } } },
+      { id: 'policy', operation: 'core.source@1', parameters: { type: { family: 'alphabet-policy' } } },
+      ...(operation === 'classical.caesar@1'
+        ? [{ id: 'shift', operation: 'core.source@1', parameters: { type: { family: 'integer', signed: true as const, safe: true as const } } }]
+        : [
+            { id: 'a', operation: 'core.source@1', parameters: { type: { family: 'integer', signed: true as const, safe: true as const } } },
+            { id: 'b', operation: 'core.source@1', parameters: { type: { family: 'integer', signed: true as const, safe: true as const } } },
+          ]),
+      {
+        id: 'cipher',
+        operation,
+        inputs: operation === 'classical.caesar@1'
+          ? { text: { node: 'text', port: 'value' }, shift: { node: 'shift', port: 'value' }, policy: { node: 'policy', port: 'value' } }
+          : { text: { node: 'text', port: 'value' }, a: { node: 'a', port: 'value' }, b: { node: 'b', port: 'value' }, policy: { node: 'policy', port: 'value' } },
+      },
+    ],
+    outputs: [{ node: 'cipher', port: 'text' }],
+  })
+
+  it('runs Caesar and affine through compile/execute with reusable source inputs', () => {
+    const caesar = compile(cipherGraph('classical.caesar@1'))
+    const affine = compile(cipherGraph('classical.affine@1'))
+    expect(caesar.ok && affine.ok).toBe(true)
+    if (!caesar.ok || !affine.ok) return
+
+    const text = alphabetText(alphabet, 'ABC')
+    const caesarResult = caesar.value.execute({
+      'text.value': text,
+      'shift.value': integer(3),
+      'policy.value': alphabetPolicy('preserve'),
+    })
+    const affineResult = affine.value.execute({
+      'text.value': text,
+      'a.value': integer(5),
+      'b.value': integer(8),
+      'policy.value': alphabetPolicy('preserve'),
+    })
+    expect(caesarResult.ok && caesarResult.value.outputs['cipher.text']).toMatchObject({ symbols: ['D', 'E', 'F'] })
+    expect(affineResult.ok && affineResult.value.outputs['cipher.text']).toMatchObject({ symbols: ['I', 'N', 'S'] })
+    const normalized = caesar.value.execute({
+      'text.value': text,
+      'shift.value': integer(Number.MAX_SAFE_INTEGER),
+      'policy.value': alphabetPolicy('preserve'),
+    })
+    expect(normalized.ok && normalized.value.outputs['cipher.text']).toMatchObject({ symbols: ['F', 'G', 'H'] })
+  })
+
+  it('reuses a compiled graph when policy preserves or strictly rejects unmapped code points', () => {
+    const compiled = compile(cipherGraph('classical.caesar@1'))
+    expect(compiled.ok).toBe(true)
+    if (!compiled.ok) return
+    const inputs = { 'text.value': alphabetText(alphabet, 'Ab C!'), 'shift.value': integer(3) }
+    const preserved = compiled.value.execute({ ...inputs, 'policy.value': alphabetPolicy('preserve') })
+    const strict = compiled.value.execute({ ...inputs, 'policy.value': alphabetPolicy('strict') })
+    expect(preserved.ok && preserved.value.outputs['cipher.text']).toMatchObject({ symbols: ['D', 'b', ' ', 'F', '!'] })
+    expect(strict).toMatchObject({
+      ok: false,
+      diagnostics: [{ code: 'cipher.unmapped-symbol', details: { symbol: 'b', index: 1, strict: true } }],
+    })
+  })
+
+  it('reports invalid key diagnostics and requires useful alphabet mappings', () => {
+    const compiled = compile(cipherGraph('classical.affine@1'))
+    expect(compiled.ok).toBe(true)
+    if (!compiled.ok) return
+    const common = { 'text.value': alphabetText(alphabet, 'ABC'), 'b.value': integer(8), 'policy.value': alphabetPolicy('preserve') }
+    expect(compiled.value.execute({ ...common, 'a.value': integer(2) })).toMatchObject({
+      ok: false,
+      diagnostics: [{ code: 'cipher.invalid-affine-key', details: { a: 2, modulus: 26 } }],
+    })
+    expect(compiled.value.execute({ ...common, 'a.value': integer(1.5) })).toMatchObject({
+      ok: false,
+      diagnostics: [{ code: 'cipher.invalid-key', details: { reason: 'fraction' } }],
+    })
+    expect(compile({ alphabetMappings: [{ id: 'one', symbols: ['A'] }], nodes: [], outputs: [] })).toMatchObject({
+      ok: false,
+      diagnostics: [{ code: 'invalid-alphabet-mapping' }],
+    })
+    expect(compile({
+      alphabetMappings: [alphabet],
+      nodes: [{
+        id: 'text',
+        operation: 'core.source@1',
+        parameters: {
+          type: { family: 'alphabet-text', mapping: 'latin' },
+          value: { type: { family: 'alphabet-text', mapping: 'latin' }, symbols: ['AB'] },
+        },
+      }],
+      outputs: [],
+    })).toMatchObject({ ok: false, diagnostics: [{ code: 'invalid-parameter' }] })
+  })
+})
+
 describe('Teaching SPN fixture (#27)', () => {
   it('executes fixed rounds with stable, selected traces', () => {
     const compiled = compile({ ...teachingSpnGraph, traceLevel: 'detail' })
@@ -294,6 +395,25 @@ describe('Teaching SPN fixture (#27)', () => {
 })
 
 describe('CryptoGraph Worker contract (#28)', () => {
+  it('reuses a compiled graph for repeated execution inputs', () => {
+    const compiledGraphs = new Map()
+    const first = executeWorkerRequest({
+      requestId: 'first-cipher-input',
+      kind: 'execute',
+      payload: { graph: xorGraph(), compiledGraphId: 'lesson:0:xor' },
+    }, compiledGraphs)
+    const second = executeWorkerRequest({
+      requestId: 'second-cipher-input',
+      kind: 'execute',
+      payload: { graph: { nodes: [], outputs: [] }, compiledGraphId: 'lesson:0:xor' },
+    }, compiledGraphs)
+    expect(compiledGraphs.size).toBe(1)
+    for (const response of [first, second]) {
+      expect(response.kind).toBe('snapshot')
+      if (response.kind === 'snapshot') expect(hex(response.snapshot.outputs['xor.value'] as ReturnType<typeof bits>)).toBe('0x0ff0')
+    }
+  })
+
   it('compares semantic checkpoints with avalanche difference data', () => {
     const graph = (value: ReturnType<typeof bits>): AuthoredGraph => ({
       nodes: [

@@ -7,6 +7,49 @@ const locales = {
   'zh-CN': readFileSync(new URL('../src/lesson_runtime/fixture/locales/zh-CN.yaml', import.meta.url), 'utf8'),
 }
 
+const caesarLesson = `version: 1
+id: caesar
+default_locale: en-US
+inputs:
+  plaintext: {type: {family: alphabet-text, mapping: latin}, encoding: text, default: "Ab C!"}
+  shift: {type: {family: integer, signed: true, safe: true}, encoding: integer, default: 3}
+  policy: {type: {family: alphabet-policy}, encoding: policy, default: preserve}
+constants: {}
+graphs:
+  caesar:
+    alphabetMappings: [{id: latin, symbols: [A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z]}]
+    nodes:
+      - {id: text, operation: core.source@1, parameters: {type: {family: alphabet-text, mapping: latin}}}
+      - {id: shift, operation: core.source@1, parameters: {type: {family: integer, signed: true, safe: true}}}
+      - {id: policy, operation: core.source@1, parameters: {type: {family: alphabet-policy}}}
+      - {id: cipher, operation: classical.caesar@1, inputs: {text: {node: text, port: value}, shift: {node: shift, port: value}, policy: {node: policy, port: value}}}
+    outputs: [{node: cipher, port: text}]
+steps:
+  - id: inputs
+    inputs:
+      - {input: plaintext, prompt: plaintext}
+      - {input: shift, prompt: shift}
+      - {input: policy, prompt: policy}
+  - id: execute
+    execute:
+      graph: caesar
+      bindings:
+        text.value: {input: plaintext}
+        shift.value: {input: shift}
+        policy.value: {input: policy}
+`
+
+const caesarLocales = {
+  'en-US': `title: Caesar
+summary: Encrypt text.
+texts: {plaintext: Plaintext, shift: Shift, policy: Policy}
+`,
+  'zh-CN': `title: 凯撒
+summary: 加密文本。
+texts: {plaintext: 明文, shift: 位移, policy: 策略}
+`,
+}
+
 test.describe('Learning Lesson (#30)', () => {
   test('loads catalog and deep link, retains input, and executes the XOR Step', async ({ page }) => {
     const progressRequests: string[] = []
@@ -78,6 +121,34 @@ test.describe('Learning Lesson (#30)', () => {
     await page.goto('/learning/xor-intro')
     await expect(page.getByRole('heading', { name: '探索异或' })).toBeVisible()
     expect(progressRequests).toEqual([])
+  })
+
+  test('selects Preserve or Strict policy in Learning', async ({ page }) => {
+    test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses the synthetic Lesson fixture')
+    await page.route('**/query', async (route) => {
+      const variables = route.request().postDataJSON()?.variables
+      await route.fulfill({
+        json: {
+          data: {
+            lessonDocuments: {
+              lesson: caesarLesson,
+              locale: caesarLocales[variables.language as keyof typeof caesarLocales] ?? null,
+            },
+          },
+        },
+      })
+    })
+
+    await page.goto('/learning/caesar')
+    await page.getByRole('button', { name: 'Next' }).click()
+    const policy = page.getByLabel('Policy')
+    await expect(policy).toHaveValue('preserve')
+    await page.getByRole('button', { name: 'Next' }).click()
+    await expect(page.getByText('Db F! (alphabet-text<latin>)')).toBeVisible()
+    await page.getByRole('button', { name: 'Previous' }).click()
+    await policy.selectOption('strict')
+    await page.getByRole('button', { name: 'Next' }).click()
+    await expect(page.getByText(/cipher\.unmapped-symbol/)).toBeVisible()
   })
 
   test('keeps navigation available after an accepted operation diagnostic', async ({ page }) => {

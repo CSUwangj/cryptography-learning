@@ -74,7 +74,7 @@ export type LessonComparison = {
 export type CompiledStep = {
   readonly id: string
   readonly prose?: string
-  readonly inputs?: readonly { readonly input: string; readonly prompt: string }[]
+  readonly inputs?: readonly { readonly input: string; readonly prompt: string; readonly type: PortType }[]
   readonly execute?: { readonly graph: string; readonly bindings: Readonly<Record<string, LessonValueReference>> }
   readonly visualizer?: {
     readonly id: string
@@ -225,6 +225,15 @@ const typeAt = (
   if (family === 'alphabet-symbol') {
     checkFields(type, ['family', 'mapping'], path, spans, diagnostics)
     if (typeof type.mapping === 'string' && identifier.test(type.mapping)) return { family, mapping: type.mapping }
+  } else if (family === 'alphabet-text') {
+    checkFields(type, ['family', 'mapping'], path, spans, diagnostics)
+    if (typeof type.mapping === 'string' && identifier.test(type.mapping)) return { family, mapping: type.mapping }
+  } else if (family === 'integer') {
+    checkFields(type, ['family', 'signed', 'safe'], path, spans, diagnostics)
+    if (type.signed === true && type.safe === true) return { family, signed: true, safe: true }
+  } else if (family === 'alphabet-policy') {
+    checkFields(type, ['family'], path, spans, diagnostics)
+    return { family }
   } else if (family === 'bits' || family === 'bytes') {
     checkFields(type, ['family', 'size'], path, spans, diagnostics)
     if (Number.isSafeInteger(type.size) && (type.size as number) > 0) return { family, size: type.size as number }
@@ -246,6 +255,23 @@ const decodeValue = (
 ): CryptoValue | undefined => {
   if (type.family === 'alphabet-symbol') {
     if (encoding === 'literal' && typeof value === 'string' && [...value].length === 1) return { type, symbol: value }
+  } else if (type.family === 'alphabet-text') {
+    if (encoding === 'text' && typeof value === 'string') return { type, symbols: [...value] }
+  } else if (type.family === 'integer') {
+    if (encoding === 'integer') {
+      const parsed = typeof value === 'number'
+        ? value
+        : typeof value === 'string' && /^-?(?:0|[1-9][0-9]*)$/.test(value) ? Number(value) : undefined
+      if (parsed !== undefined && Number.isSafeInteger(parsed)) return { type, value: parsed }
+      const reason = typeof value === 'number' && !Number.isInteger(value)
+        || typeof value === 'string' && /^-?(?:0|[1-9][0-9]*)\.[0-9]+$/.test(value)
+        ? 'fraction'
+        : parsed !== undefined && !Number.isSafeInteger(parsed) ? 'unsafe' : 'non-integer'
+      diagnostics.push(diagnostic('cipher.invalid-key', 'Cipher keys must be safe integers.', path, spans.get(path), { reason }))
+      return undefined
+    }
+  } else if (type.family === 'alphabet-policy') {
+    if (encoding === 'policy' && (value === 'preserve' || value === 'strict')) return { type, value }
   } else if (encoding === 'hex' && typeof value === 'string' && /^0x[0-9A-Fa-f]+$/.test(value)) {
     const hex = value.slice(2)
     const digits = type.family === 'bits' ? Math.ceil((type.size as number) / 4) : (type.size as number) * 2
@@ -268,14 +294,20 @@ export const decodeLessonValue = (type: PortType, encoding: string, value: unkno
   return decoded ? { ok: true, value: decoded } : { ok: false, diagnostics }
 }
 
-const equalTypes = (left: PortType, right: PortType): boolean => JSON.stringify(left) === JSON.stringify(right)
+const equalTypes = (left: PortType, right: PortType): boolean =>
+  left.family === 'alphabet-text' && right.family === 'alphabet-text'
+    ? left.mapping === '*' || right.mapping === '*' || left.mapping === right.mapping
+    : JSON.stringify(left) === JSON.stringify(right)
 
-export const equalCryptoValues = (left: CryptoValue, right: CryptoValue): boolean =>
-  equalTypes(left.type, right.type)
-  && ('symbol' in left && 'symbol' in right
-    ? left.symbol === right.symbol
-    : !('symbol' in left) && !('symbol' in right) && [...('words' in left ? left.words : left.bytes)].every((value, index) =>
-      value === ('words' in right ? right.words : right.bytes)[index]))
+export const equalCryptoValues = (left: CryptoValue, right: CryptoValue): boolean => {
+  if (!equalTypes(left.type, right.type)) return false
+  if ('symbol' in left && 'symbol' in right) return left.symbol === right.symbol
+  if ('symbols' in left && 'symbols' in right) return left.symbols.join('') === right.symbols.join('')
+  if ('value' in left && 'value' in right) return left.value === right.value
+  const leftBytes = 'words' in left ? left.words : (left as { bytes: Uint8Array }).bytes
+  const rightBytes = 'words' in right ? right.words : (right as { bytes: Uint8Array }).bytes
+  return [...leftBytes].every((value, index) => value === rightBytes[index])
+}
 
 const validateReference = (
   value: unknown,
@@ -345,8 +377,13 @@ const decodeSourceValues = (
   const type = typeAt(parameters.type, `${nodePath}.parameters.type`, spans, diagnostics)
   if (!type) return rawNode
   const decoded = { ...parameters }
-  if (typeof parameters.value === 'string') {
-    const value = decodeValue(parameters.value, type, 'hex', `${nodePath}.parameters.value`, spans, diagnostics)
+  if (parameters.value !== undefined) {
+    const encoding = type.family === 'alphabet-text' ? 'text'
+      : type.family === 'integer' ? 'integer'
+        : type.family === 'alphabet-policy' ? 'policy'
+          : type.family === 'alphabet-symbol' ? 'literal'
+            : 'hex'
+    const value = decodeValue(parameters.value, type, encoding, `${nodePath}.parameters.value`, spans, diagnostics)
     if (value) decoded.value = value
   }
   if (Array.isArray(parameters.roundKeys)) {
@@ -483,8 +520,10 @@ const compileGraph = (
         : undefined
     }
     if (node.operation === 'core.xor@1' || node.operation === 'core.output@1') return forwarded(node.operation === 'core.xor@1' ? 'left' : 'value')
+    if (node.operation === 'classical.caesar@1' || node.operation === 'classical.affine@1') return forwarded('text')
     const declared = operationManifests.find((manifest) => manifest.identity === node.operation)?.outputs.find((output) => output.name === port)?.type
-    if (!declared || declared.family === 'alphabet-symbol' || typeof declared.size !== 'string') return declared
+    if (!declared || ['alphabet-symbol', 'alphabet-text', 'integer', 'alphabet-policy'].includes(declared.family)
+      || typeof (declared as { size?: unknown }).size !== 'string') return declared
     return forwarded(Object.keys(inputs ?? {})[0])
   }
   const outputTypes = Object.fromEntries((graph.outputs as unknown[]).flatMap((output) => {
@@ -506,7 +545,9 @@ const compileGraph = (
         const subgraph = fields(rawSubgraph)
         return Array.isArray(subgraph?.nodes) ? traceBitWidths(subgraph.nodes) : []
       }),
-      ...Object.values(outputTypes).flatMap((type) => type.family === 'bits' && typeof type.size === 'number' ? [type.size] : []),
+      ...Object.values(outputTypes).flatMap((type) => type.family === 'bits' && typeof (type as { size?: unknown }).size === 'number'
+        ? [(type as { size: number }).size]
+        : []),
     ],
     traceLevel: graph.traceLevel as GraphInfo['traceLevel'],
   }
@@ -639,7 +680,7 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
       continue
     }
     stepIds.add(step.id)
-    const compiled: { id: string; prose?: string; inputs?: { input: string; prompt: string }[]; execute?: { graph: string; bindings: Record<string, LessonValueReference> }; visualizer?: CompiledStep['visualizer']; acceptedErrorCodes?: string[]; check?: LessonCheck } = { id: step.id }
+    const compiled: { id: string; prose?: string; inputs?: { input: string; prompt: string; type: PortType }[]; execute?: { graph: string; bindings: Record<string, LessonValueReference> }; visualizer?: CompiledStep['visualizer']; acceptedErrorCodes?: string[]; check?: LessonCheck } = { id: step.id }
     if (typeof step.prose === 'string') {
       compiled.prose = step.prose
       textIds.add(step.prose)
@@ -656,7 +697,7 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
           if (typeof prompt.input !== 'string' || !inputs[prompt.input] || typeof prompt.prompt !== 'string') {
             diagnostics.push(diagnostic('lesson.invalid-input', 'Step input references are invalid.', promptPath, lesson.spans.get(promptPath)))
           } else {
-            compiled.inputs.push({ input: prompt.input, prompt: prompt.prompt })
+            compiled.inputs.push({ input: prompt.input, prompt: prompt.prompt, type: inputs[prompt.input].type })
             textIds.add(prompt.prompt)
           }
         }

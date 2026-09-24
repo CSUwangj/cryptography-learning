@@ -43,18 +43,27 @@ const localized = (value: Diagnostic, locale: string): Diagnostic => ({
         'lesson.visualizer-unavailable': '可视化比较不可用。',
         'lesson.yaml-restriction': 'YAML 使用了不支持的功能。',
         'lesson.yaml-syntax': 'YAML 文档无效。',
+        'cipher.invalid-key': '密钥必须是安全整数。',
+        'cipher.invalid-affine-key': '仿射密钥 a 必须与字母表长度互素。',
+        'cipher.unmapped-symbol': '严格字母表策略拒绝未映射字符。',
       }[value.code] ?? '课程验证失败。')
     : value.message,
 })
 
-const cloneValue = (value: CryptoValue): CryptoValue =>
-  'symbol' in value
-    ? { type: { family: 'alphabet-symbol', mapping: value.type.mapping }, symbol: value.symbol }
-    : 'words' in value
-      ? { type: { family: 'words', size: value.type.size, wordSize: 8 }, words: value.words.slice() }
-      : value.type.family === 'bits'
-        ? { type: { family: 'bits', size: value.type.size }, bytes: value.bytes.slice() }
-        : { type: { family: 'bytes', size: value.type.size }, bytes: value.bytes.slice() }
+const cloneValue = (value: CryptoValue): CryptoValue => {
+  if ('symbol' in value) return { type: { family: 'alphabet-symbol', mapping: value.type.mapping }, symbol: value.symbol }
+  if (value.type.family === 'alphabet-text') {
+    const text = value as { type: { mapping: string }; symbols: readonly string[] }
+    return { type: { family: 'alphabet-text', mapping: text.type.mapping }, symbols: [...text.symbols] }
+  }
+  if (value.type.family === 'integer') return { type: { family: 'integer', signed: true, safe: true }, value: (value as { value: number }).value }
+  if (value.type.family === 'alphabet-policy') return { type: { family: 'alphabet-policy' }, value: (value as { value: 'preserve' | 'strict' }).value }
+  if ('words' in value) return { type: { family: 'words', size: value.type.size, wordSize: 8 }, words: value.words.slice() }
+  const bytes = value as { type: { family: 'bits' | 'bytes'; size: number }; bytes: Uint8Array }
+  return bytes.type.family === 'bits'
+    ? { type: { family: 'bits', size: bytes.type.size }, bytes: bytes.bytes.slice() }
+    : { type: { family: 'bytes', size: bytes.type.size }, bytes: bytes.bytes.slice() }
+}
 
 export class BrowserLessonSession {
   private readonly inputs: Record<string, CryptoValue | string>
@@ -69,6 +78,7 @@ export class BrowserLessonSession {
   private index = 0
   private request = 0
   private generation = 0
+  private graphGeneration = 0
 
   constructor(
     public lesson: CompiledLesson,
@@ -103,6 +113,7 @@ export class BrowserLessonSession {
     this.lesson = compiled.value
     this.locale = compiled.value.locales[requestedLocale] ? requestedLocale : compiled.value.defaultLocale
     this.index = Math.max(0, this.lesson.steps.findIndex((step) => step.id === stepId))
+    this.graphGeneration += 1
     return { ok: true, value: undefined }
   }
 
@@ -287,13 +298,11 @@ export class BrowserLessonSession {
           : this.snapshots.get(binding.step)?.outputs[binding.output]
       if (!value || typeof value === 'string') {
         const inputDiagnostic = 'input' in binding ? this.inputDiagnostics[binding.input] : undefined
-        return {
-          ok: false,
-          diagnostics: [inputDiagnostic ?? localized(
-            diagnostic('lesson.missing-step-result', 'Referenced Step result is unavailable.', `steps.${step.id}`),
-            this.locale,
-          )],
-        }
+        this.executionDiagnostics.set(step.id, inputDiagnostic ?? localized(
+          diagnostic('lesson.missing-step-result', 'Referenced Step result is unavailable.', `steps.${step.id}`),
+          this.locale,
+        ))
+        return { ok: true, value: this.state() }
       }
       inputs[targetPort] = cloneValue(value)
     }
@@ -302,7 +311,12 @@ export class BrowserLessonSession {
     const response = await this.worker.execute({
       requestId,
       kind: 'execute',
-      payload: { graph: graph.graph, inputs, ...(this.lesson.limits ? { limits: this.lesson.limits } : {}) },
+      payload: {
+        graph: graph.graph,
+        compiledGraphId: `${this.graphGeneration}:${step.execute.graph}`,
+        inputs,
+        ...(this.lesson.limits ? { limits: this.lesson.limits } : {}),
+      },
     }).result
     if (response.kind === 'snapshot' && this.index === target && generation === this.generation && requestId === `${step.id}-${this.request}`) {
       this.snapshots.set(step.id, response.snapshot)

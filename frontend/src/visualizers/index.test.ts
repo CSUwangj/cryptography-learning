@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { render } from '@testing-library/react'
 import React from 'react'
-import { bits, executeWorkerRequest, hex, teachingSpnGraph } from '../crypto_graph'
+import { alphabetPolicy, alphabetText, bits, executeWorkerRequest, hex, teachingSpnGraph } from '../crypto_graph'
 import { teachingSpnDemoDocuments } from '../app/testspn'
 import { compileLesson, createBrowserLessonSession } from '../lesson_runtime'
 import { traceBitTargets } from './TraceBitGraph'
 import { AvalancheRenderer } from './Avalanche'
+import { classicalCipherPositions } from './ClassicalCipher'
 import { RenderHost, visualizerCatalog } from './index'
 
 describe('Shared trace visuals', () => {
@@ -191,5 +192,25 @@ steps:
       documents.lesson.replace('key: {constant: key}', 'key: {constant: missing}'),
       documents.lesson.replace(/      compare:[\s\S]*?        traceLevel: detail\n/, ''),
     ]) expect(compileLesson({ ...documents, lesson }, visualizerCatalog).ok).toBe(false)
+  })
+
+  it('maps classical cipher positions and disables movement in reduced-motion mode', () => {
+    const mapping = { id: 'latin', symbols: [...'ABC'] }
+    const input = alphabetText(mapping, 'Ab')
+    const output = alphabetText(mapping, 'Cb')
+    expect(classicalCipherPositions(input, output, mapping)).toEqual([
+      { input: 'A', output: 'C', sourcePosition: 0, targetPosition: 2, mapped: true },
+      { input: 'b', output: 'b', mapped: false },
+    ])
+    const rendered = render(React.createElement(RenderHost, {
+      invocation: { id: 'classical-cipher@1' },
+      dimensions: { width: 600, height: 240 },
+      executionIdentity: 'classical-cipher',
+      locale: 'en-US',
+      reducedMotion: true,
+      classicalCipher: { input, output, mapping, policy: alphabetPolicy('preserve'), policyLabel: 'Preserve unmapped characters' },
+    }))
+    expect(rendered.getByLabelText('Classical cipher position mapping')).toBeVisible()
+    expect(rendered.getByText('Unmapped')).toBeVisible()
   })
 })

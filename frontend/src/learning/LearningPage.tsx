@@ -13,7 +13,7 @@ import {
   type LessonDocuments as RuntimeLessonDocuments,
   type LessonSessionState,
 } from 'lesson_runtime'
-import { hex, type CryptoValue, type Diagnostic } from 'crypto_graph'
+import { hex, type AlphabetPolicyValue, type AlphabetTextValue, type CryptoValue, type Diagnostic } from 'crypto_graph'
 import { RenderHost, visualizerCatalog } from '../visualizers'
 import { loadLessonDocuments, useLearningCatalog } from './data'
 
@@ -31,19 +31,61 @@ const diagnostic = (message: string): Diagnostic => ({
   details: {},
 })
 
-const hexValue = (value: Exclude<CryptoValue, { symbol: string }>): string =>
-  'words' in value ? `0x${[...value.words].map((byte) => byte.toString(16).padStart(2, '0')).join('')}` : hex(value)
+const hexValue = (value: CryptoValue): string => {
+  const byteValue = value as Extract<CryptoValue, { bytes: Uint8Array } | { words: Uint8Array }>
+  return 'words' in byteValue ? `0x${[...byteValue.words].map((byte) => byte.toString(16).padStart(2, '0')).join('')}` : hex(byteValue)
+}
 
 const valueText = (value: CryptoValue): string =>
   'symbol' in value
     ? `${value.symbol} (${value.type.family}<${value.type.mapping}>)`
-    : `${hexValue(value)} (${value.type.family}<${value.type.size}>)`
+    : 'symbols' in value
+      ? `${value.symbols.join('')} (${value.type.family}<${value.type.mapping}>)`
+      : 'value' in value
+        ? `${value.value} (${value.type.family})`
+        : `${hexValue(value)} (${value.type.family}<${(value.type as { size: number }).size}>)`
 
 const inputText = (value: CryptoValue | string): string =>
-  typeof value === 'string' ? value : 'symbol' in value ? value.symbol : hexValue(value)
+  typeof value === 'string'
+    ? value
+    : 'symbol' in value
+      ? value.symbol
+      : 'symbols' in value
+        ? value.symbols.join('')
+        : 'value' in value
+          ? String(value.value)
+          : hexValue(value)
 
 const diagnosticText = (value: Diagnostic): string =>
   `${value.code}: ${value.message}${value.path ? ` (${value.path})` : ''}${value.span ? ` at ${value.span.file}:${value.span.line}:${value.span.column}` : ''}`
+
+const classicalCipherData = (
+  step: { readonly execute?: { readonly graph: string }; readonly visualizer?: { readonly id: string; readonly bindings?: Readonly<Record<string, unknown>> } },
+  lesson: BrowserLessonSession['lesson'],
+  state: LessonSessionState,
+) => {
+  if (step.visualizer?.id !== 'classical-cipher@1' || !step.execute) return undefined
+  const value = (binding: unknown): CryptoValue | undefined => {
+    if (typeof binding !== 'object' || binding === null) return undefined
+    const reference = binding as { input?: unknown; step?: unknown; output?: unknown }
+    const input = typeof reference.input === 'string' ? state.inputs[reference.input] : undefined
+    const output = typeof reference.step === 'string' && typeof reference.output === 'string'
+      ? state.snapshots[reference.step]?.outputs[reference.output]
+      : undefined
+    const resolved = input ?? output
+    return typeof resolved === 'string' ? undefined : resolved
+  }
+  const plaintext = value(step.visualizer.bindings?.plaintext)
+  const ciphertext = value(step.visualizer.bindings?.ciphertext)
+  const policy = value(step.visualizer.bindings?.policy)
+  if (plaintext?.type.family !== 'alphabet-text' || ciphertext?.type.family !== 'alphabet-text' || policy?.type.family !== 'alphabet-policy') return undefined
+  const input = plaintext as AlphabetTextValue
+  const output = ciphertext as AlphabetTextValue
+  const mapping = lesson.graphs[step.execute.graph]?.graph.alphabetMappings?.find((item) => item.id === input.type.mapping)
+  return mapping && input.type.mapping === output.type.mapping
+    ? { input, output, mapping, policy: policy as AlphabetPolicyValue }
+    : undefined
+}
 
 const LessonCatalog: React.FC = () => {
   const { i18n, t } = useTranslation()
@@ -177,6 +219,7 @@ const LessonView: React.FC = () => {
   const checkResult = state.checkResults[step.id]
   const acceptedDiagnostic = state.acceptedDiagnostics[step.id]
   const executionDiagnostic = state.executionDiagnostics[step.id]
+  const cipher = classicalCipherData(step, current.lesson, state)
   const next = async () => {
     const result = await current.next()
     if (!result.ok) setLoad({ status: 'error', diagnostics: result.diagnostics })
@@ -191,9 +234,19 @@ const LessonView: React.FC = () => {
     {step.inputs?.map((input) => {
       const raw = state.inputs[input.input]
       const value = inputText(raw)
+      const setInput = (next: string) => { current.setInput(input.input, next); refresh() }
       return <label key={input.input}>
         <p>{locale.texts[input.prompt]}</p>
-        <InputGroup value={value} onChange={(event) => { current.setInput(input.input, event.target.value); refresh() }} />
+        {input.type.family === 'alphabet-policy'
+          ? <select value={value} onChange={(event) => setInput(event.target.value)}>
+              <option value="preserve">{t('learning.policy.preserve')}</option>
+              <option value="strict">{t('learning.policy.strict')}</option>
+            </select>
+          : <InputGroup
+              value={value}
+              inputMode={input.type.family === 'integer' ? 'numeric' : undefined}
+              onChange={(event) => setInput(event.target.value)}
+            />}
         {state.inputDiagnostics[input.input] && <Callout intent="danger">{state.inputDiagnostics[input.input].message}</Callout>}
       </label>
     })}
@@ -211,6 +264,13 @@ const LessonView: React.FC = () => {
         invocation={step.visualizer}
         locale={state.locale}
         reducedMotion={reducedMotion}
+        classicalCipher={cipher && {
+          input: cipher.input,
+          output: cipher.output,
+          mapping: cipher.mapping,
+          policy: cipher.policy,
+          policyLabel: t(`learning.policy.${cipher.policy.value}`),
+        }}
       />
     </div>}
     {acceptedDiagnostic && <Callout intent="primary">{diagnosticText(acceptedDiagnostic)}</Callout>}

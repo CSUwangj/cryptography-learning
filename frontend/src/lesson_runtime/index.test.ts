@@ -390,6 +390,118 @@ steps:
     }
   })
 
+  it('executes Caesar policy inputs through the Lesson session without mutating prior snapshots', async () => {
+    const documents: LessonDocuments = {
+      lesson: `version: 1
+id: caesar
+default_locale: en-US
+inputs:
+  plaintext: {type: {family: alphabet-text, mapping: latin}, encoding: text, default: "ABC"}
+  shift: {type: {family: integer, signed: true, safe: true}, encoding: integer, default: 3}
+  policy: {type: {family: alphabet-policy}, encoding: policy, default: preserve}
+constants: {}
+graphs:
+  caesar:
+    alphabetMappings: [{id: latin, symbols: [A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z]}]
+    nodes:
+      - {id: text, operation: core.source@1, parameters: {type: {family: alphabet-text, mapping: latin}}}
+      - {id: shift, operation: core.source@1, parameters: {type: {family: integer, signed: true, safe: true}}}
+      - {id: policy, operation: core.source@1, parameters: {type: {family: alphabet-policy}}}
+      - id: cipher
+        operation: classical.caesar@1
+        inputs:
+          text: {node: text, port: value}
+          shift: {node: shift, port: value}
+          policy: {node: policy, port: value}
+    outputs: [{node: cipher, port: text}]
+steps:
+  - id: enter
+    inputs:
+      - {input: plaintext, prompt: plaintext}
+      - {input: shift, prompt: shift}
+      - {input: policy, prompt: policy}
+  - id: execute
+    execute:
+      graph: caesar
+      bindings:
+        text.value: {input: plaintext}
+        shift.value: {input: shift}
+        policy.value: {input: policy}
+`,
+      locales: {
+        'en-US': `title: Caesar
+summary: Encrypt alphabet text.
+texts: {plaintext: Plaintext, shift: Shift, policy: Policy}
+`,
+        'zh-CN': `title: 凯撒
+summary: 加密字母表文本。
+texts: {plaintext: 明文, shift: 位移, policy: 策略}
+`,
+      },
+    }
+    const previousWorker = globalThis.Worker
+    const compiledGraphIds: string[] = []
+    const compiledGraphs = new Map()
+    let workerInstances = 0
+    let terminatedWorkers = 0
+    class TrackingWorker {
+      private listeners: Array<(event: MessageEvent<unknown>) => void> = []
+
+      constructor() {
+        workerInstances += 1
+      }
+
+      addEventListener(type: string, listener: (event: MessageEvent<unknown>) => void): void {
+        if (type === 'message') this.listeners.push(listener)
+      }
+
+      postMessage(request: Parameters<typeof executeWorkerRequest>[0]): void {
+        if (request.kind === 'execute') compiledGraphIds.push(request.payload.compiledGraphId ?? '')
+        queueMicrotask(() => this.listeners.forEach((listener) =>
+          listener({ data: executeWorkerRequest(request, compiledGraphs) } as MessageEvent<unknown>)))
+      }
+
+      terminate(): void {
+        terminatedWorkers += 1
+      }
+    }
+    globalThis.Worker = TrackingWorker as unknown as typeof Worker
+    try {
+      const session = createBrowserLessonSession(documents, 'en-US')
+      expect(session.ok).toBe(true)
+      if (!session.ok) return
+      const first = await session.value.next()
+      expect(first.ok && first.value.snapshots.execute.outputs['cipher.text']).toMatchObject({ symbols: ['D', 'E', 'F'] })
+      const firstSnapshot = first.ok ? first.value.snapshots.execute : undefined
+
+      await session.value.previous()
+      expect(session.value.setInput('plaintext', 'Ab C!').ok).toBe(true)
+      expect(session.value.setInput('policy', 'strict').ok).toBe(true)
+      const strict = await session.value.next()
+      expect(strict.ok && strict.value.executionDiagnostics.execute).toMatchObject({ code: 'cipher.unmapped-symbol' })
+      expect(firstSnapshot?.outputs['cipher.text']).toMatchObject({ symbols: ['D', 'E', 'F'] })
+      expect(compiledGraphIds).toEqual(['0:caesar', '0:caesar'])
+      expect(workerInstances).toBe(1)
+      expect(compiledGraphs.size).toBe(1)
+      expect(terminatedWorkers).toBe(0)
+
+      await session.value.previous()
+      expect(session.value.setInput('shift', '3.5')).toMatchObject({
+        ok: false,
+        diagnostics: [{ code: 'cipher.invalid-key', details: { reason: 'fraction' } }],
+      })
+      const invalidKey = await session.value.next()
+      expect(invalidKey.ok && invalidKey.value).toMatchObject({
+        inputs: { shift: '3.5' },
+        executionDiagnostics: { execute: { code: 'cipher.invalid-key' } },
+      })
+      session.value.dispose()
+      expect(terminatedWorkers).toBe(1)
+    } finally {
+      globalThis.Worker = previousWorker
+    }
+  })
+
   it('uses stable diagnostics with source locations and rejects forbidden YAML', () => {
     const unsupported = compileLesson({ ...fixture(), lesson: fixture().lesson.replace('version: 1', 'version: 2') })
     expect(unsupported).toMatchObject({

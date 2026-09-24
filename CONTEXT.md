@@ -24,6 +24,10 @@
   encoding used to enter or display it.
 - **Teaching SPN** — A small substitution-permutation network designed to make
   substitutions, permutations, key mixing, and round state inspectable.
+- **Cryptographic Primitive** — An operation-level cryptographic building block,
+  such as XOR, addition, substitution, an AES transform, or key expansion. A
+  primitive is represented at execution time by a CryptoGraph operation and is
+  independent of any Lesson.
 - **Visualizer** — A compiled-in, versioned teaching view that transforms typed
   CryptoGraph values and semantic traces into an interactive presentation.
 - **Bit Lineage** — The structural dependency relationships connecting a selected

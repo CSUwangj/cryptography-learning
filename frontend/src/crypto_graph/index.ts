@@ -19,6 +19,9 @@ export type PortType =
   | { family: 'bytes'; size: Size }
   | { family: 'words'; size: Size; wordSize: 8 }
   | { family: 'alphabet-symbol'; mapping: string }
+  | { family: 'alphabet-text'; mapping: string }
+  | { family: 'integer'; signed: true; safe: true }
+  | { family: 'alphabet-policy' }
 
 export type BitsValue = {
   type: { family: 'bits'; size: number }
@@ -45,7 +48,30 @@ export type AlphabetSymbolValue = {
   symbol: string
 }
 
-export type CryptoValue = BitsValue | BytesValue | WordsValue | AlphabetSymbolValue
+export type AlphabetTextValue = {
+  type: { family: 'alphabet-text'; mapping: string }
+  symbols: readonly string[]
+}
+
+export type IntegerValue = {
+  type: { family: 'integer'; signed: true; safe: true }
+  value: number
+}
+
+export type AlphabetPolicyValue = {
+  type: { family: 'alphabet-policy' }
+  value: 'preserve' | 'strict'
+}
+
+export type CryptoValue = BitsValue | BytesValue | WordsValue | AlphabetSymbolValue | AlphabetTextValue | IntegerValue | AlphabetPolicyValue
+
+type ByteValue = BitsValue | BytesValue | WordsValue
+
+const isIntegerValue = (value: CryptoValue): value is IntegerValue => value.type.family === 'integer'
+const isAlphabetPolicyValue = (value: CryptoValue): value is AlphabetPolicyValue => value.type.family === 'alphabet-policy'
+const isAlphabetTextValue = (value: CryptoValue): value is AlphabetTextValue => value.type.family === 'alphabet-text'
+const isByteValue = (value: CryptoValue): value is ByteValue =>
+  value.type.family === 'bits' || value.type.family === 'bytes' || value.type.family === 'words'
 
 export type Port = {
   name: string
@@ -141,6 +167,7 @@ type LimitedExecutor = (inputs?: Record<string, CryptoValue>, traceLimits?: Trac
 
 export type WorkerExecutionPayload = {
   readonly graph: AuthoredGraph
+  readonly compiledGraphId?: string
   readonly inputs?: Readonly<Record<string, CryptoValue>>
   readonly limits?: WorkerLimits
 }
@@ -202,7 +229,7 @@ type Result<T> = { ok: true; value: T } | { ok: false; diagnostics: readonly Dia
 type Operation = {
   manifest: OperationManifest
   validateParameters?: (parameters: Record<string, unknown>, node: AuthoredNode) => Diagnostic[]
-  execute: (inputs: Record<string, CryptoValue>, parameters: Record<string, unknown>) => Record<string, CryptoValue>
+  execute: (inputs: Record<string, CryptoValue>, parameters: Record<string, unknown>, mappings: ReadonlyMap<string, AlphabetMapping>) => Record<string, CryptoValue>
 }
 
 export type CompiledGraph = {
@@ -231,6 +258,9 @@ const ambiguousRepeatIdentities = new WeakMap<WorkerExecutionSnapshot, boolean>(
 
 const cloneValue = (value: CryptoValue): CryptoValue => {
   if ('symbol' in value) return { type: { family: 'alphabet-symbol', mapping: value.type.mapping }, symbol: value.symbol }
+  if (isAlphabetTextValue(value)) return { type: { family: 'alphabet-text', mapping: value.type.mapping }, symbols: [...value.symbols] }
+  if (isIntegerValue(value)) return { type: { family: 'integer', signed: true, safe: true }, value: value.value }
+  if (isAlphabetPolicyValue(value)) return { type: { family: 'alphabet-policy' }, value: value.value }
   if ('words' in value) return { type: { family: 'words', size: value.type.size, wordSize: 8 }, words: value.words.slice() }
   return value.type.family === 'bits'
     ? { type: { family: 'bits', size: value.type.size }, bytes: value.bytes.slice() }
@@ -244,13 +274,19 @@ const typeMatches = (expected: PortType, actual: PortType, bindings: Map<string,
   if (expected.family === 'alphabet-symbol' && actual.family === 'alphabet-symbol') {
     return expected.mapping === actual.mapping
   }
+  if (expected.family === 'alphabet-text' && actual.family === 'alphabet-text') {
+    return expected.mapping === '*' || expected.mapping === actual.mapping
+  }
+  if (expected.family === 'integer' || expected.family === 'alphabet-policy') return true
   if (expected.family === 'words' && actual.family === 'words' && expected.wordSize !== actual.wordSize) return false
-  if (expected.family === 'alphabet-symbol' || actual.family === 'alphabet-symbol') return false
-  const actualSize = actual.size as number
-  if (typeof expected.size === 'number') return expected.size === actualSize
-  const bound = bindings.get(expected.size)
+  if (expected.family === 'alphabet-symbol' || expected.family === 'alphabet-text' || actual.family === 'alphabet-symbol' || actual.family === 'alphabet-text') return false
+  const binaryExpected = expected as Exclude<PortType, { family: 'alphabet-symbol' | 'alphabet-text' | 'integer' | 'alphabet-policy' }>
+  const binaryActual = actual as Exclude<PortType, { family: 'alphabet-symbol' | 'alphabet-text' | 'integer' | 'alphabet-policy' }>
+  const actualSize = binaryActual.size as number
+  if (typeof binaryExpected.size === 'number') return binaryExpected.size === actualSize
+  const bound = bindings.get(binaryExpected.size)
   if (bound === undefined) {
-    bindings.set(expected.size, actualSize)
+    bindings.set(binaryExpected.size, actualSize)
     return true
   }
   return bound === actualSize
@@ -258,6 +294,9 @@ const typeMatches = (expected: PortType, actual: PortType, bindings: Map<string,
 
 const typeText = (type: PortType): string => {
   if (type.family === 'alphabet-symbol') return `alphabet-symbol<${type.mapping}>`
+  if (type.family === 'alphabet-text') return `alphabet-text<${type.mapping}>`
+  if (type.family === 'integer') return 'integer'
+  if (type.family === 'alphabet-policy') return 'alphabet-policy'
   if (type.family === 'words') return `words<${type.size},u8>`
   return `${type.family}<${type.size}>`
 }
@@ -266,6 +305,9 @@ const isPortType = (value: unknown): value is PortType => {
   if (typeof value !== 'object' || value === null) return false
   const type = value as Record<string, unknown>
   if (type.family === 'alphabet-symbol') return typeof type.mapping === 'string'
+  if (type.family === 'alphabet-text') return typeof type.mapping === 'string'
+  if (type.family === 'integer') return type.signed === true && type.safe === true
+  if (type.family === 'alphabet-policy') return true
   if ((type.family === 'bits' || type.family === 'bytes') && (typeof type.size === 'number' || typeof type.size === 'string')) return true
   return type.family === 'words' && (typeof type.size === 'number' || typeof type.size === 'string') && type.wordSize === 8
 }
@@ -275,9 +317,14 @@ const isUint8Array = (value: unknown): value is Uint8Array =>
 
 const isCryptoValue = (value: unknown): value is CryptoValue => {
   if (typeof value !== 'object' || value === null || !('type' in value)) return false
-  const candidate = value as { type: unknown; bytes?: unknown; words?: unknown; symbol?: unknown }
+  const candidate = value as { type: unknown; bytes?: unknown; words?: unknown; symbol?: unknown; symbols?: unknown; value?: unknown }
   if (!isPortType(candidate.type)) return false
   if (candidate.type.family === 'alphabet-symbol') return typeof candidate.symbol === 'string'
+  if (candidate.type.family === 'alphabet-text') {
+    return Array.isArray(candidate.symbols) && candidate.symbols.every((symbol) => typeof symbol === 'string' && [...symbol].length === 1)
+  }
+  if (candidate.type.family === 'integer') return typeof candidate.value === 'number'
+  if (candidate.type.family === 'alphabet-policy') return candidate.value === 'preserve' || candidate.value === 'strict'
   return candidate.type.family === 'words' ? isUint8Array(candidate.words) : isUint8Array(candidate.bytes)
 }
 
@@ -403,6 +450,8 @@ const bytesForBits = (size: number) => Math.ceil(size / 8)
 
 const validSizedValue = (value: CryptoValue): boolean => {
   if ('symbol' in value) return true
+  if (isAlphabetTextValue(value) || isIntegerValue(value) || isAlphabetPolicyValue(value)) return true
+  if (!isByteValue(value)) return false
   const size = value.type.size
   const contents = 'words' in value ? value.words : value.bytes
   if (!Number.isInteger(size) || size <= 0 || contents.length !== (value.type.family === 'bits' ? bytesForBits(size) : size)) return false
@@ -427,6 +476,7 @@ export const words = (size: number, value: Uint8Array): WordsValue => ({
 export const alphabetMapping = (id: string, symbols: readonly string[]): Result<AlphabetMapping> => {
   const diagnostics: Diagnostic[] = []
   const seen = new Set<string>()
+  if (symbols.length < 2) diagnostics.push(diagnostic('invalid-alphabet-mapping', 'Alphabet mappings require at least two symbols.', 'alphabet.symbols'))
   for (const [index, symbol] of symbols.entries()) {
     if ([...symbol].length !== 1) diagnostics.push(diagnostic('invalid-alphabet-symbol', 'Alphabet symbols must be one Unicode code point.', `alphabet.symbols.${index}`))
     if (seen.has(symbol)) diagnostics.push(diagnostic('duplicate-alphabet-symbol', 'Alphabet symbols must be unique.', `alphabet.symbols.${index}`))
@@ -441,6 +491,21 @@ export const alphabetSymbol = (mapping: AlphabetMapping, symbol: string): Result
   }
   return { ok: true, value: { type: { family: 'alphabet-symbol', mapping: mapping.id }, symbol } }
 }
+
+export const alphabetText = (mapping: AlphabetMapping, value: string): AlphabetTextValue => ({
+  type: { family: 'alphabet-text', mapping: mapping.id },
+  symbols: [...value],
+})
+
+export const integer = (value: number): IntegerValue => ({
+  type: { family: 'integer', signed: true, safe: true },
+  value,
+})
+
+export const alphabetPolicy = (value: AlphabetPolicyValue['value']): AlphabetPolicyValue => ({
+  type: { family: 'alphabet-policy' },
+  value,
+})
 
 export const hex = (value: BitsValue | BytesValue): string =>
   `0x${[...value.bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('').slice(-(value.type.family === 'bits' ? Math.ceil(value.type.size / 4) : value.type.size * 2))}`
@@ -538,6 +603,114 @@ const output: Operation = {
   },
 }
 
+class CipherDiagnostic extends Error {
+  constructor(
+    readonly code: string,
+    readonly message: string,
+    readonly details: Diagnostic['details'],
+  ) {
+    super(message)
+  }
+}
+
+const validKey = (value: IntegerValue): void => {
+  if (!Number.isInteger(value.value)) {
+    throw new CipherDiagnostic(
+      'cipher.invalid-key',
+      'Cipher keys must be integers.',
+      { reason: Number.isFinite(value.value) ? 'fraction' : 'non-integer' },
+    )
+  }
+  if (!Number.isSafeInteger(value.value)) {
+    throw new CipherDiagnostic('cipher.invalid-key', 'Cipher keys must be safe integers.', { reason: 'unsafe' })
+  }
+}
+
+const modulo = (value: number, modulus: number): number => ((value % modulus) + modulus) % modulus
+const multiplyModulo = (left: number, right: number, modulus: number): number =>
+  Number((BigInt(left) * BigInt(right)) % BigInt(modulus))
+
+const cipherText = (
+  text: AlphabetTextValue,
+  key: (position: number) => number,
+  policy: AlphabetPolicyValue,
+  mappings: ReadonlyMap<string, AlphabetMapping>,
+): AlphabetTextValue => {
+  const mapping = mappings.get(text.type.mapping)
+  if (!mapping) throw new CipherDiagnostic('cipher.invalid-mapping', 'Cipher text references an unknown alphabet mapping.', { mapping: text.type.mapping })
+  const positions = new Map(mapping.symbols.map((symbol, position) => [symbol, position]))
+  const symbols = text.symbols.map((symbol, index) => {
+    const position = positions.get(symbol)
+    if (position === undefined) {
+      if (policy.value === 'strict') {
+        throw new CipherDiagnostic('cipher.unmapped-symbol', 'Strict alphabet policy rejects symbols outside the mapping.', {
+          symbol,
+          index,
+          strict: true,
+        })
+      }
+      return symbol
+    }
+    return mapping.symbols[key(position)]
+  })
+  return { type: { family: 'alphabet-text', mapping: text.type.mapping }, symbols }
+}
+
+const caesar: Operation = {
+  manifest: {
+    identity: 'classical.caesar@1',
+    inputs: [
+      { name: 'text', type: { family: 'alphabet-text', mapping: '*' } },
+      { name: 'shift', type: { family: 'integer', signed: true, safe: true } },
+      { name: 'policy', type: { family: 'alphabet-policy' } },
+    ],
+    outputs: [{ name: 'text', type: { family: 'alphabet-text', mapping: '*' } }],
+  },
+  execute(inputs, _, mappings) {
+    const text = inputs.text as AlphabetTextValue
+    const shift = inputs.shift as IntegerValue
+    const policy = inputs.policy as AlphabetPolicyValue
+    validKey(shift)
+    const modulus = mappings.get(text.type.mapping)?.symbols.length
+    if (!modulus) throw new CipherDiagnostic('cipher.invalid-mapping', 'Cipher text references an unknown alphabet mapping.', { mapping: text.type.mapping })
+    const normalizedShift = modulo(shift.value, modulus)
+    return { text: cipherText(text, (position) => modulo(position + normalizedShift, modulus), policy, mappings) }
+  },
+}
+
+const affine: Operation = {
+  manifest: {
+    identity: 'classical.affine@1',
+    inputs: [
+      { name: 'text', type: { family: 'alphabet-text', mapping: '*' } },
+      { name: 'a', type: { family: 'integer', signed: true, safe: true } },
+      { name: 'b', type: { family: 'integer', signed: true, safe: true } },
+      { name: 'policy', type: { family: 'alphabet-policy' } },
+    ],
+    outputs: [{ name: 'text', type: { family: 'alphabet-text', mapping: '*' } }],
+  },
+  execute(inputs, _, mappings) {
+    const text = inputs.text as AlphabetTextValue
+    const a = inputs.a as IntegerValue
+    const b = inputs.b as IntegerValue
+    const policy = inputs.policy as AlphabetPolicyValue
+    validKey(a)
+    validKey(b)
+    const modulus = mappings.get(text.type.mapping)?.symbols.length
+    if (!modulus) throw new CipherDiagnostic('cipher.invalid-mapping', 'Cipher text references an unknown alphabet mapping.', { mapping: text.type.mapping })
+    const normalizedA = modulo(a.value, modulus)
+    const gcd = (left: number, right: number): number => right === 0 ? left : gcd(right, left % right)
+    if (gcd(normalizedA, modulus) !== 1) {
+      throw new CipherDiagnostic('cipher.invalid-affine-key', 'Affine key a must be coprime to the alphabet size.', {
+        a: normalizedA,
+        modulus,
+      })
+    }
+    const normalizedB = modulo(b.value, modulus)
+    return { text: cipherText(text, (position) => modulo(multiplyModulo(normalizedA, position, modulus) + normalizedB, modulus), policy, mappings) }
+  },
+}
+
 const throwing: Operation = {
   manifest: { identity: 'test.throw@1', inputs: [], outputs: [{ name: 'value', type: { family: 'bits', size: 8 } }] },
   execute() {
@@ -545,7 +718,7 @@ const throwing: Operation = {
   },
 }
 
-const operations = new Map<string, Operation>([source, xor, substitute, permute, output, throwing].map((operation) => [operation.manifest.identity, operation]))
+const operations = new Map<string, Operation>([source, xor, substitute, permute, output, caesar, affine, throwing].map((operation) => [operation.manifest.identity, operation]))
 
 export const operationManifests: readonly OperationManifest[] = [...operations.values()]
   .filter((operation) => !operation.manifest.identity.startsWith('test.'))
@@ -677,6 +850,11 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
     if (!operation) continue
     const params = node.parameters ?? {}
     diagnostics.push(...(operation.validateParameters?.(params, node) ?? []))
+    if (node.operation === 'core.source@1' && isPortType(params.type)
+      && (params.type.family === 'alphabet-symbol' || params.type.family === 'alphabet-text')
+      && !mappings.has(params.type.mapping)) {
+      diagnostics.push(diagnostic('invalid-parameter', 'Alphabet type references an undeclared mapping.', `${node.id}.parameters.type`, node))
+    }
     if (node.operation === 'core.source@1' && isCryptoValue(params.value) && 'symbol' in params.value) {
       const mapping = mappings.get(params.value.type.mapping)
       if (!mapping || !mapping.symbols.includes(params.value.symbol)) {
@@ -702,6 +880,8 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
         ? upstream?.inputs?.left
         : upstreamOperation?.manifest.identity === 'core.output@1'
           ? upstream?.inputs?.value
+          : upstreamOperation?.manifest.identity === 'classical.caesar@1' || upstreamOperation?.manifest.identity === 'classical.affine@1'
+            ? upstream?.inputs?.text
           : undefined
       const forwardedSource = forwardedInput && nodes.get(forwardedInput.node)
       const forwardedOperation = forwardedSource && resolved.get(forwardedSource.id)
@@ -783,9 +963,11 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
             }
             let result: Record<string, CryptoValue>
             try {
-              result = operation.execute(inputs, parameters)
-            } catch {
-              return { ok: false, diagnostics: [diagnostic('operation-failed', 'Operation execution failed.', id, node)] }
+              result = operation.execute(inputs, parameters, mappings)
+            } catch (error) {
+              return { ok: false, diagnostics: [error instanceof CipherDiagnostic
+                ? diagnostic(error.code, error.message, id, node, error.details)
+                : diagnostic('operation-failed', 'Operation execution failed.', id, node)] }
             }
             for (const [port, value] of Object.entries(result)) {
               if (!validSizedValue(value)) return { ok: false, diagnostics: [diagnostic('invalid-value', 'Operation returned an invalid value.', `${id}.${port}`, node)] }
@@ -878,6 +1060,9 @@ type WorkerBudget = {
 
 const cryptoValueBytes = (value: CryptoValue): number => {
   if ('symbol' in value) return new TextEncoder().encode(value.symbol).byteLength
+  if (isAlphabetTextValue(value)) return new TextEncoder().encode(value.symbols.join('')).byteLength
+  if (isIntegerValue(value)) return 8
+  if (isAlphabetPolicyValue(value)) return 1
   return ('words' in value ? value.words : value.bytes).byteLength
 }
 
@@ -938,6 +1123,7 @@ const executeWorkerPayload = (
   payload: WorkerExecutionPayload,
   limits: ResolvedWorkerLimits,
   budget?: WorkerBudget,
+  compiledGraphs?: Map<string, CompiledGraph>,
 ): Result<WorkerExecutionSnapshot> => {
   const inputBytes = executionInputBytes(payload)
   if (!inputBytes.ok) return inputBytes
@@ -958,15 +1144,20 @@ const executeWorkerPayload = (
     budget.inputBytes += inputBytes.value
     budget.nodes += nodes
   }
-  const compiled = compile(payload.graph)
-  if (!compiled.ok) return compiled
+  let compiled = payload.compiledGraphId ? compiledGraphs?.get(payload.compiledGraphId) : undefined
+  if (!compiled) {
+    const result = compile(payload.graph)
+    if (!result.ok) return result
+    compiled = result.value
+    if (payload.compiledGraphId) compiledGraphs?.set(payload.compiledGraphId, compiled)
+  }
   const traceLimits: TraceCollectionLimits = budget
     ? {
         traceEvents: Math.min(limits.traceEvents, budget.limits.traceEvents - budget.traceEvents),
         traceBytes: Math.min(limits.traceBytes, budget.limits.traceBytes - budget.traceBytes),
       }
     : limits
-  const execution = (compiled.value.execute as LimitedExecutor)(payload.inputs ? { ...payload.inputs } : {}, traceLimits)
+  const execution = (compiled.execute as LimitedExecutor)(payload.inputs ? { ...payload.inputs } : {}, traceLimits)
   if (!execution.ok) return execution
   const snapshot = structuredClone({
       ...execution.value,
@@ -976,7 +1167,7 @@ const executeWorkerPayload = (
     budget.traceEvents += snapshot.trace.length
     budget.traceBytes += snapshot.trace.reduce((total, event) => total + traceEventBytes(event), 0)
   }
-  structureSignatures.set(snapshot, structuralSignature(compiled.value.graph))
+  structureSignatures.set(snapshot, structuralSignature(compiled.graph))
   const repeats = repeatIdentities(payload.graph)
   relativeTracePaths.set(snapshot, new Map(snapshot.trace.map((event) => [event.path, relativeTracePath(event.path, repeats)])))
   ambiguousRepeatIdentities.set(snapshot, repeats.ambiguous)
@@ -1080,13 +1271,13 @@ const compareSnapshots = (
   }
 }
 
-export const executeWorkerRequest = (request: WorkerRequest): WorkerResponse => {
+export const executeWorkerRequest = (request: WorkerRequest, compiledGraphs?: Map<string, CompiledGraph>): WorkerResponse => {
   const requestId = typeof request?.requestId === 'string' ? request.requestId : ''
   try {
     const limits = resolveWorkerLimits(request.payload?.limits)
     if (!limits.ok) return { requestId, kind: 'diagnostic', diagnostics: limits.diagnostics }
     if (request.kind === 'execute') {
-      const execution = executeWorkerPayload(request.payload, limits.value)
+      const execution = executeWorkerPayload(request.payload, limits.value, undefined, compiledGraphs)
       return execution.ok
         ? { requestId, kind: 'snapshot', snapshot: execution.value }
         : { requestId, kind: 'diagnostic', diagnostics: execution.diagnostics }

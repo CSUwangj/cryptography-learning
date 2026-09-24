@@ -71,6 +71,10 @@ i18n
             'output': 'Output',
             'value': 'Value',
             'check': 'Check your answer',
+            'policy': {
+              'preserve': 'Preserve unmapped characters',
+              'strict': 'Reject unmapped characters',
+            },
           },
           'notFound': {
             'title': 'Not Found',
@@ -174,6 +178,10 @@ i18n
             'output': '输出',
             'value': '值',
             'check': '检查答案',
+            'policy': {
+              'preserve': '保留未映射字符',
+              'strict': '拒绝未映射字符',
+            },
           },
           'notFound': {
             'title': '未找到',

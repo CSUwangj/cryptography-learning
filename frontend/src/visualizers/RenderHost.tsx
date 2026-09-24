@@ -1,6 +1,7 @@
 import React from 'react'
-import { hex, type AvalancheComparison, type WorkerExecutionSnapshot } from 'crypto_graph'
+import { hex, type AlphabetMapping, type AlphabetPolicyValue, type AlphabetTextValue, type AvalancheComparison, type WorkerExecutionSnapshot } from 'crypto_graph'
 import { AvalancheRenderer } from './Avalanche'
+import { classicalCipherPositions, ClassicalCipherRenderer } from './ClassicalCipher'
 import { TeachingSpnRenderer } from './TeachingSpn'
 
 export type RenderHostProps = {
@@ -11,6 +12,13 @@ export type RenderHostProps = {
   readonly dimensions: { readonly width: number; readonly height: number }
   readonly reducedMotion: boolean
   readonly executionIdentity: string
+  readonly classicalCipher?: {
+    readonly input: AlphabetTextValue
+    readonly output: AlphabetTextValue
+    readonly mapping: AlphabetMapping
+    readonly policy: AlphabetPolicyValue
+    readonly policyLabel: string
+  }
 }
 
 const fallbackCopy = {
@@ -80,5 +88,16 @@ export const RenderHost: React.FC<RenderHostProps> = (props) =>
               executionIdentity={props.executionIdentity}
               locale={props.locale}
             />
+          : props.invocation.id === 'classical-cipher@1' && props.classicalCipher
+            ? <ClassicalCipherRenderer
+                {...props.classicalCipher}
+                positions={classicalCipherPositions(
+                  props.classicalCipher.input,
+                  props.classicalCipher.output,
+                  props.classicalCipher.mapping,
+                )}
+                locale={props.locale}
+                reducedMotion={props.reducedMotion}
+              />
           : <Fallback comparison={props.comparison} execution={props.execution} locale={props.locale} />}
   </IsolatedRenderer>
