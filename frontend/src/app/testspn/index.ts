@@ -1,1 +1,0 @@
-export { teachingSpnDemoDocuments } from './demoLesson'

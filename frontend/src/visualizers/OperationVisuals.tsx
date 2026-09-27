@@ -10,15 +10,11 @@ type SubstitutionLane = { readonly input: string; readonly output: string }
 export const SubstitutionVisual: React.FC<{
   readonly lanes: readonly SubstitutionLane[]
   readonly sBox: readonly number[]
-  readonly selectedBit?: number
-  readonly lookupLabel: string
-}> = ({ lanes, sBox, selectedBit, lookupLabel }) => {
-  const inputs = lanes.map(({ input }) => input.slice(2))
-  const outputs = lanes.map(({ output }) => output.slice(2))
-  const selectedNibble = selectedBit === undefined ? undefined : Math.floor(selectedBit / 4)
-  const lookup = selectedNibble === undefined ? '' : `${lookupLabel}: S${selectedNibble}[${inputs[0]?.[selectedNibble]}] = ${sBox[parseInt(inputs[0]?.[selectedNibble] ?? '0', 16)]}`
-  return <>{lookup && <p>{lookup}</p>}<ul>{lanes.map((lane) => <li key={`${lane.input}-${lane.output}`}>{`${lane.input} → ${lane.output}`}</li>)}</ul></>
-}
+  readonly label: string
+}> = ({ lanes, sBox, label }) =>
+  <><p>{label}</p><ul>{lanes.map(({ input, output }) => <li key={`${input}-${output}`}>
+    {`${input} → ${output} (${[...input.slice(2)].map((nibble, index) => `S${index}[${nibble}] = ${sBox[parseInt(nibble, 16)].toString(16)}`).join(', ')})`}
+  </li>)}</ul></>
 
 export const PermutationVisual: React.FC<{ readonly permutation: readonly number[] }> = ({ permutation }) =>
   <ul>{permutation.map((target, source) => <li key={source}>{`${source} → ${target}`}</li>)}</ul>

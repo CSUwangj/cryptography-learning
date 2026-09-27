@@ -1,4 +1,4 @@
-import type { LessonDocuments } from '../../lesson_runtime'
+import type { LessonDocuments } from '../src/lesson_runtime'
 
 export const teachingSpnDemoDocuments: LessonDocuments = {
   lesson: `version: 1

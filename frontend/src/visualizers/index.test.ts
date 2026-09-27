@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { render } from '@testing-library/react'
 import React from 'react'
 import { alphabetPolicy, alphabetText, bits, executeWorkerRequest, hex, teachingSpnGraph } from '../crypto_graph'
-import { teachingSpnDemoDocuments } from '../app/testspn'
+import { teachingSpnDemoDocuments } from '../../demos/teachingSpnLesson'
 import { compileLesson, createBrowserLessonSession } from '../lesson_runtime'
-import { traceBitTargets } from './TraceBitGraph'
+import { traceBitTargets } from './traceFlow'
 import { AvalancheRenderer } from './Avalanche'
 import { classicalCipherPositions } from './ClassicalCipher'
 import { RenderHost, visualizerCatalog } from './index'
@@ -33,10 +33,8 @@ describe('Shared trace visuals', () => {
     if (response.kind !== 'comparison') return
     expect(() => render(React.createElement(AvalancheRenderer, {
       comparison: response.comparison,
-      dimensions: { width: 1100, height: 700 },
       executionIdentity: 'shared-visuals',
       locale: 'en-US',
-      reducedMotion: true,
     }))).not.toThrow()
     const hosted = render(React.createElement(RenderHost, {
       comparison: response.comparison,

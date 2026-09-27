@@ -68,26 +68,17 @@ const executionLesson = (limits = ''): string =>
   lesson.replace('inputs:\n', `${limits}inputs:\n`).replace(/steps:[\s\S]*/, `steps:\n${executionStep}`)
 
 const expectGraphLayout = async (page: import('@playwright/test').Page, title: string) => {
-  const graph = page.locator(`svg[aria-label="${title}"]`)
-  const firstCell = graph.locator('[data-trace-bit-cell]').first()
-  const firstCellBox = await firstCell.boundingBox()
-  expect(firstCellBox).not.toBeNull()
-  for (const label of await graph.locator('[data-trace-label]').all()) {
-    const labelBox = await label.boundingBox()
-    expect(labelBox).not.toBeNull()
-    expect(labelBox!.x + labelBox!.width).toBeLessThanOrEqual(firstCellBox!.x)
-  }
-  const keyCard = graph.locator('[data-round-key="1"]').first()
-  const keyMixCell = graph.locator('[data-trace-row$="/key-mix"] [data-trace-bit-cell]').first()
-  const keyCardBox = await keyCard.boundingBox()
-  const keyMixBox = await keyMixCell.boundingBox()
-  expect(keyCardBox).not.toBeNull()
-  expect(keyMixBox).not.toBeNull()
-  expect(Math.abs(keyCardBox!.y - keyMixBox!.y)).toBeLessThanOrEqual(1)
+  const region = page.getByRole('region', { name: title })
+  await expect(region.locator('svg[data-lineage] line').first()).toBeAttached()
+  const firstBits = await region.getByRole('button', { name: /, (Bit|位) 0: / }).all()
+  expect(firstBits.length).toBeGreaterThan(1)
+  const columns = new Set<number>()
+  for (const bit of firstBits) columns.add(Math.round((await bit.boundingBox())!.x))
+  expect(columns.size).toBe(1)
 }
 
 const expectTraceValue = async (page: import('@playwright/test').Page, title: string, value: string) =>
-  expect(page.locator(`svg[aria-label="${title}"] [data-trace-label]`).filter({ hasText: value }).first()).toBeVisible()
+  expect(page.getByRole('region', { name: title }).getByRole('cell').filter({ hasText: value }).first()).toBeVisible()
 
 test.describe('Avalanche Visualizer (#32)', () => {
   test('renders an accessible continuous comparison and preserves selection on resize', async ({ page }) => {
@@ -100,7 +91,7 @@ test.describe('Avalanche Visualizer (#32)', () => {
 
     await page.goto('/learning/avalanche')
     await expect(page.getByRole('heading', { name: 'Continuous avalanche comparison' })).toBeVisible()
-    await expect(page.getByRole('table', { name: 'Comparison summary' })).toContainText('0x0ff0')
+    await expect(page.getByRole('table', { name: 'Comparison summary' })).toContainText('0.5')
     await expectTraceValue(page, 'Continuous avalanche comparison', '0x0f0f')
     await expectGraphLayout(page, 'Continuous avalanche comparison')
 
@@ -130,8 +121,8 @@ test.describe('Avalanche Visualizer (#32)', () => {
     })
 
     await page.goto('/learning/avalanche')
-    await expect(page.getByText('Trace is incomplete. Raw retained values remain visible; paired differences and lineage stop at the gap.')).toBeVisible()
-    await expect(page.locator('svg [data-round-key] line')).toHaveCount(0)
+    await expect(page.getByRole('status').filter({ hasText: 'Trace is incomplete. Raw retained values remain visible; paired differences and lineage stop at the gap.' })).toBeVisible()
+    await expect(page.getByRole('rowheader', { name: 'Trace gap' }).last()).toBeVisible()
   })
 
   test('contains renderer failures with localized retained data', async ({ page }) => {
@@ -194,72 +185,13 @@ test.describe('Avalanche Visualizer (#32)', () => {
 })
 
 test.describe('Teaching SPN Visualizer (#33)', () => {
-  test('runs both public visualizer demos', async ({ page }) => {
+  test('does not serve the maintainer review demos from the application', async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem('i18nextLng', 'en-US'))
-    await page.emulateMedia({ reducedMotion: 'reduce' })
-    await page.goto('/testavalanche')
-    await expect(page.getByRole('heading', { name: /Avalanche comparison prototype|雪崩比较原型/ })).toBeVisible()
-    await expect(page.getByRole('table', { name: /Comparison summary|比较摘要/ })).toBeVisible()
-    await expect(page.getByRole('table', { name: 'Operation details' })).toContainText('⊕')
-    await expect(page.getByRole('button', { name: 'Round keys: 0x0f0f' })).toBeVisible()
-    await expectTraceValue(page, 'Continuous avalanche comparison', '0x1234')
-    await expectGraphLayout(page, 'Continuous avalanche comparison')
-
-    await page.getByRole('button', { name: 'Language' }).click()
-    await page.getByRole('option', { name: 'Chinese(Simplified)' }).click()
-    await expect(page.getByRole('heading', { name: '雪崩比较原型' })).toBeVisible()
-    await expect(page.getByRole('table', { name: '操作详情' })).toContainText('⊕')
-    await expect(page.getByRole('button', { name: '轮密钥: 0x0f0f' })).toBeVisible()
-    await expectTraceValue(page, '连续雪崩比较', '0x1234')
-    const chineseLabels = page.locator('svg[aria-label="连续雪崩比较"] [data-trace-label]')
-    await expect(chineseLabels.filter({ hasText: '重复.0.0.1/输出' }).first()).toBeVisible()
-    await expect(chineseLabels.filter({ hasText: 'repeat.0.0.1/output' })).toHaveCount(0)
-    await expectGraphLayout(page, '连续雪崩比较')
-    await page.getByRole('button', { name: '语言' }).click()
-    await page.getByRole('option', { name: '英文' }).click()
-    await expect(page.getByRole('heading', { name: 'Avalanche comparison prototype' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Round keys: 0x0f0f' })).toBeVisible()
-
-    await page.goto('/testspn')
-
-    await expect(page.getByRole('heading', { name: /Teaching SPN demo|教学 SPN 演示/ })).toBeVisible()
-    const details = page.getByRole('table', { name: /Operation detail|操作详情/ })
-    await expect(details).toContainText('0xcb45')
-    await expect(details).toContainText('0x1d3b')
-    await expect(page.getByRole('button', { name: 'Round keys: 0x0f0f' })).toBeVisible()
-    await expectTraceValue(page, 'Teaching SPN execution', '0x1234')
-    await expectGraphLayout(page, 'Teaching SPN execution')
-
-    const bit = page.getByRole('button', { name: /Input state, Bit 0: 0|输入状态, 位 0: 0/ })
-    await bit.focus()
-    await bit.press('Enter')
-    await expect(page.getByText(/Selected lineage: Input state, Bit 0.|所选谱系: 输入状态, 位 0./)).toBeVisible()
-    const graph = page.locator('svg[aria-label="Teaching SPN execution"]')
-    const desktopGraph = await graph.boundingBox()
-    const desktopDetails = await details.boundingBox()
-    expect(desktopGraph).not.toBeNull()
-    expect(desktopDetails).not.toBeNull()
-    expect(desktopDetails!.y).toBeGreaterThanOrEqual(desktopGraph!.y + desktopGraph!.height)
-    await page.setViewportSize({ width: 600, height: 700 })
-    await expect(bit).toBeFocused()
-    await expectGraphLayout(page, 'Teaching SPN execution')
-    const narrowGraph = await graph.boundingBox()
-    const narrowDetails = await details.boundingBox()
-    expect(narrowGraph).not.toBeNull()
-    expect(narrowDetails).not.toBeNull()
-    expect(narrowDetails!.y).toBeGreaterThanOrEqual(narrowGraph!.y + narrowGraph!.height)
-
-    await page.getByRole('button', { name: /Language|语言/ }).click()
-    await page.getByRole('option', { name: 'Chinese(Simplified)' }).click()
-    await expect(page.getByRole('heading', { name: '教学 SPN 演示' })).toBeVisible()
-    await expect(page.getByRole('table', { name: '操作详情' })).toContainText('异或')
-    await expect(page.getByRole('button', { name: '轮密钥: 0x0f0f' })).toBeVisible()
-    await expectTraceValue(page, '教学 SPN 执行', '0x1234')
-    await expectGraphLayout(page, '教学 SPN 执行')
-    await page.getByRole('button', { name: '语言' }).click()
-    await page.getByRole('option', { name: '英文' }).click()
-    await expect(page.getByRole('heading', { name: 'Teaching SPN demo' })).toBeVisible()
-    await expect(page.getByRole('table', { name: 'Operation detail' })).toContainText('0x1234')
+    for (const path of ['/testspn', '/testavalanche']) {
+      await page.goto(path)
+      await expect(page.getByRole('heading', { name: 'Not Found' })).toBeVisible()
+      await expect(page.getByRole('region', { name: /Teaching SPN execution|Continuous avalanche comparison/ })).toHaveCount(0)
+    }
   })
 
   test('uses one synthetic Lesson for both descriptors', async ({ page }) => {

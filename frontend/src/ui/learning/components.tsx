@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 
-export type LearningState = 'default' | 'changed' | 'selected' | 'related' | 'warning' | 'incomplete'
+export type LearningState = 'default' | 'changed' | 'selected' | 'related' | 'related-changed' | 'warning' | 'incomplete'
 
 export const learningColors = {
   text: '#17324d',
@@ -10,6 +10,7 @@ export const learningColors = {
   related: '#e0f2fe',
   selected: '#dbeafe',
   changed: '#fff3cd',
+  relatedChanged: '#fca5a5',
   warning: '#fee2e2',
   incomplete: '#e5e7eb',
 } as const
@@ -19,6 +20,7 @@ const stateStyles: Record<LearningState, CSSProperties> = {
   changed: { backgroundColor: learningColors.changed },
   selected: { backgroundColor: learningColors.selected },
   related: { backgroundColor: learningColors.related },
+  'related-changed': { backgroundColor: learningColors.relatedChanged },
   warning: { backgroundColor: learningColors.warning },
   incomplete: { backgroundColor: learningColors.incomplete },
 }
@@ -130,17 +132,16 @@ const relationshipsFor = (presentation: LearningPresentation): readonly Learning
 
 export const relatedBitIds = (presentation: LearningPresentation, selected: string | undefined): ReadonlySet<string> => {
   if (!selected) return new Set()
-  const related = new Set([selected])
   const relationships = relationshipsFor(presentation)
-  for (let index = 0; index < relationships.length; index += 1) {
-    const size = related.size
-    for (const relationship of relationships) {
-      if (related.has(relationship.from)) related.add(relationship.to)
-      if (related.has(relationship.to)) related.add(relationship.from)
+  const reach = (source: 'from' | 'to', target: 'from' | 'to'): ReadonlySet<string> => {
+    const reached = new Set([selected])
+    for (let size = 0; size !== reached.size;) {
+      size = reached.size
+      for (const relationship of relationships) if (reached.has(relationship[source])) reached.add(relationship[target])
     }
-    if (related.size === size) break
+    return reached
   }
-  return related
+  return new Set([...reach('from', 'to'), ...reach('to', 'from')])
 }
 
 export type LearningSelection = { readonly kind: 'bit' | 'key'; readonly id: string }
@@ -153,7 +154,9 @@ const initialSelectionFor = (presentation: LearningPresentation): LearningSelect
       : undefined
 
 const bitState = (bit: LearningBit, selected: LearningSelection | undefined, related: ReadonlySet<string>): LearningState =>
-  selected?.kind === 'bit' && bit.id === selected.id ? 'selected' : related.has(bit.id) ? 'related' : bit.state ?? 'default'
+  selected?.kind === 'bit' && bit.id === selected.id
+    ? 'selected'
+    : related.has(bit.id) ? (bit.state === 'changed' ? 'related-changed' : 'related') : bit.state ?? 'default'
 
 const keyState = (key: LearningRoundKey, selected: LearningSelection | undefined, related: ReadonlySet<string>): LearningState =>
   selected?.kind === 'key' && key.id === selected.id ? 'selected' : related.has(key.id) ? 'related' : key.state ?? 'default'
@@ -170,8 +173,7 @@ export type LineageDiagramProps = {
 export type LineageLocation = { readonly x: number; readonly y: number }
 
 const lineageStroke = (state: LearningState): string => {
-  if (state === 'selected') return learningColors.text
-  if (state === 'related') return learningColors.related
+  if (state === 'selected' || state === 'related') return learningColors.text
   if (state === 'changed') return learningColors.changed
   if (state === 'warning') return learningColors.warning
   if (state === 'incomplete') return learningColors.incomplete
@@ -257,7 +259,7 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
         return <TraceTable caption={section.caption} headers={section.headers} key={`${section.kind}-${section.caption}`}>
           {section.rows.map((row) => <ComparisonRow key={row.id} label={row.label} state={row.state}>
             {row.cells.map((cell, index) => <ValueCell ariaLabel={cell.ariaLabel} key={index} state={cell.state}>{cell.value}</ValueCell>)}
-            {hasControls && <td>{(row.selectableBits ?? []).map((bit) => {
+            {hasControls && <td style={{ whiteSpace: 'nowrap' }}>{(row.selectableBits ?? []).map((bit) => {
               const state = bitState(bit, selected, related)
               return <button
                 aria-label={bit.ariaLabel}
@@ -266,7 +268,7 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
                 key={bit.id}
                 onClick={() => setSelected({ kind: 'bit', id: bit.id })}
                 ref={targetRef(bit.id)}
-                style={{ ...stateStyles[state], borderColor: learningColors.border, color: learningColors.text }}
+                style={{ ...stateStyles[state], borderColor: learningColors.border, color: learningColors.text, position: 'relative' }}
                 type="button"
               >{bit.value}</button>
             })}{row.selectableKey && (() => {
@@ -278,7 +280,7 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
                 data-state={state}
                 onClick={() => setSelected({ kind: 'key', id: key.id })}
                 ref={targetRef(key.id)}
-                style={{ ...stateStyles[state], borderColor: learningColors.border, color: learningColors.text }}
+                style={{ ...stateStyles[state], borderColor: learningColors.border, color: learningColors.text, position: 'relative' }}
                 type="button"
               >{key.value}</button>
             })()}</td>}

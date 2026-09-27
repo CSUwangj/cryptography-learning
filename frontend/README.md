@@ -20,11 +20,12 @@ Runs the Vitest suite once (jsdom). Use `npm run test:watch` for watch mode.
 
 Builds the production bundle into the `dist` folder.
 
-### `npm run testspn` / `npm run testavalanche`
+### `npm run demos`
 
-Starts the standalone Teaching SPN and Avalanche demos at `/testspn` and
-`/testavalanche`. Both accept editable 16-bit hexadecimal plaintext values and
-run on submit; the Avalanche demo keeps the round key fixed.
+Starts the maintainer review demos at `/testspn` and `/testavalanche` from
+`demos/`. They are not part of the application served by `npm run dev`,
+`npm start`, or `npm run build`. Both accept editable 16-bit hexadecimal
+plaintext values and run on submit; the Avalanche demo keeps the round key fixed.
 
 ### `npm run gen`
 

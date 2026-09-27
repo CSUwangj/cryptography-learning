@@ -1,7 +1,6 @@
 import React, { useState } from 'react'
-import { useTranslation } from 'react-i18next'
-import { bits, executeWorkerRequest, teachingSpnGraph, type AvalancheComparison, type WorkerResponse } from 'crypto_graph'
-import { RenderHost } from '../../visualizers'
+import { bits, executeWorkerRequest, teachingSpnGraph, type AvalancheComparison, type WorkerResponse } from '../src/crypto_graph'
+import { RenderHost } from '../src/visualizers'
 
 const copy = {
   'en-US': { title: 'Avalanche comparison prototype', baseline: 'Baseline plaintext', changed: 'Changed plaintext', run: 'Compare', failure: 'Could not compare these executions.' },
@@ -27,9 +26,7 @@ const compare = (baseline: string, changed: string): AvalancheComparison | undef
   return response.kind === 'comparison' ? response.comparison : undefined
 }
 
-export const AvalanchePrototype: React.FC = () => {
-  const { i18n } = useTranslation()
-  const locale = i18n.language === 'zh-CN' ? 'zh-CN' : 'en-US'
+export const AvalancheDemo: React.FC<{ readonly locale: 'en-US' | 'zh-CN' }> = ({ locale }) => {
   const text = copy[locale]
   const [baseline, setBaseline] = useState('0x1234')
   const [changed, setChanged] = useState('0x1235')

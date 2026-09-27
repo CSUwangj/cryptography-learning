@@ -76,14 +76,11 @@ export const RenderHost: React.FC<RenderHostProps> = (props) =>
       {props.invocation.id === 'avalanche@1' && props.comparison
         ? <AvalancheRenderer
             comparison={props.comparison}
-            dimensions={props.dimensions}
             executionIdentity={props.executionIdentity}
             locale={props.locale}
-            reducedMotion={props.reducedMotion}
           />
         : props.invocation.id === 'teaching-spn@1' && props.execution
           ? <TeachingSpnRenderer
-              dimensions={props.dimensions}
               execution={props.execution}
               executionIdentity={props.executionIdentity}
               locale={props.locale}

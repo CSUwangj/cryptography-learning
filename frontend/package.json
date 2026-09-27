@@ -38,8 +38,7 @@
   "scripts": {
     "start": "vite",
     "dev": "vite",
-    "testspn": "vite --host 127.0.0.1",
-    "testavalanche": "vite --host 127.0.0.1",
+    "demos": "vite --config vite.demos.config.mts",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

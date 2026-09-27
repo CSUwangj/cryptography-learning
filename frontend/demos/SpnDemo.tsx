@@ -1,17 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { useTranslation } from 'react-i18next'
-import { createBrowserLessonSession, type BrowserLessonSession, type LessonSessionState } from '../../lesson_runtime'
-import { RenderHost, visualizerCatalog } from '../../visualizers'
-import { teachingSpnDemoDocuments } from './demoLesson'
+import { createBrowserLessonSession, type BrowserLessonSession, type LessonSessionState } from '../src/lesson_runtime'
+import { RenderHost, visualizerCatalog } from '../src/visualizers'
+import { teachingSpnDemoDocuments } from './teachingSpnLesson'
 
 const copy = {
   'en-US': { title: 'Teaching SPN demo', plaintext: 'Plaintext', run: 'Run SPN', failure: 'Could not run this SPN execution.' },
   'zh-CN': { title: '教学 SPN 演示', plaintext: '明文', run: '运行 SPN', failure: '无法运行此 SPN 执行。' },
 } as const
 
-export const SpnPrototype: React.FC = () => {
-  const { i18n } = useTranslation()
-  const locale = i18n.language === 'zh-CN' ? 'zh-CN' : 'en-US'
+export const SpnDemo: React.FC<{ readonly locale: 'en-US' | 'zh-CN' }> = ({ locale }) => {
   const text = copy[locale]
   const [plaintext, setPlaintext] = useState('0x1234')
   const [state, setState] = useState<LessonSessionState>()
@@ -25,11 +22,16 @@ export const SpnPrototype: React.FC = () => {
       return
     }
     session.current = created.value
+    let active = true
     void created.value.next().then((result) => {
+      if (!active) return
       if (result.ok) setState(result.value)
       else setFailure(result.diagnostics[0]?.message ?? text.failure)
     })
-    return () => created.value.dispose()
+    return () => {
+      active = false
+      created.value.dispose()
+    }
   }, [locale, text.failure])
 
   const execution = state?.snapshots.visualize
