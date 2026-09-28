@@ -11,9 +11,11 @@ export {
 export type {
   ComparisonRowProps,
   FieldLabelProps,
+  KeyExpansionLane,
   LearningState,
   LearningBit,
   LearningCell,
+  LearningDiagnostic,
   LearningPresentation,
   LearningRelationship,
   LearningRoundKey,

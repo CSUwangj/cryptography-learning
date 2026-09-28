@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import { bits, executeWorkerRequest, hex } from '../crypto_graph'
+import { aesKeyExpansionGraphNodesYaml } from '../../demos/aesKeyExpansionLesson'
 import {
   compileLesson,
   createBrowserLessonSession,
@@ -519,6 +520,92 @@ texts: {plaintext: 明文, shift: 位移, policy: 策略}
       diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'lesson.yaml-restriction' })]),
     })
     expect(compileLesson({ ...fixture(), lesson: `version: 1\n${fixture().lesson}` })).toMatchObject({ ok: false, diagnostics: [{ code: 'lesson.yaml-syntax' }] })
+  })
+
+  it('supplies one execution of an AES-shaped key-expansion graph to both a consuming encryption step and its own detail trace (#83)', async () => {
+    // Reuses the demo Lesson's `expand` graph node list (same small Nk=2, Nr=1 key schedule
+    // exercising the AES key-word, rot-word, sub-word, rcon-word, word-xor, round-key
+    // primitives and FIPS-197 node naming) rather than a second, drift-prone copy of it; this
+    // test's own concern is proving the composition, typed round-key outputs, and that one
+    // Lesson execution feeds both an encryption-shaped consumer and the key-expansion trace.
+    const documents: LessonDocuments = {
+      lesson: `version: 1
+id: aes-key-expansion-fixture
+default_locale: en-US
+inputs:
+  key: {type: {family: bits, size: 64}, encoding: hex, default: "0x0011223344556677"}
+  plaintext: {type: {family: bits, size: 128}, encoding: hex, default: "0x000102030405060708090a0b0c0d0e0f"}
+constants: {}
+graphs:
+  expand:
+    traceLevel: detail
+    nodes:
+${aesKeyExpansionGraphNodesYaml}
+    outputs:
+      - {node: round-key-0, port: value}
+      - {node: round-key-1, port: value}
+  encrypt:
+    nodes:
+      - {id: plaintext, operation: core.source@1, parameters: {type: {family: bits, size: 128}}}
+      - {id: roundkey, operation: core.source@1, parameters: {type: {family: bits, size: 128}}}
+      - id: xor
+        operation: core.xor@1
+        inputs:
+          left: {node: plaintext, port: value}
+          right: {node: roundkey, port: value}
+    outputs: [{node: xor, port: value}]
+steps:
+  - id: enter-input
+    inputs:
+      - {input: key, prompt: key}
+      - {input: plaintext, prompt: plaintext}
+  - id: expand-key
+    execute:
+      graph: expand
+      bindings:
+        key.value: {input: key}
+  - id: encrypt
+    execute:
+      graph: encrypt
+      bindings:
+        plaintext.value: {input: plaintext}
+        roundkey.value: {step: expand-key, output: round-key-0.value}
+`,
+      locales: {
+        'en-US': 'title: AES key expansion\nsummary: Expand a key and consume its first round key.\ntexts: {key: Key, plaintext: Plaintext}',
+        'zh-CN': 'title: AES 密钥扩展\nsummary: 扩展密钥并使用其第一轮密钥。\ntexts: {key: 密钥, plaintext: 明文}',
+      },
+    }
+
+    const compiled = compileLesson(documents)
+    expect(compiled.ok).toBe(true)
+
+    const previousWorker = globalThis.Worker
+    globalThis.Worker = WorkerStub as unknown as typeof Worker
+    try {
+      const session = createBrowserLessonSession(documents, 'en-US')
+      expect(session.ok).toBe(true)
+      if (!session.ok) return
+      await session.value.next()
+      const result = await session.value.next()
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+
+      // One Lesson execution pass supplies both: the encryption-shaped step's own output...
+      expect(hex(result.value.snapshots.encrypt.outputs['xor.value'] as never)).toBe('0x0010203040506070f52bdd23b57abf50')
+      // ...and the key-expansion step's full detail trace, with stable round/row identifiers,
+      // available for a key-expansion lane driven by the same execution.
+      const expandTrace = result.value.snapshots['expand-key'].trace as readonly import('../crypto_graph').TraceEvent[]
+      expect(expandTrace.filter((event) => event.path.startsWith('round-key-')).map((event) =>
+        [event.path, event.round, hex(event.value as never)])).toEqual([
+        ['round-key-0', 0, '0x0011223344556677fd22d728b977b15f'],
+        ['round-key-1', 1, '0x0aea187eb39da9215039e513e3a44c32'],
+      ])
+      expect(expandTrace.some((event) => event.path === 'word-2-rot' && event.stage === 'rot-word')).toBe(true)
+      session.value.dispose()
+    } finally {
+      globalThis.Worker = previousWorker
+    }
   })
 
   it('requires every supplied locale to include all referenced text', () => {

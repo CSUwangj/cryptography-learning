@@ -349,7 +349,11 @@ const validateGraphNode = (
     const allowed = node.operation === 'core.source@1' ? ['type', 'value', 'roundKeys']
       : node.operation === 'spn.substitute@1' ? ['sBox']
       : node.operation === 'spn.permute@1' ? ['permutation']
-      : node.operation === 'core.xor@1' || node.operation === 'core.output@1' ? []
+      : node.operation === 'aes.key-word@1' ? ['index']
+      : node.operation === 'aes.rcon-word@1' ? ['round']
+      : node.operation === 'core.xor@1' || node.operation === 'core.output@1'
+        || node.operation === 'aes.rot-word@1' || node.operation === 'aes.sub-word@1'
+        || node.operation === 'aes.word-xor@1' || node.operation === 'aes.round-key@1' ? []
       : undefined
     if (parameters && allowed) checkFields(parameters, allowed, `${path}.parameters`, spans, diagnostics)
   }

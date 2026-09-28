@@ -3,6 +3,7 @@ import { hex, type AlphabetMapping, type AlphabetPolicyValue, type AlphabetTextV
 import { AvalancheRenderer } from './Avalanche'
 import { classicalCipherPositions, ClassicalCipherRenderer } from './ClassicalCipher'
 import { TeachingSpnRenderer } from './TeachingSpn'
+import { AesKeyExpansionRenderer } from './AesKeyExpansion'
 
 export type RenderHostProps = {
   readonly invocation: { readonly id: string }
@@ -85,16 +86,22 @@ export const RenderHost: React.FC<RenderHostProps> = (props) =>
               executionIdentity={props.executionIdentity}
               locale={props.locale}
             />
-          : props.invocation.id === 'classical-cipher@1' && props.classicalCipher
-            ? <ClassicalCipherRenderer
-                {...props.classicalCipher}
-                positions={classicalCipherPositions(
-                  props.classicalCipher.input,
-                  props.classicalCipher.output,
-                  props.classicalCipher.mapping,
-                )}
+          : props.invocation.id === 'aes-key-expansion@1' && props.execution
+            ? <AesKeyExpansionRenderer
+                execution={props.execution}
+                executionIdentity={props.executionIdentity}
                 locale={props.locale}
-                reducedMotion={props.reducedMotion}
               />
-          : <Fallback comparison={props.comparison} execution={props.execution} locale={props.locale} />}
+            : props.invocation.id === 'classical-cipher@1' && props.classicalCipher
+              ? <ClassicalCipherRenderer
+                  {...props.classicalCipher}
+                  positions={classicalCipherPositions(
+                    props.classicalCipher.input,
+                    props.classicalCipher.output,
+                    props.classicalCipher.mapping,
+                  )}
+                  locale={props.locale}
+                  reducedMotion={props.reducedMotion}
+                />
+              : <Fallback comparison={props.comparison} execution={props.execution} locale={props.locale} />}
   </IsolatedRenderer>

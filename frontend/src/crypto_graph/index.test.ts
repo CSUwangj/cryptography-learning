@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  aesKeyExpansionGraph,
   alphabetPolicy,
   alphabetText,
   bits,
@@ -14,6 +15,7 @@ import {
   teachingSpnGraph,
   words,
   type AuthoredGraph,
+  type TraceEvent,
 } from './index'
 
 const source = (id: string, value: ReturnType<typeof bits>) => ({
@@ -662,5 +664,162 @@ describe('CryptoGraph Worker contract (#28)', () => {
       payload: { left: { graph: ambiguous }, right: { graph: ambiguous } },
     })
     expect(ambiguousComparison).toMatchObject({ kind: 'diagnostic', diagnostics: [{ code: 'comparison.incompatible-structure' }] })
+  })
+})
+
+describe('AES key expansion (#83)', () => {
+  const hexToBytes = (value: string): Uint8Array => Uint8Array.from(value.match(/../g)!.map((byte) => Number.parseInt(byte, 16)))
+
+  const expand = (keySize: 128 | 192 | 256, keyHex: string) => {
+    const compiled = compile(aesKeyExpansionGraph(keySize))
+    if (!compiled.ok) throw new Error('unreachable: AES key-expansion graph must compile')
+    return compiled.value.execute({ 'key.value': bits(keySize, hexToBytes(keyHex)) })
+  }
+
+  const roundKeyHexes = (execution: ReturnType<typeof expand>, rounds: number): readonly string[] => {
+    if (!execution.ok) throw new Error('unreachable: expansion must execute')
+    return Array.from({ length: rounds + 1 }, (_, round) => hex(execution.value.outputs[`round-key-${round}.value`] as ReturnType<typeof bits>))
+  }
+
+  it('composes and executes AES-128, AES-192, and AES-256 from registered primitives', () => {
+    for (const keySize of [128, 192, 256] as const) {
+      const compiled = compile(aesKeyExpansionGraph(keySize))
+      expect(compiled.ok).toBe(true)
+    }
+    expect(['aes.key-word@1', 'aes.rot-word@1', 'aes.sub-word@1', 'aes.rcon-word@1', 'aes.word-xor@1', 'aes.round-key@1'].every((id) =>
+      operationManifests.some((manifest) => manifest.identity === id))).toBe(true)
+  })
+
+  it('matches FIPS-197 Appendix A known-answer vectors for AES-128, AES-192, and AES-256', () => {
+    expect(roundKeyHexes(expand(128, '2b7e151628aed2a6abf7158809cf4f3c'), 10)).toEqual([
+      '0x2b7e151628aed2a6abf7158809cf4f3c',
+      '0xa0fafe1788542cb123a339392a6c7605',
+      '0xf2c295f27a96b9435935807a7359f67f',
+      '0x3d80477d4716fe3e1e237e446d7a883b',
+      '0xef44a541a8525b7fb671253bdb0bad00',
+      '0xd4d1c6f87c839d87caf2b8bc11f915bc',
+      '0x6d88a37a110b3efddbf98641ca0093fd',
+      '0x4e54f70e5f5fc9f384a64fb24ea6dc4f',
+      '0xead27321b58dbad2312bf5607f8d292f',
+      '0xac7766f319fadc2128d12941575c006e',
+      '0xd014f9a8c9ee2589e13f0cc8b6630ca6',
+    ])
+    expect(roundKeyHexes(expand(192, '8e73b0f7da0e6452c810f32b809079e562f8ead2522c6b7b'), 12)).toEqual([
+      '0x8e73b0f7da0e6452c810f32b809079e5',
+      '0x62f8ead2522c6b7bfe0c91f72402f5a5',
+      '0xec12068e6c827f6b0e7a95b95c56fec2',
+      '0x4db7b4bd69b5411885a74796e92538fd',
+      '0xe75fad44bb095386485af05721efb14f',
+      '0xa448f6d94d6dce24aa326360113b30e6',
+      '0xa25e7ed583b1cf9a27f939436a94f767',
+      '0xc0a69407d19da4e1ec1786eb6fa64971',
+      '0x485f703222cb8755e26d135233f0b7b3',
+      '0x40beeb282f18a2596747d26b458c553e',
+      '0xa7e1466c9411f1df821f750aad07d753',
+      '0xca4005388fcc5006282d166abc3ce7b5',
+      '0xe98ba06f448c773c8ecc720401002202',
+    ])
+    expect(roundKeyHexes(expand(256, '603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4'), 14)).toEqual([
+      '0x603deb1015ca71be2b73aef0857d7781',
+      '0x1f352c073b6108d72d9810a30914dff4',
+      '0x9ba354118e6925afa51a8b5f2067fcde',
+      '0xa8b09c1a93d194cdbe49846eb75d5b9a',
+      '0xd59aecb85bf3c917fee94248de8ebe96',
+      '0xb5a9328a2678a647983122292f6c79b3',
+      '0x812c81addadf48ba24360af2fab8b464',
+      '0x98c5bfc9bebd198e268c3ba709e04214',
+      '0x68007bacb2df331696e939e46c518d80',
+      '0xc814e20476a9fb8a5025c02d59c58239',
+      '0xde1369676ccc5a71fa2563959674ee15',
+      '0x5886ca5d2e2f31d77e0af1fa27cf73c3',
+      '0x749c47ab18501ddae2757e4f7401905a',
+      '0xcafaaae3e4d59b349adf6acebd10190d',
+      '0xfe4890d1e6188d0b046df344706c631e',
+    ])
+  })
+
+  it('exposes round-key and word checkpoints with stable FIPS-197 round and row identifiers', () => {
+    const execution = expand(128, '2b7e151628aed2a6abf7158809cf4f3c')
+    expect(execution.ok).toBe(true)
+    if (!execution.ok) return
+    const trace = execution.value.trace as readonly TraceEvent[]
+    expect(trace.filter((event) => event.path === 'word-0')).toEqual([
+      { path: 'word-0', level: 'detail', round: 0, stage: 'input', value: bits(32, hexToBytes('2b7e1516')) },
+    ])
+    // Word 4 begins round 1's schedule step: RotWord, SubWord, Rcon, then two XORs (round-constant mix, then w[0]).
+    expect(trace.filter((event) => event.path === 'word-4' || event.path.startsWith('word-4-')).map((event) => [event.path, event.round, event.stage, 'value' in event && event.value && hex(event.value as ReturnType<typeof bits>)])).toEqual([
+      ['word-4-rot', 1, 'rot-word', '0xcf4f3c09'],
+      ['word-4-sub', 1, 'sub-word', '0x8a84eb01'],
+      ['word-4-rcon', 1, 'rcon', '0x01000000'],
+      ['word-4-temp', 1, 'word-xor', '0x8b84eb01'],
+      ['word-4', 1, 'word-xor', '0xa0fafe17'],
+    ])
+    expect(trace.filter((event) => event.path.startsWith('round-key-')).slice(0, 2)).toEqual([
+      { path: 'round-key-0', level: 'detail', round: 0, stage: 'round-key', value: bits(128, hexToBytes('2b7e151628aed2a6abf7158809cf4f3c')) },
+      { path: 'round-key-1', level: 'detail', round: 1, stage: 'round-key', value: bits(128, hexToBytes('a0fafe1788542cb123a339392a6c7605')) },
+    ])
+  })
+
+  it('executes full-size AES-128/192/256 key schedules through a worker request within the worker time budget', () => {
+    // Direct compile().execute() calls (used by the KAT tests above) skip the structural
+    // signature/repeat-identity bookkeeping `executeWorkerRequest` does on every real
+    // execution. Each word feeds several later words (unlike a linear round chain), so an
+    // earlier version of that bookkeeping re-embedded a node's full upstream signature text
+    // per reference and grew exponentially with word count, taking tens of seconds (or
+    // throwing on an oversized string) for the true 44-60 word AES-128/192/256 schedules.
+    for (const keySize of [128, 192, 256] as const) {
+      const start = performance.now()
+      const response = executeWorkerRequest({
+        requestId: 'aes-worker-budget',
+        kind: 'execute',
+        payload: { graph: aesKeyExpansionGraph(keySize), inputs: { 'key.value': bits(keySize, new Uint8Array(keySize / 8)) } },
+      })
+      expect(response.kind).toBe('snapshot')
+      expect(performance.now() - start).toBeLessThan(maxWorkerLimits.timeoutMs)
+    }
+  })
+
+  it('rejects invalid key type, length, missing input, and malformed values with structured diagnostics', () => {
+    const compiled = compile(aesKeyExpansionGraph(128))
+    expect(compiled.ok).toBe(true)
+    if (!compiled.ok) return
+
+    const wrongLength = compiled.value.execute({ 'key.value': bits(192, new Uint8Array(24)) })
+    expect(!wrongLength.ok && wrongLength.diagnostics[0].code).toBe('invalid-execution-input')
+
+    const missing = compiled.value.execute()
+    expect(!missing.ok && missing.diagnostics[0].code).toBe('missing-execution-input')
+
+    const malformed = compiled.value.execute({ 'key.value': bits(128, new Uint8Array(15)) })
+    expect(!malformed.ok && malformed.diagnostics[0].code).toBe('invalid-value')
+  })
+
+  it('reports diagnostics for invalid key-word index and Rcon round parameters', () => {
+    const badIndex = compile({
+      nodes: [
+        { id: 'key', operation: 'core.source@1', parameters: { type: { family: 'bits', size: 128 } } },
+        { id: 'word', operation: 'aes.key-word@1', inputs: { key: { node: 'key', port: 'value' } }, parameters: { index: -1 } },
+      ],
+      outputs: [{ node: 'word', port: 'value' }],
+    })
+    expect(!badIndex.ok && badIndex.diagnostics[0].code).toBe('aes.invalid-key-word-index')
+
+    const badRcon = compile({
+      nodes: [{ id: 'rcon', operation: 'aes.rcon-word@1', parameters: { round: 0 } }],
+      outputs: [{ node: 'rcon', port: 'value' }],
+    })
+    expect(!badRcon.ok && badRcon.diagnostics[0].code).toBe('aes.invalid-rcon-round')
+
+    const outOfRangeIndex = compile({
+      nodes: [
+        { id: 'key', operation: 'core.source@1', parameters: { type: { family: 'bits', size: 128 } } },
+        { id: 'word', operation: 'aes.key-word@1', inputs: { key: { node: 'key', port: 'value' } }, parameters: { index: 4 } },
+      ],
+      outputs: [{ node: 'word', port: 'value' }],
+    })
+    expect(outOfRangeIndex.ok).toBe(true)
+    if (!outOfRangeIndex.ok) return
+    const result = outOfRangeIndex.value.execute({ 'key.value': bits(128, new Uint8Array(16)) })
+    expect(!result.ok && result.diagnostics[0].code).toBe('aes.key-word-out-of-range')
   })
 })

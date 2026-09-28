@@ -54,6 +54,96 @@ const presentation = (executionIdentity = 'run-1', selectionStatus?: LearningPre
   }],
 })
 
+const laneFixture = (): LearningPresentation => ({
+  ...presentation(),
+  sections: [{
+    ...presentation().sections[0],
+    rows: [
+      ...presentation().sections[0].rows,
+      { id: 'key-2', label: 'Round key 2', cells: [{ value: '0xe' }], selectableKey: { id: 'round-key-2', value: 'K2', ariaLabel: 'Round key 2' } },
+    ],
+  }],
+  keyExpansionLane: {
+    caption: 'Key expansion',
+    closeLabel: 'Close key expansion',
+    rowsById: {
+      input: { selectableBits: [{ id: 'master-0', bit: 0, value: '1', ariaLabel: 'Master key bit 0' }] },
+      key: { selectableBits: [{ id: 'round-key-1-bit-0', bit: 0, value: '1', ariaLabel: 'Round key 1 bit 0' }] },
+      'key-2': { selectableBits: [{ id: 'round-key-2-bit-0', bit: 0, value: '1', ariaLabel: 'Round key 2 bit 0' }] },
+    },
+  },
+})
+
+describe('Key expansion lane (#83)', () => {
+  it('hides the key-expansion lane until a round-key chip is selected', () => {
+    render(<LearningPresentationView presentation={laneFixture()} />)
+    expect(screen.queryByRole('region', { name: 'Key expansion' })).toBeNull()
+  })
+
+  it('opens the lane on round-key selection, aligns its rows to the trace via stable row ids, and closes on reselect', async () => {
+    const user = userEvent.setup()
+    render(<LearningPresentationView presentation={laneFixture()} />)
+    await user.click(screen.getByRole('button', { name: 'Round key 1' }))
+    const region = screen.getByRole('region', { name: 'Key expansion' })
+    expect(region).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Master key bit 0' })).toBeVisible()
+    expect([...region.querySelectorAll('tr[data-row-id]')].map((row) => row.getAttribute('data-row-id')))
+      .toEqual(['input', 'output', 'key', 'key-2'])
+
+    await user.click(screen.getByRole('button', { name: 'Round key 1' }))
+    expect(screen.queryByRole('region', { name: 'Key expansion' })).toBeNull()
+  })
+
+  it('moves the lane highlight to another round key without closing', async () => {
+    const user = userEvent.setup()
+    render(<LearningPresentationView presentation={laneFixture()} />)
+    await user.click(screen.getByRole('button', { name: 'Round key 1' }))
+    expect(screen.getByRole('button', { name: 'Round key 1' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Round key 1 bit 0' })).toBeVisible()
+
+    await user.click(screen.getByRole('button', { name: 'Round key 2' }))
+    expect(screen.getByRole('region', { name: 'Key expansion' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Round key 1' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Round key 2' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Round key 2 bit 0' })).toBeVisible()
+  })
+
+  it('closes the lane through its explicit close control', async () => {
+    const user = userEvent.setup()
+    render(<LearningPresentationView presentation={laneFixture()} />)
+    await user.click(screen.getByRole('button', { name: 'Round key 1' }))
+    await user.click(screen.getByRole('button', { name: 'Close key expansion' }))
+    expect(screen.queryByRole('region', { name: 'Key expansion' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Round key 1' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('opens the lane via native keyboard activation of a round-key chip', async () => {
+    const user = userEvent.setup()
+    render(<LearningPresentationView presentation={laneFixture()} />)
+    screen.getByRole('button', { name: 'Round key 1' }).focus()
+    await user.keyboard('{Enter}')
+    expect(screen.getByRole('region', { name: 'Key expansion' })).toBeVisible()
+  })
+
+  it('selects a lane bit to highlight its structural lineage to the source master-key bit', async () => {
+    const user = userEvent.setup()
+    const withLineage: LearningPresentation = {
+      ...laneFixture(),
+      sections: [{
+        ...laneFixture().sections[0],
+        rows: laneFixture().sections[0].rows.map((row) => row.id === 'key'
+          ? { ...row, relationships: [{ from: 'master-0', to: 'round-key-1-bit-0' }] }
+          : row),
+      }],
+    }
+    render(<LearningPresentationView presentation={withLineage} />)
+    await user.click(screen.getByRole('button', { name: 'Round key 1' }))
+    await user.click(screen.getByRole('button', { name: 'Round key 1 bit 0' }))
+    expect(screen.getByRole('button', { name: 'Round key 1 bit 0' })).toHaveAttribute('data-state', 'selected')
+    expect(screen.getByRole('button', { name: 'Master key bit 0' })).toHaveAttribute('data-state', 'related')
+  })
+})
+
 describe('Learning presentation primitives', () => {
   it.each(locales)('renders $locale caller-provided content and states', ({ caption, stage, baseline, changed, value, selected, selection }) => {
     render(<TraceTable caption={caption} headers={[stage, baseline, changed]}>

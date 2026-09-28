@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { aesKeyExpansionDemoDocuments } from '../demos/aesKeyExpansionLesson'
 
 const lesson = `version: 1
 id: avalanche
@@ -264,5 +265,70 @@ test.describe('Teaching SPN Visualizer (#33)', () => {
     await expect(page.getByRole('table', { name: 'Retained execution data' })).toContainText('—')
     await page.getByRole('button', { name: 'Next' }).click()
     await expect(page.getByText('Done')).toBeVisible()
+  })
+})
+
+test.describe('AES Key Expansion Visualizer (#83)', () => {
+  test('opens a row-aligned key-expansion lane, draws its lineage, and does not widen the page', async ({ page }) => {
+    test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses the synthetic Lesson fixture')
+    await page.addInitScript(() => localStorage.setItem('i18nextLng', 'en-US'))
+    await page.route('**/query', async (route) => {
+      await route.fulfill({ json: { data: { lessonDocuments: {
+        lesson: aesKeyExpansionDemoDocuments.lesson,
+        locale: aesKeyExpansionDemoDocuments.locales['en-US'],
+      } } } })
+    })
+
+    await page.goto('/learning/aes-key-expansion')
+    await expect(page.getByRole('heading', { name: 'AES key expansion', level: 2 })).toBeVisible()
+    const widthBefore = await page.evaluate(() => document.documentElement.scrollWidth)
+
+    const roundKey0Chip = page.getByRole('button', { name: /^Round key 0:/ })
+    await roundKey0Chip.click()
+    const lane = page.getByRole('region', { name: 'Key expansion', exact: true })
+    await expect(lane).toBeVisible()
+
+    // The lane covers the trace's own columns rather than widening the page (Blocking R2).
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(widthBefore)
+
+    // The lane's round-key-0 row is vertically aligned with the same row in the trace table
+    // above it (Blocking R2): they share one `data-row-id`, and the trace table renders first.
+    const traceRow = page.locator('[data-row-id="round-key-0"]').first()
+    const laneRow = lane.locator('[data-row-id="round-key-0"]')
+    const traceBox = (await traceRow.boundingBox())!
+    const laneBox = (await laneRow.boundingBox())!
+    // A few subpixel rows of drift are expected: each lane row's height is set from the trace
+    // table's own measured (fractional) pixel height, and the browser can round each row
+    // independently. This still catches the original bug (missing `data-cover-start` sizing or
+    // a lane that renders before its own layout is measured produced tens of pixels of drift,
+    // not a handful).
+    expect(Math.abs(traceBox.y - laneBox.y)).toBeLessThan(5)
+
+    // Round key 0 is a byte-exact FIPS-197 copy of the master key, so opening its lane draws a
+    // lineage line to the master key row once its own bits have mounted (Blocking R1). The
+    // lineage `<svg>` overlays the whole section (trace table and lane together), not just the
+    // lane, so it is queried from the outer section rather than from `lane` itself.
+    const section = page.getByRole('region', { name: 'AES key expansion', exact: true })
+    await expect(section.locator('svg[data-lineage] line').first()).toBeAttached()
+
+    // The lane covers every row's chip cell (so opening it does not reflow other rows), so
+    // selecting a different round key's chip must work through the lane's own copy of it
+    // (Blocking R1): it moves the highlight instead of leaving round key 0 stuck open.
+    const roundKey1Chip = lane.getByRole('button', { name: /^Round key 1:/ })
+    await roundKey1Chip.click()
+    await expect(roundKey1Chip).toHaveAttribute('aria-pressed', 'true')
+    await expect(lane.getByRole('button', { name: /^Round key 0:/ })).toHaveAttribute('aria-pressed', 'false')
+    await expect(lane).toBeVisible()
+
+    // Selecting the same (now-open) chip again closes the lane, same as the trace table's own
+    // chip did before it was covered.
+    await roundKey1Chip.click()
+    await expect(lane).toBeHidden()
+
+    // The explicit close control also works, independent of re-selecting a chip.
+    await roundKey0Chip.click()
+    await expect(lane).toBeVisible()
+    await page.getByRole('button', { name: 'Close key expansion' }).click()
+    await expect(lane).toBeHidden()
   })
 })
