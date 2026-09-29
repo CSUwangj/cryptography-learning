@@ -121,6 +121,7 @@ export type TraceCheckpoint = {
 
 export type TraceLevel = 'summary' | 'round' | 'detail'
 export type TraceStage = 'input' | 'round-key' | 'key-mix' | 'substitute' | 'permute' | 'output' | 'rot-word' | 'sub-word' | 'rcon' | 'word-xor'
+  | 'add-round-key' | 'sub-bytes' | 'inv-sub-bytes' | 'shift-rows' | 'inv-shift-rows' | 'mix-columns' | 'inv-mix-columns'
 export type TraceOperation = {
   readonly sBox?: readonly number[]
   readonly permutation?: readonly number[]
@@ -833,6 +834,118 @@ const aesWordXor: Operation = {
   },
 }
 
+// Inverse of the FIPS-197 S-box, reused by InvSubBytes.
+const aesInvSBox: readonly number[] = (() => {
+  const table = new Array<number>(256).fill(0)
+  aesSBox.forEach((value, index) => { table[value] = index })
+  return table
+})()
+
+const aesSubBytes: Operation = {
+  manifest: {
+    identity: 'aes.sub-bytes@1',
+    inputs: [{ name: 'value', type: { family: 'bits', size: 128 } }],
+    outputs: [{ name: 'value', type: { family: 'bits', size: 128 } }],
+  },
+  execute(inputs) {
+    const value = inputs.value as BitsValue
+    return { value: bits(128, value.bytes.map((byte) => aesSBox[byte])) }
+  },
+}
+
+const aesInvSubBytes: Operation = {
+  manifest: {
+    identity: 'aes.inv-sub-bytes@1',
+    inputs: [{ name: 'value', type: { family: 'bits', size: 128 } }],
+    outputs: [{ name: 'value', type: { family: 'bits', size: 128 } }],
+  },
+  execute(inputs) {
+    const value = inputs.value as BitsValue
+    return { value: bits(128, value.bytes.map((byte) => aesInvSBox[byte])) }
+  },
+}
+
+// FIPS-197 state byte index = row + 4*column (column-major). ShiftRows cycles row r left by r
+// columns; InvShiftRows cycles it right by r.
+const aesShiftRows: Operation = {
+  manifest: {
+    identity: 'aes.shift-rows@1',
+    inputs: [{ name: 'value', type: { family: 'bits', size: 128 } }],
+    outputs: [{ name: 'value', type: { family: 'bits', size: 128 } }],
+  },
+  execute(inputs) {
+    const value = (inputs.value as BitsValue).bytes
+    const output = new Uint8Array(16)
+    for (let row = 0; row < 4; row += 1) {
+      for (let column = 0; column < 4; column += 1) output[row + 4 * column] = value[row + 4 * ((column + row) % 4)]
+    }
+    return { value: bits(128, output) }
+  },
+}
+
+const aesInvShiftRows: Operation = {
+  manifest: {
+    identity: 'aes.inv-shift-rows@1',
+    inputs: [{ name: 'value', type: { family: 'bits', size: 128 } }],
+    outputs: [{ name: 'value', type: { family: 'bits', size: 128 } }],
+  },
+  execute(inputs) {
+    const value = (inputs.value as BitsValue).bytes
+    const output = new Uint8Array(16)
+    for (let row = 0; row < 4; row += 1) {
+      for (let column = 0; column < 4; column += 1) output[row + 4 * column] = value[row + 4 * ((column - row + 4) % 4)]
+    }
+    return { value: bits(128, output) }
+  },
+}
+
+// GF(2^8) multiplication (AES field, reduction 0x1b via `xtime`), shared by MixColumns and
+// InvMixColumns instead of separate hard-coded per-constant xtime chains for each.
+const gfMultiply = (a: number, b: number): number => {
+  let product = 0
+  let left = a
+  let right = b
+  for (let bit = 0; bit < 8; bit += 1) {
+    if (right & 1) product ^= left
+    left = xtime(left)
+    right >>= 1
+  }
+  return product
+}
+
+// Row r of the mixed column is base[0]*column[r] ^ base[1]*column[r+1] ^ ... (indices mod 4);
+// `base` is FIPS-197's fixed first-row coefficient vector, e.g. [2,3,1,1] for MixColumns.
+const mixColumn = (column: Uint8Array, base: readonly [number, number, number, number]): Uint8Array =>
+  Uint8Array.from({ length: 4 }, (_, row) => base.reduce((total, coefficient, index) => total ^ gfMultiply(coefficient, column[(row + index) % 4]), 0))
+
+const aesMixColumns: Operation = {
+  manifest: {
+    identity: 'aes.mix-columns@1',
+    inputs: [{ name: 'value', type: { family: 'bits', size: 128 } }],
+    outputs: [{ name: 'value', type: { family: 'bits', size: 128 } }],
+  },
+  execute(inputs) {
+    const value = (inputs.value as BitsValue).bytes
+    const output = new Uint8Array(16)
+    for (let column = 0; column < 4; column += 1) output.set(mixColumn(value.slice(column * 4, column * 4 + 4), [2, 3, 1, 1]), column * 4)
+    return { value: bits(128, output) }
+  },
+}
+
+const aesInvMixColumns: Operation = {
+  manifest: {
+    identity: 'aes.inv-mix-columns@1',
+    inputs: [{ name: 'value', type: { family: 'bits', size: 128 } }],
+    outputs: [{ name: 'value', type: { family: 'bits', size: 128 } }],
+  },
+  execute(inputs) {
+    const value = (inputs.value as BitsValue).bytes
+    const output = new Uint8Array(16)
+    for (let column = 0; column < 4; column += 1) output.set(mixColumn(value.slice(column * 4, column * 4 + 4), [14, 11, 13, 9]), column * 4)
+    return { value: bits(128, output) }
+  },
+}
+
 const aesRoundKey: Operation = {
   manifest: {
     identity: 'aes.round-key@1',
@@ -860,6 +973,7 @@ const throwing: Operation = {
 const operations = new Map<string, Operation>([
   source, xor, substitute, permute, output, caesar, affine,
   aesKeyWord, aesRotWord, aesSubWord, aesRconWord, aesWordXor, aesRoundKey,
+  aesSubBytes, aesInvSubBytes, aesShiftRows, aesInvShiftRows, aesMixColumns, aesInvMixColumns,
   throwing,
 ].map((operation) => [operation.manifest.identity, operation]))
 
@@ -941,6 +1055,67 @@ export const aesKeyExpansionGraph = (keySize: 128 | 192 | 256): AuthoredGraph =>
     outputs.push({ node: `round-key-${round}`, port: 'value' })
   }
   return { nodes, outputs, traceLevel: 'detail' }
+}
+
+// FIPS-197 AES-128 round count (Nr=10). Issue #84 scopes this builder to AES-128 only (exactly
+// one 16-byte block/key); AES-192/256 have their own round counts and known-answer vectors and
+// belong to issue #85's own builder, not a parameter here without that issue's authority.
+const aesCipherRounds = 10
+
+/**
+ * Composes the AES-128 forward-cipher CryptoGraph from registered SubBytes/ShiftRows/
+ * MixColumns primitives; AddRoundKey reuses `core.xor@1` rather than a duplicate fixed-width
+ * XOR. Round keys are typed `bits<128>` source inputs (`round-key-<r>.value`), so a Lesson
+ * binds them from a separate `aesKeyExpansionGraph` execution's own outputs through ordinary
+ * Lesson step bindings instead of this graph re-deriving them itself (issue #83's key-expansion
+ * outputs feeding an encryption graph "through ordinary graph edges").
+ */
+export const aesCipherGraph = (): AuthoredGraph => {
+  const rounds = aesCipherRounds
+  const nodes: AuthoredNode[] = [{ id: 'plaintext', operation: 'core.source@1', parameters: { type: { family: 'bits', size: 128 } } }]
+  for (let round = 0; round <= rounds; round += 1) {
+    nodes.push({ id: `round-key-${round}`, operation: 'core.source@1', parameters: { type: { family: 'bits', size: 128 } } })
+  }
+  nodes.push({ id: 'cipher-0-add-round-key', operation: 'core.xor@1', inputs: { left: { node: 'plaintext', port: 'value' }, right: { node: 'round-key-0', port: 'value' } } })
+  let previous = 'cipher-0-add-round-key'
+  for (let round = 1; round <= rounds; round += 1) {
+    nodes.push({ id: `cipher-${round}-sub-bytes`, operation: 'aes.sub-bytes@1', inputs: { value: { node: previous, port: 'value' } } })
+    nodes.push({ id: `cipher-${round}-shift-rows`, operation: 'aes.shift-rows@1', inputs: { value: { node: `cipher-${round}-sub-bytes`, port: 'value' } } })
+    let mixed = `cipher-${round}-shift-rows`
+    if (round < rounds) {
+      nodes.push({ id: `cipher-${round}-mix-columns`, operation: 'aes.mix-columns@1', inputs: { value: { node: mixed, port: 'value' } } })
+      mixed = `cipher-${round}-mix-columns`
+    }
+    nodes.push({ id: `cipher-${round}-add-round-key`, operation: 'core.xor@1', inputs: { left: { node: mixed, port: 'value' }, right: { node: `round-key-${round}`, port: 'value' } } })
+    previous = `cipher-${round}-add-round-key`
+  }
+  return { nodes, outputs: [{ node: previous, port: 'value' }], traceLevel: 'detail' }
+}
+
+/**
+ * Composes the matching AES-128 inverse cipher (FIPS-197 Figure 15: InvShiftRows, InvSubBytes,
+ * AddRoundKey, InvMixColumns per round, applied in round-key order Nr downto 0), from the same
+ * registered primitives and the same `round-key-<r>.value` source inputs as `aesCipherGraph`.
+ */
+export const aesInverseCipherGraph = (): AuthoredGraph => {
+  const rounds = aesCipherRounds
+  const nodes: AuthoredNode[] = [{ id: 'ciphertext', operation: 'core.source@1', parameters: { type: { family: 'bits', size: 128 } } }]
+  for (let round = 0; round <= rounds; round += 1) {
+    nodes.push({ id: `round-key-${round}`, operation: 'core.source@1', parameters: { type: { family: 'bits', size: 128 } } })
+  }
+  nodes.push({ id: `cipher-${rounds}-add-round-key`, operation: 'core.xor@1', inputs: { left: { node: 'ciphertext', port: 'value' }, right: { node: `round-key-${rounds}`, port: 'value' } } })
+  let previous = `cipher-${rounds}-add-round-key`
+  for (let round = rounds - 1; round >= 0; round -= 1) {
+    nodes.push({ id: `cipher-${round}-inv-shift-rows`, operation: 'aes.inv-shift-rows@1', inputs: { value: { node: previous, port: 'value' } } })
+    nodes.push({ id: `cipher-${round}-inv-sub-bytes`, operation: 'aes.inv-sub-bytes@1', inputs: { value: { node: `cipher-${round}-inv-shift-rows`, port: 'value' } } })
+    nodes.push({ id: `cipher-${round}-add-round-key`, operation: 'core.xor@1', inputs: { left: { node: `cipher-${round}-inv-sub-bytes`, port: 'value' }, right: { node: `round-key-${round}`, port: 'value' } } })
+    previous = `cipher-${round}-add-round-key`
+    if (round > 0) {
+      nodes.push({ id: `cipher-${round}-inv-mix-columns`, operation: 'aes.inv-mix-columns@1', inputs: { value: { node: previous, port: 'value' } } })
+      previous = `cipher-${round}-inv-mix-columns`
+    }
+  }
+  return { nodes, outputs: [{ node: previous, port: 'value' }], traceLevel: 'detail' }
 }
 
 const expandGraph = (graph: AuthoredGraph, diagnostics: Diagnostic[]): AuthoredGraph => {
@@ -1171,8 +1346,13 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
             values.set(id, result)
             const roundStage = /^(.*)\.(\d+)\/(key-mix|substitute|permute)$/.exec(id)
             const roundKey = /^(.*)\.(\d+)\/key$/.exec(id)
+            const cipherStage = /^cipher-(\d+)-(add-round-key|sub-bytes|shift-rows|mix-columns|inv-shift-rows|inv-sub-bytes|inv-mix-columns)$/.exec(id)
             if (compiledGraph.traceLevel === 'detail' && node.operation === 'core.source@1' && (id === 'plaintext' || id === 'state')) {
               appendTrace({ path: 'plaintext', level: 'detail', stage: 'input', value: cloneValue(result.value) })
+            } else if (compiledGraph.traceLevel === 'detail' && node.operation === 'core.source@1' && id === 'ciphertext') {
+              appendTrace({ path: 'ciphertext', level: 'detail', stage: 'input', value: cloneValue(result.value) })
+            } else if (compiledGraph.traceLevel === 'detail' && cipherStage) {
+              appendTrace({ path: id, level: 'detail', round: Number(cipherStage[1]), stage: cipherStage[2] as TraceStage, value: cloneValue(result.value) })
             } else if (compiledGraph.traceLevel === 'detail' && roundKey) {
               appendTrace({ path: `${roundKey[1]}.${roundKey[2]}/key`, level: 'detail', round: Number(roundKey[2]), stage: 'round-key', value: cloneValue(result.value) })
             } else if (roundStage) {

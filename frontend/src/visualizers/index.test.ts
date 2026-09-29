@@ -2,13 +2,15 @@ import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
-import { aesKeyExpansionGraph, alphabetPolicy, alphabetText, bits, executeWorkerRequest, hex, teachingSpnGraph } from '../crypto_graph'
+import { aesCipherGraph, aesKeyExpansionGraph, alphabetPolicy, alphabetText, bits, executeWorkerRequest, hex, teachingSpnGraph, type CryptoValue } from '../crypto_graph'
 import { teachingSpnDemoDocuments } from '../../demos/teachingSpnLesson'
 import { aesKeyExpansionDemoDocuments } from '../../demos/aesKeyExpansionLesson'
+import { aes128CipherDemoDocuments } from '../../demos/aes128CipherLesson'
 import { compileLesson, createBrowserLessonSession } from '../lesson_runtime'
 import { traceBitTargets } from './traceFlow'
 import { AvalancheRenderer } from './Avalanche'
 import { aesKeyExpansionPresentation } from './AesKeyExpansion'
+import { aesCipherPresentation } from './AesCipher'
 import { classicalCipherPositions } from './ClassicalCipher'
 import { RenderHost, visualizerCatalog } from './index'
 
@@ -350,5 +352,124 @@ steps:
     }))
     expect(rendered.getByLabelText('Classical cipher position mapping')).toBeVisible()
     expect(rendered.getByText('Unmapped')).toBeVisible()
+  })
+})
+
+describe('AES-128 encryption and decryption (#84)', () => {
+  const roundKeysFrom = (outputs: Readonly<Record<string, CryptoValue>>): Record<string, CryptoValue> =>
+    Object.fromEntries(Array.from({ length: 11 }, (_, round) => [`round-key-${round}.value`, outputs[`round-key-${round}.value`]]))
+
+  it('compiles the AES-128 cipher demo fixture through the Catalog and matches the FIPS-197 C.1 vector', () => {
+    const result = compileLesson(aes128CipherDemoDocuments, visualizerCatalog)
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        steps: [expect.anything(), expect.anything(),
+          { id: 'encrypt', visualizer: { id: 'aes-cipher@1' } },
+          { id: 'decrypt', visualizer: { id: 'aes-cipher@1' } }],
+      },
+    })
+    if (!result.ok) return
+
+    expect(visualizerCatalog.get('aes-cipher@1')).toMatchObject({ limits: { bits: 128 }, trace: { family: 'execution', level: 'detail' } })
+
+    const expansion = result.value.graphs.expand.execute({ 'key.value': result.value.inputs.key.default })
+    expect(expansion.ok).toBe(true)
+    if (!expansion.ok) return
+    const roundKeys = roundKeysFrom(expansion.value.outputs)
+
+    const encryption = result.value.graphs.encrypt.execute({ ...roundKeys, 'plaintext.value': result.value.inputs.plaintext.default })
+    expect(encryption.ok).toBe(true)
+    if (!encryption.ok) return
+    expect(hex(encryption.value.outputs['cipher-10-add-round-key.value'] as never)).toBe('0x69c4e0d86a7b0430d8cdb78070b4c55a')
+
+    const decryption = result.value.graphs.decrypt.execute({ ...roundKeys, 'ciphertext.value': encryption.value.outputs['cipher-10-add-round-key.value'] })
+    expect(decryption.ok).toBe(true)
+    if (!decryption.ok) return
+    expect(hex(decryption.value.outputs['cipher-0-add-round-key.value'] as never)).toBe('0x00112233445566778899aabbccddeeff')
+  })
+
+  it('returns a structured incomplete-trace diagnostic on a truncated cipher trace, not only the human-readable gap row (#84)', () => {
+    const zeroRoundKeys = Object.fromEntries(Array.from({ length: 11 }, (_, round) => [`round-key-${round}.value`, bits(128, new Uint8Array(16))]))
+    const response = executeWorkerRequest({
+      requestId: 'r4-cipher-truncated',
+      kind: 'execute',
+      payload: {
+        graph: aesCipherGraph(),
+        inputs: { 'plaintext.value': bits(128, new Uint8Array(16)), ...zeroRoundKeys },
+        limits: { traceEvents: 3 },
+      },
+    })
+    expect(response.kind).toBe('snapshot')
+    if (response.kind !== 'snapshot') return
+    expect(response.snapshot.traceStatus.truncated).toBe(true)
+    const presentation = aesCipherPresentation(response.snapshot, 'en-US', 'r4-cipher-truncated')
+    // Machine-checkable (stable code/path/details), matching the incomplete-trace diagnostic
+    // `aesKeyExpansionPresentation` already returns for #83 - not only the human-readable "raw"
+    // gap row rendered alongside it.
+    expect(presentation.diagnostics).toEqual([{
+      code: 'aes.cipher-trace-incomplete',
+      message: expect.any(String),
+      path: 'trace',
+      details: { retained: response.snapshot.traceStatus.retained, dropped: response.snapshot.traceStatus.dropped },
+    }])
+  })
+
+  it('runs the AES-128 cipher demo fixture through the Browser Lesson runtime and renders both directions through the shared trace table', async () => {
+    const previousWorker = globalThis.Worker
+    class WorkerStub {
+      private listeners: Array<(event: MessageEvent<unknown>) => void> = []
+
+      addEventListener(type: string, listener: (event: MessageEvent<unknown>) => void): void {
+        if (type === 'message') this.listeners.push(listener)
+      }
+
+      postMessage(request: Parameters<typeof executeWorkerRequest>[0]): void {
+        queueMicrotask(() => this.listeners.forEach((listener) => listener({ data: executeWorkerRequest(request) } as MessageEvent<unknown>)))
+      }
+
+      terminate(): void {}
+    }
+    globalThis.Worker = WorkerStub as unknown as typeof Worker
+    try {
+      const session = createBrowserLessonSession(aes128CipherDemoDocuments, 'en-US', visualizerCatalog)
+      expect(session.ok).toBe(true)
+      if (!session.ok) return
+      await session.value.next() // enter-input -> expand-key
+      await session.value.next() // expand-key -> encrypt
+      const decrypted = await session.value.next() // encrypt -> decrypt
+      expect(decrypted.ok).toBe(true)
+      if (!decrypted.ok) return
+
+      const encryptSnapshot = decrypted.value.snapshots.encrypt
+      const decryptSnapshot = decrypted.value.snapshots.decrypt
+      expect(hex(encryptSnapshot.outputs['cipher-10-add-round-key.value'] as never)).toBe('0x69c4e0d86a7b0430d8cdb78070b4c55a')
+      expect(hex(decryptSnapshot.outputs['cipher-0-add-round-key.value'] as never)).toBe('0x00112233445566778899aabbccddeeff')
+
+      const encrypted = render(React.createElement(RenderHost, {
+        dimensions: { width: 900, height: 500 },
+        execution: encryptSnapshot,
+        executionIdentity: 'aes-cipher-encrypt',
+        invocation: { id: 'aes-cipher@1' },
+        locale: 'en-US',
+        reducedMotion: true,
+      }))
+      expect(encrypted.queryByRole('alert')).toBeNull()
+      expect(encrypted.getByRole('heading', { name: 'AES-128 encryption' })).toBeVisible()
+
+      const decryptedRender = render(React.createElement(RenderHost, {
+        dimensions: { width: 900, height: 500 },
+        execution: decryptSnapshot,
+        executionIdentity: 'aes-cipher-decrypt',
+        invocation: { id: 'aes-cipher@1' },
+        locale: 'zh-CN',
+        reducedMotion: true,
+      }))
+      expect(decryptedRender.queryByRole('alert')).toBeNull()
+      expect(decryptedRender.getByRole('heading', { name: 'AES-128 解密' })).toBeVisible()
+      session.value.dispose()
+    } finally {
+      globalThis.Worker = previousWorker
+    }
   })
 })

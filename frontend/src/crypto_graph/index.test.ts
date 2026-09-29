@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  aesCipherGraph,
+  aesInverseCipherGraph,
   aesKeyExpansionGraph,
   alphabetPolicy,
   alphabetText,
@@ -821,5 +823,189 @@ describe('AES key expansion (#83)', () => {
     if (!outOfRangeIndex.ok) return
     const result = outOfRangeIndex.value.execute({ 'key.value': bits(128, new Uint8Array(16)) })
     expect(!result.ok && result.diagnostics[0].code).toBe('aes.key-word-out-of-range')
+  })
+})
+
+describe('AES-128 encryption and decryption (#84)', () => {
+  const hexToBytes = (value: string): Uint8Array => Uint8Array.from(value.match(/../g)!.map((byte) => Number.parseInt(byte, 16)))
+
+  // FIPS-197 Appendix A.1 key schedule for the C.1 known-answer vector's key, computed once and
+  // reused as this suite's `round-key-<r>.value` execution inputs (the encryption/decryption
+  // graphs consume round keys as ordinary source inputs; #83's own suite already proves the
+  // key-expansion graph that would normally supply them).
+  const kat = {
+    key: '000102030405060708090a0b0c0d0e0f',
+    plaintext: '00112233445566778899aabbccddeeff',
+    ciphertext: '69c4e0d86a7b0430d8cdb78070b4c55a',
+  }
+
+  const roundKeyInputs = (): Record<string, ReturnType<typeof bits>> => {
+    const expanded = compile(aesKeyExpansionGraph(128))
+    if (!expanded.ok) throw new Error('unreachable: AES key-expansion graph must compile')
+    const execution = expanded.value.execute({ 'key.value': bits(128, hexToBytes(kat.key)) })
+    if (!execution.ok) throw new Error('unreachable: key expansion must execute')
+    return Object.fromEntries(Array.from({ length: 11 }, (_, round) =>
+      [`round-key-${round}.value`, execution.value.outputs[`round-key-${round}.value`] as ReturnType<typeof bits>]))
+  }
+
+  it('encrypts and decrypts the FIPS-197 C.1 known-answer vector from registered primitives and #83 round-key outputs', () => {
+    const roundKeys = roundKeyInputs()
+
+    const cipher = compile(aesCipherGraph())
+    expect(cipher.ok).toBe(true)
+    if (!cipher.ok) return
+    const encrypted = cipher.value.execute({ ...roundKeys, 'plaintext.value': bits(128, hexToBytes(kat.plaintext)) })
+    expect(encrypted.ok).toBe(true)
+    if (!encrypted.ok) return
+    expect(hex(encrypted.value.outputs['cipher-10-add-round-key.value'] as ReturnType<typeof bits>)).toBe(`0x${kat.ciphertext}`)
+
+    const inverse = compile(aesInverseCipherGraph())
+    expect(inverse.ok).toBe(true)
+    if (!inverse.ok) return
+    const decrypted = inverse.value.execute({ ...roundKeys, 'ciphertext.value': bits(128, hexToBytes(kat.ciphertext)) })
+    expect(decrypted.ok).toBe(true)
+    if (!decrypted.ok) return
+    expect(hex(decrypted.value.outputs['cipher-0-add-round-key.value'] as ReturnType<typeof bits>)).toBe(`0x${kat.plaintext}`)
+  })
+
+  it('exposes encryption checkpoints in FIPS-197 order with stable, round-tagged IDs', () => {
+    const cipher = compile(aesCipherGraph())
+    if (!cipher.ok) throw new Error('unreachable: cipher graph must compile')
+    const execution = cipher.value.execute({ ...roundKeyInputs(), 'plaintext.value': bits(128, hexToBytes(kat.plaintext)) })
+    if (!execution.ok) throw new Error('unreachable: cipher must execute')
+    const trace = execution.value.trace as readonly TraceEvent[]
+    const checkpoints = trace.filter((event) => event.path === 'plaintext' || event.path.startsWith('cipher-') || event.path === 'output')
+    expect(checkpoints.map((event) => [event.path, event.round, event.stage])).toEqual([
+      ['plaintext', undefined, 'input'],
+      ['cipher-0-add-round-key', 0, 'add-round-key'],
+      ['cipher-1-sub-bytes', 1, 'sub-bytes'],
+      ['cipher-1-shift-rows', 1, 'shift-rows'],
+      ['cipher-1-mix-columns', 1, 'mix-columns'],
+      ['cipher-1-add-round-key', 1, 'add-round-key'],
+      ['cipher-2-sub-bytes', 2, 'sub-bytes'],
+      ['cipher-2-shift-rows', 2, 'shift-rows'],
+      ['cipher-2-mix-columns', 2, 'mix-columns'],
+      ['cipher-2-add-round-key', 2, 'add-round-key'],
+      ['cipher-3-sub-bytes', 3, 'sub-bytes'],
+      ['cipher-3-shift-rows', 3, 'shift-rows'],
+      ['cipher-3-mix-columns', 3, 'mix-columns'],
+      ['cipher-3-add-round-key', 3, 'add-round-key'],
+      ['cipher-4-sub-bytes', 4, 'sub-bytes'],
+      ['cipher-4-shift-rows', 4, 'shift-rows'],
+      ['cipher-4-mix-columns', 4, 'mix-columns'],
+      ['cipher-4-add-round-key', 4, 'add-round-key'],
+      ['cipher-5-sub-bytes', 5, 'sub-bytes'],
+      ['cipher-5-shift-rows', 5, 'shift-rows'],
+      ['cipher-5-mix-columns', 5, 'mix-columns'],
+      ['cipher-5-add-round-key', 5, 'add-round-key'],
+      ['cipher-6-sub-bytes', 6, 'sub-bytes'],
+      ['cipher-6-shift-rows', 6, 'shift-rows'],
+      ['cipher-6-mix-columns', 6, 'mix-columns'],
+      ['cipher-6-add-round-key', 6, 'add-round-key'],
+      ['cipher-7-sub-bytes', 7, 'sub-bytes'],
+      ['cipher-7-shift-rows', 7, 'shift-rows'],
+      ['cipher-7-mix-columns', 7, 'mix-columns'],
+      ['cipher-7-add-round-key', 7, 'add-round-key'],
+      ['cipher-8-sub-bytes', 8, 'sub-bytes'],
+      ['cipher-8-shift-rows', 8, 'shift-rows'],
+      ['cipher-8-mix-columns', 8, 'mix-columns'],
+      ['cipher-8-add-round-key', 8, 'add-round-key'],
+      ['cipher-9-sub-bytes', 9, 'sub-bytes'],
+      ['cipher-9-shift-rows', 9, 'shift-rows'],
+      ['cipher-9-mix-columns', 9, 'mix-columns'],
+      ['cipher-9-add-round-key', 9, 'add-round-key'],
+      ['cipher-10-sub-bytes', 10, 'sub-bytes'],
+      ['cipher-10-shift-rows', 10, 'shift-rows'],
+      ['cipher-10-add-round-key', 10, 'add-round-key'],
+      ['output', undefined, 'output'],
+    ])
+  })
+
+  it('exposes inverse-cipher checkpoints in FIPS-197 order with stable, round-tagged IDs', () => {
+    const inverse = compile(aesInverseCipherGraph())
+    if (!inverse.ok) throw new Error('unreachable: inverse cipher graph must compile')
+    const execution = inverse.value.execute({ ...roundKeyInputs(), 'ciphertext.value': bits(128, hexToBytes(kat.ciphertext)) })
+    if (!execution.ok) throw new Error('unreachable: inverse cipher must execute')
+    const trace = execution.value.trace as readonly TraceEvent[]
+    const checkpoints = trace.filter((event) => event.path === 'ciphertext' || event.path.startsWith('cipher-') || event.path === 'output')
+    expect(checkpoints.map((event) => [event.path, event.round, event.stage])).toEqual([
+      ['ciphertext', undefined, 'input'],
+      ['cipher-10-add-round-key', 10, 'add-round-key'],
+      ['cipher-9-inv-shift-rows', 9, 'inv-shift-rows'],
+      ['cipher-9-inv-sub-bytes', 9, 'inv-sub-bytes'],
+      ['cipher-9-add-round-key', 9, 'add-round-key'],
+      ['cipher-9-inv-mix-columns', 9, 'inv-mix-columns'],
+      ['cipher-8-inv-shift-rows', 8, 'inv-shift-rows'],
+      ['cipher-8-inv-sub-bytes', 8, 'inv-sub-bytes'],
+      ['cipher-8-add-round-key', 8, 'add-round-key'],
+      ['cipher-8-inv-mix-columns', 8, 'inv-mix-columns'],
+      ['cipher-7-inv-shift-rows', 7, 'inv-shift-rows'],
+      ['cipher-7-inv-sub-bytes', 7, 'inv-sub-bytes'],
+      ['cipher-7-add-round-key', 7, 'add-round-key'],
+      ['cipher-7-inv-mix-columns', 7, 'inv-mix-columns'],
+      ['cipher-6-inv-shift-rows', 6, 'inv-shift-rows'],
+      ['cipher-6-inv-sub-bytes', 6, 'inv-sub-bytes'],
+      ['cipher-6-add-round-key', 6, 'add-round-key'],
+      ['cipher-6-inv-mix-columns', 6, 'inv-mix-columns'],
+      ['cipher-5-inv-shift-rows', 5, 'inv-shift-rows'],
+      ['cipher-5-inv-sub-bytes', 5, 'inv-sub-bytes'],
+      ['cipher-5-add-round-key', 5, 'add-round-key'],
+      ['cipher-5-inv-mix-columns', 5, 'inv-mix-columns'],
+      ['cipher-4-inv-shift-rows', 4, 'inv-shift-rows'],
+      ['cipher-4-inv-sub-bytes', 4, 'inv-sub-bytes'],
+      ['cipher-4-add-round-key', 4, 'add-round-key'],
+      ['cipher-4-inv-mix-columns', 4, 'inv-mix-columns'],
+      ['cipher-3-inv-shift-rows', 3, 'inv-shift-rows'],
+      ['cipher-3-inv-sub-bytes', 3, 'inv-sub-bytes'],
+      ['cipher-3-add-round-key', 3, 'add-round-key'],
+      ['cipher-3-inv-mix-columns', 3, 'inv-mix-columns'],
+      ['cipher-2-inv-shift-rows', 2, 'inv-shift-rows'],
+      ['cipher-2-inv-sub-bytes', 2, 'inv-sub-bytes'],
+      ['cipher-2-add-round-key', 2, 'add-round-key'],
+      ['cipher-2-inv-mix-columns', 2, 'inv-mix-columns'],
+      ['cipher-1-inv-shift-rows', 1, 'inv-shift-rows'],
+      ['cipher-1-inv-sub-bytes', 1, 'inv-sub-bytes'],
+      ['cipher-1-add-round-key', 1, 'add-round-key'],
+      ['cipher-1-inv-mix-columns', 1, 'inv-mix-columns'],
+      ['cipher-0-inv-shift-rows', 0, 'inv-shift-rows'],
+      ['cipher-0-inv-sub-bytes', 0, 'inv-sub-bytes'],
+      ['cipher-0-add-round-key', 0, 'add-round-key'],
+      ['output', undefined, 'output'],
+    ])
+  })
+
+  it('rejects missing input, wrong type or length, and malformed round-key/block values with structured diagnostics', () => {
+    const cipher = compile(aesCipherGraph())
+    expect(cipher.ok).toBe(true)
+    if (!cipher.ok) return
+
+    const missingPlaintext = cipher.value.execute({ ...roundKeyInputs() })
+    expect(!missingPlaintext.ok && missingPlaintext.diagnostics[0].code).toBe('missing-execution-input')
+
+    const wrongLength = cipher.value.execute({ ...roundKeyInputs(), 'plaintext.value': bits(64, new Uint8Array(8)) })
+    expect(!wrongLength.ok && wrongLength.diagnostics[0].code).toBe('invalid-execution-input')
+
+    const malformedRoundKey = cipher.value.execute({
+      ...roundKeyInputs(),
+      'round-key-0.value': bits(128, new Uint8Array(15)),
+      'plaintext.value': bits(128, hexToBytes(kat.plaintext)),
+    })
+    expect(!malformedRoundKey.ok && malformedRoundKey.diagnostics[0].code).toBe('invalid-value')
+  })
+
+  it('marks an execution truncated by the trace-event limit while still returning correct outputs', () => {
+    const response = executeWorkerRequest({
+      requestId: 'aes-cipher-truncated-trace',
+      kind: 'execute',
+      payload: {
+        graph: aesCipherGraph(),
+        inputs: { ...roundKeyInputs(), 'plaintext.value': bits(128, hexToBytes(kat.plaintext)) },
+        limits: { traceEvents: 2 },
+      },
+    })
+    expect(response.kind).toBe('snapshot')
+    if (response.kind !== 'snapshot') return
+    expect(response.snapshot.traceStatus.truncated).toBe(true)
+    expect(hex(response.snapshot.outputs['cipher-10-add-round-key.value'] as ReturnType<typeof bits>)).toBe(`0x${kat.ciphertext}`)
   })
 })

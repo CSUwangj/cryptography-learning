@@ -4,6 +4,7 @@ import { AvalancheRenderer } from './Avalanche'
 import { classicalCipherPositions, ClassicalCipherRenderer } from './ClassicalCipher'
 import { TeachingSpnRenderer } from './TeachingSpn'
 import { AesKeyExpansionRenderer } from './AesKeyExpansion'
+import { AesCipherRenderer } from './AesCipher'
 
 export type RenderHostProps = {
   readonly invocation: { readonly id: string }
@@ -92,7 +93,13 @@ export const RenderHost: React.FC<RenderHostProps> = (props) =>
                 executionIdentity={props.executionIdentity}
                 locale={props.locale}
               />
-            : props.invocation.id === 'classical-cipher@1' && props.classicalCipher
+            : props.invocation.id === 'aes-cipher@1' && props.execution
+              ? <AesCipherRenderer
+                  execution={props.execution}
+                  executionIdentity={props.executionIdentity}
+                  locale={props.locale}
+                />
+              : props.invocation.id === 'classical-cipher@1' && props.classicalCipher
               ? <ClassicalCipherRenderer
                   {...props.classicalCipher}
                   positions={classicalCipherPositions(

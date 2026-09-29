@@ -503,6 +503,46 @@ texts: {plaintext: 明文, shift: 位移, policy: 策略}
     }
   })
 
+  it('decodes hex-block Lesson inputs as exact-length, unprefixed hex and rejects other forms (#84)', () => {
+    const documentsFor = (defaultValue: string): LessonDocuments => ({
+      lesson: `version: 1
+id: hex-block-fixture
+default_locale: en-US
+inputs:
+  block:
+    type: {family: bits, size: 16}
+    encoding: hex-block
+    default: "${defaultValue}"
+constants: {}
+graphs:
+  identity:
+    nodes:
+      - {id: block, operation: core.source@1, parameters: {type: {family: bits, size: 16}}}
+    outputs: [{node: block, port: value}]
+steps:
+  - id: run
+    execute:
+      graph: identity
+      bindings:
+        block.value: {input: block}
+`,
+      locales: { 'en-US': 'title: Hex block\nsummary: Decode a fixed-width hex input.\ntexts: {}' },
+    })
+
+    const valid = compileLesson(documentsFor('0f0f'))
+    expect(valid.ok).toBe(true)
+    if (valid.ok) expect(hex(valid.value.inputs.block.default as never)).toBe('0x0f0f')
+
+    // Rejected respectively for: a `0x` prefix, embedded whitespace, an odd (truncated) digit
+    // count, and a non-hex character - all four cases the scope for #84 calls out by name.
+    for (const invalid of ['0x0f0f', '0f 0f', '0f0', '0f0g']) {
+      expect(compileLesson(documentsFor(invalid))).toMatchObject({
+        ok: false,
+        diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'lesson.invalid-input', path: 'inputs.block.default' })]),
+      })
+    }
+  })
+
   it('uses stable diagnostics with source locations and rejects forbidden YAML', () => {
     const unsupported = compileLesson({ ...fixture(), lesson: fixture().lesson.replace('version: 1', 'version: 2') })
     expect(unsupported).toMatchObject({

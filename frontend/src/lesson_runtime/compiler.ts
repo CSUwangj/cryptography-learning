@@ -245,6 +245,22 @@ const typeAt = (
   return undefined
 }
 
+// Shared by both hex encodings below: packs an exact-length hex digit string into the typed
+// value, or returns undefined on a digit-count or top-byte range mismatch.
+const packHexDigits = (type: PortType, hexDigits: string): CryptoValue | undefined => {
+  if (type.family !== 'bits' && type.family !== 'bytes' && type.family !== 'words') return undefined
+  const digits = type.family === 'bits' ? Math.ceil((type.size as number) / 4) : (type.size as number) * 2
+  if (hexDigits.length !== digits) return undefined
+  const packed = Uint8Array.from((hexDigits.length % 2 ? `0${hexDigits}` : hexDigits).match(/../g)!.map((byte) => Number.parseInt(byte, 16)))
+  if (type.family === 'bits') {
+    const size = type.size as number
+    return size % 8 === 0 || packed[0] < 2 ** (size % 8) ? bits(size, packed) : undefined
+  }
+  if (type.family === 'bytes') return bytes(type.size as number, packed)
+  if (type.family === 'words') return words(type.size as number, packed)
+  return undefined
+}
+
 const decodeValue = (
   value: unknown,
   type: PortType,
@@ -273,16 +289,14 @@ const decodeValue = (
   } else if (type.family === 'alphabet-policy') {
     if (encoding === 'policy' && (value === 'preserve' || value === 'strict')) return { type, value }
   } else if (encoding === 'hex' && typeof value === 'string' && /^0x[0-9A-Fa-f]+$/.test(value)) {
-    const hex = value.slice(2)
-    const digits = type.family === 'bits' ? Math.ceil((type.size as number) / 4) : (type.size as number) * 2
-    if (hex.length === digits) {
-      const packed = Uint8Array.from((hex.length % 2 ? `0${hex}` : hex).match(/../g)!.map((byte) => Number.parseInt(byte, 16)))
-      if (type.family === 'bits') {
-        const size = type.size as number
-        if (size % 8 === 0 || packed[0] < 2 ** (size % 8)) return bits(size, packed)
-      } else if (type.family === 'bytes') return bytes(type.size as number, packed)
-      else return words(type.size as number, packed)
-    }
+    const packed = packHexDigits(type, value.slice(2))
+    if (packed) return packed
+  } else if (encoding === 'hex-block' && typeof value === 'string' && /^[0-9A-Fa-f]+$/.test(value)) {
+    // No `0x` prefix and no length tolerance (unlike `hex` above): a Lesson author uses this for
+    // a fixed-width block/key field (e.g. AES's 32-character 128-bit hex input) where whitespace,
+    // an odd digit count, or a stray prefix should read as a rejected value, not a padded guess.
+    const packed = packHexDigits(type, value)
+    if (packed) return packed
   }
   diagnostics.push(diagnostic('lesson.invalid-input', 'Value does not match its declared type and encoding.', path, spans.get(path)))
   return undefined

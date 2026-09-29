@@ -45,7 +45,10 @@ const valueText = (value: CryptoValue): string =>
         ? `${value.value} (${value.type.family})`
         : `${hexValue(value)} (${value.type.family}<${(value.type as { size: number }).size}>)`
 
-const inputText = (value: CryptoValue | string): string =>
+// `encoding` matters only for the bits/bytes/words fallback: `hex-block` (unlike `hex`) rejects
+// a `0x` prefix, so redisplaying a decoded value with one would make every subsequent edit to an
+// already-valid field fail that field's own validation on the very next keystroke.
+export const inputText = (value: CryptoValue | string, encoding: string): string =>
   typeof value === 'string'
     ? value
     : 'symbol' in value
@@ -54,7 +57,7 @@ const inputText = (value: CryptoValue | string): string =>
         ? value.symbols.join('')
         : 'value' in value
           ? String(value.value)
-          : hexValue(value)
+          : encoding === 'hex-block' ? hexValue(value).slice(2) : hexValue(value)
 
 const diagnosticText = (value: Diagnostic): string =>
   `${value.code}: ${value.message}${value.path ? ` (${value.path})` : ''}${value.span ? ` at ${value.span.file}:${value.span.line}:${value.span.column}` : ''}`
@@ -233,7 +236,7 @@ const LessonView: React.FC = () => {
     {step.prose && <Markdown source={rewriteLessonAssets(locale.texts[step.prose] ?? '', lessonId)} />}
     {step.inputs?.map((input) => {
       const raw = state.inputs[input.input]
-      const value = inputText(raw)
+      const value = inputText(raw, current.lesson.inputs[input.input]?.encoding ?? 'hex')
       const setInput = (next: string) => { current.setInput(input.input, next); refresh() }
       return <label key={input.input}>
         <p>{locale.texts[input.prompt]}</p>

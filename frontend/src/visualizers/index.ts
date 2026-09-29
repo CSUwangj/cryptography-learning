@@ -56,6 +56,20 @@ const aesKeyExpansion: VisualizerDescriptor = Object.freeze({
   accessibility: Object.freeze({ summary: 'aes-key-expansion.summary' }),
 })
 
+const aesCipher: VisualizerDescriptor = Object.freeze({
+  id: 'aes-cipher',
+  major: 1,
+  slots: Object.freeze({}),
+  trace: Object.freeze({ family: 'execution', level: 'detail' }),
+  inputSlots: Object.freeze({}),
+  traceLevels: Object.freeze(['detail'] as const),
+  tracePaths: Object.freeze(['output']),
+  options: Object.freeze({}),
+  limits: Object.freeze({ bits: 128 }),
+  dimensions: Object.freeze({ minWidth: 900, minHeight: 500 }),
+  accessibility: Object.freeze({ summary: 'aes-cipher.summary' }),
+})
+
 const classicalCipher: VisualizerDescriptor = Object.freeze({
   id: 'classical-cipher',
   major: 1,
@@ -78,6 +92,7 @@ const descriptors = new Map([
   [`${avalanche.id}@${avalanche.major}`, avalanche],
   [`${teachingSpn.id}@${teachingSpn.major}`, teachingSpn],
   [`${aesKeyExpansion.id}@${aesKeyExpansion.major}`, aesKeyExpansion],
+  [`${aesCipher.id}@${aesCipher.major}`, aesCipher],
   [`${classicalCipher.id}@${classicalCipher.major}`, classicalCipher],
 ])
 
