@@ -228,6 +228,11 @@ export class BrowserLessonSession {
     this.checkResults.set(stepId, { kind: 'equal', matched, feedback: matched ? check.feedback.match : check.feedback.mismatch })
   }
 
+  private awaitsExecution(step: CompiledLesson['steps'][number]): boolean {
+    return step.execute !== undefined && !step.visualizer?.compare && !this.snapshots.has(step.id)
+      && !this.acceptedDiagnostics.has(step.id) && !this.executionDiagnostics.has(step.id)
+  }
+
   selectChoice(optionId: string): Result<LessonSessionState> {
     const step = this.lesson.steps[this.index]
     const check = step.check
@@ -251,7 +256,7 @@ export class BrowserLessonSession {
       const result = await this.executeComparison(step.id)
       return result.ok ? result.value : this.state()
     }
-    if (step.visualizer && !this.snapshots.has(step.id)) {
+    if (this.awaitsExecution(step)) {
       const result = await this.next()
       return result.ok ? result.value : this.state()
     }
@@ -261,14 +266,14 @@ export class BrowserLessonSession {
   async enter(): Promise<Result<LessonSessionState>> {
     const step = this.lesson.steps[this.index]
     if (step.visualizer?.compare && !this.comparisons.has(step.id)) return this.executeComparison(step.id)
-    if (step.visualizer && !this.snapshots.has(step.id)) return this.next()
+    if (this.awaitsExecution(step)) return this.next()
     return { ok: true, value: this.state() }
   }
 
   async next(): Promise<Result<LessonSessionState>> {
     const current = this.lesson.steps[this.index]
     if (current.visualizer?.compare && !this.comparisons.has(current.id)) return this.executeComparison(current.id)
-    const target = current.visualizer && !current.visualizer.compare && !this.snapshots.has(current.id)
+    const target = this.awaitsExecution(current)
       ? this.index
       : Math.min(this.lesson.steps.length - 1, this.index + 1)
     if (target !== this.index) {

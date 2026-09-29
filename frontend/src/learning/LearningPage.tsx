@@ -258,7 +258,7 @@ const LessonView: React.FC = () => {
       <thead><tr><th>{t('learning.output')}</th><th>{t('learning.value')}</th></tr></thead>
       <tbody>{Object.entries(state.snapshots[step.id].outputs).map(([name, value]) => <tr key={name}><th>{name}</th><td>{valueText(value)}</td></tr>)}</tbody>
     </table>}
-    {step.visualizer && (state.comparisons[step.id] || state.snapshots[step.id]) && <div ref={setVisualizerSurface}>
+    {(step.visualizer || step.execute) && (state.comparisons[step.id] || state.snapshots[step.id]) && <div ref={setVisualizerSurface}>
       <RenderHost
         comparison={state.comparisons[step.id]}
         dimensions={visualizerDimensions}

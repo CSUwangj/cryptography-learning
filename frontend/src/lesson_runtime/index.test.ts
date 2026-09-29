@@ -1,10 +1,13 @@
 import { execFileSync, spawnSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import { bits, executeWorkerRequest, hex } from '../crypto_graph'
 import { aesKeyExpansionGraphNodesYaml } from '../../demos/aesKeyExpansionLesson'
+import { aes128CipherDemoDocuments } from '../../demos/aes128CipherLesson'
+import { teachingSpnDemoDocuments } from '../../demos/teachingSpnLesson'
 import {
   compileLesson,
   createBrowserLessonSession,
@@ -190,6 +193,40 @@ describe('Lesson Runtime compiler (#29)', () => {
           },
         },
       })
+      expect(await session.value.next()).toMatchObject({ ok: true, value: { stepId: 'identify-operation' } })
+      session.value.dispose()
+    } finally {
+      globalThis.Worker = previousWorker
+    }
+  })
+
+  it('executes descriptor-free Steps on entry and when returning after an input change', async () => {
+    const documents = fixture()
+    const previousWorker = globalThis.Worker
+    globalThis.Worker = WorkerStub as unknown as typeof Worker
+    try {
+      const first = createBrowserLessonSession({
+        ...documents,
+        lesson: documents.lesson.replace(/  - id: introduction[\s\S]*?(?=  - id: calculate)/, ''),
+      }, 'en-US')
+      expect(first.ok).toBe(true)
+      if (!first.ok) return
+      const entered = await first.value.enter()
+      expect(entered).toMatchObject({ ok: true, value: { stepId: 'calculate', checkResults: { calculate: { matched: true } } } })
+      if (!entered.ok) return
+      expect(hex(entered.value.snapshots.calculate.outputs['mixed.value'] as never)).toBe('0x0ff0')
+      first.value.dispose()
+
+      const session = createBrowserLessonSession(documents, 'en-US')
+      expect(session.ok).toBe(true)
+      if (!session.ok) return
+      await session.value.next()
+      await session.value.next()
+      await session.value.next()
+      expect(session.value.setInput('plaintext', '0x0000').ok).toBe(true)
+      const returned = await session.value.previous()
+      expect(returned.stepId).toBe('calculate')
+      expect(hex(returned.snapshots.calculate.outputs['mixed.value'] as never)).toBe('0x00ff')
       session.value.dispose()
     } finally {
       globalThis.Worker = previousWorker
@@ -289,7 +326,36 @@ steps:
     })
     expect(missing.status).toBe(1)
     expect(JSON.parse(missing.stdout)).toMatchObject({ ok: false })
-  })
+  }, 60_000)
+
+  it('validates descriptor-free and descriptor-using Lesson directories through the Node command with the Visualizer catalog', () => {
+    const root = mkdtempSync(join(tmpdir(), 'validate-lessons-'))
+    const validate = (name: string, documents: LessonDocuments) => {
+      const directory = join(root, name)
+      mkdirSync(join(directory, 'locales'), { recursive: true })
+      writeFileSync(join(directory, 'lesson.yaml'), documents.lesson)
+      for (const [locale, source] of Object.entries(documents.locales)) writeFileSync(join(directory, 'locales', `${locale}.yaml`), source)
+      const result = spawnSync(process.execPath, ['scripts/validate_lessons.mjs', directory], { cwd: frontendDirectory, encoding: 'utf8' })
+      return { status: result.status, report: JSON.parse(result.stdout) }
+    }
+    try {
+      expect(validate('aes', aes128CipherDemoDocuments)).toMatchObject({
+        status: 0,
+        report: { ok: true, diagnostics: [], dryRun: { steps: [{ id: 'enter-input' }, { id: 'expand-key' }, { id: 'encrypt' }, { id: 'decrypt' }] } },
+      })
+      expect(validate('spn', teachingSpnDemoDocuments)).toMatchObject({
+        status: 0,
+        report: { ok: true, diagnostics: [], dryRun: { steps: [{ id: 'visualize' }] } },
+      })
+      const unknown = { ...teachingSpnDemoDocuments, lesson: teachingSpnDemoDocuments.lesson.replace('teaching-spn@1', 'unknown-trace@1') }
+      expect(validate('unknown', unknown)).toMatchObject({
+        status: 1,
+        report: { ok: false, diagnostics: [{ code: 'lesson.invalid-input', path: 'steps.0.visualizer.id' }] },
+      })
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  }, 60_000)
 
   it('accepts contained assets and HTTPS links while rejecting unsafe prose', () => {
     expect(validateLessonMarkdown(

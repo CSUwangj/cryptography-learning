@@ -57,22 +57,12 @@ steps:
       bindings:
         plaintext.value: {input: plaintext}
 ${roundKeyBindings('expand-key')}
-    visualizer:
-      id: aes-cipher@1
-      bindings:
-        trace: {step: encrypt, trace: output}
-      options: {}
   - id: decrypt
     execute:
       graph: decrypt
       bindings:
         ciphertext.value: {step: encrypt, output: cipher-10-add-round-key.value}
 ${roundKeyBindings('expand-key')}
-    visualizer:
-      id: aes-cipher@1
-      bindings:
-        trace: {step: decrypt, trace: output}
-      options: {}
 `,
   locales: {
     'en-US': 'title: AES-128 encryption and decryption\nsummary: Encrypt a block, then decrypt it back with the same round keys.\ntexts: {key: Key, plaintext: Plaintext}',

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
-import { aesCipherGraph, aesKeyExpansionGraph, alphabetPolicy, alphabetText, bits, executeWorkerRequest, hex, teachingSpnGraph, type CryptoValue } from '../crypto_graph'
+import { aesCipherGraph, aesKeyExpansionGraph, alphabetPolicy, alphabetText, bits, executeWorkerRequest, hex, integer, teachingSpnGraph, type CryptoValue } from '../crypto_graph'
 import { teachingSpnDemoDocuments } from '../../demos/teachingSpnLesson'
 import { aesKeyExpansionDemoDocuments } from '../../demos/aesKeyExpansionLesson'
 import { aes128CipherDemoDocuments } from '../../demos/aes128CipherLesson'
@@ -11,6 +11,7 @@ import { traceBitTargets } from './traceFlow'
 import { AvalancheRenderer } from './Avalanche'
 import { aesKeyExpansionPresentation } from './AesKeyExpansion'
 import { aesCipherPresentation } from './AesCipher'
+import { executionTracePresentation } from './ExecutionTrace'
 import { classicalCipherPositions } from './ClassicalCipher'
 import { RenderHost, visualizerCatalog } from './index'
 
@@ -359,17 +360,13 @@ describe('AES-128 encryption and decryption (#84)', () => {
   const roundKeysFrom = (outputs: Readonly<Record<string, CryptoValue>>): Record<string, CryptoValue> =>
     Object.fromEntries(Array.from({ length: 11 }, (_, round) => [`round-key-${round}.value`, outputs[`round-key-${round}.value`]]))
 
-  it('compiles the AES-128 cipher demo fixture through the Catalog and matches the FIPS-197 C.1 vector', () => {
-    const result = compileLesson(aes128CipherDemoDocuments, visualizerCatalog)
-    expect(result).toMatchObject({
-      ok: true,
-      value: {
-        steps: [expect.anything(), expect.anything(),
-          { id: 'encrypt', visualizer: { id: 'aes-cipher@1' } },
-          { id: 'decrypt', visualizer: { id: 'aes-cipher@1' } }],
-      },
-    })
+  it('compiles the descriptor-free AES-128 cipher demo fixture without any registered Visualizer and matches the FIPS-197 C.1 vector', () => {
+    const result = compileLesson(aes128CipherDemoDocuments, { get: () => undefined })
+    expect(result.ok).toBe(true)
     if (!result.ok) return
+    expect(result.value.steps.map((step) => [step.id, step.visualizer])).toEqual([
+      ['enter-input', undefined], ['expand-key', undefined], ['encrypt', undefined], ['decrypt', undefined],
+    ])
 
     expect(visualizerCatalog.get('aes-cipher@1')).toMatchObject({ limits: { bits: 128 }, trace: { family: 'execution', level: 'detail' } })
 
@@ -415,6 +412,39 @@ describe('AES-128 encryption and decryption (#84)', () => {
     }])
   })
 
+  it('returns a generic incomplete-trace diagnostic and gap row for a truncated descriptor-free trace', () => {
+    const zeroRoundKeys = Object.fromEntries(Array.from({ length: 11 }, (_, round) => [`round-key-${round}.value`, bits(128, new Uint8Array(16))]))
+    const response = executeWorkerRequest({
+      requestId: 'generic-cipher-truncated',
+      kind: 'execute',
+      payload: {
+        graph: aesCipherGraph(),
+        inputs: { 'plaintext.value': bits(128, new Uint8Array(16)), ...zeroRoundKeys },
+        limits: { traceEvents: 3 },
+      },
+    })
+    expect(response.kind).toBe('snapshot')
+    if (response.kind !== 'snapshot') return
+    expect(executionTracePresentation(response.snapshot, 'en-US', 'generic').diagnostics).toEqual([{
+      code: 'trace.incomplete',
+      message: expect.any(String),
+      path: 'trace',
+      details: { retained: 3, dropped: response.snapshot.traceStatus.dropped },
+    }])
+    render(React.createElement(RenderHost, {
+      dimensions: { width: 320, height: 200 },
+      execution: response.snapshot,
+      executionIdentity: 'generic-cipher-truncated',
+      locale: 'zh-CN',
+      reducedMotion: true,
+    }))
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByRole('row', { name: /^明文输入 — 0x0{32}$/ })).toBeVisible()
+    expect(screen.getByRole('row', { name: /^轮密钥 1 1 0x0{32}$/ })).toBeVisible()
+    expect(screen.getAllByText('轨迹缺口').length).toBeGreaterThan(0)
+    expect(screen.queryByRole('row', { name: /输出/ })).toBeNull()
+  })
+
   it('runs the AES-128 cipher demo fixture through the Browser Lesson runtime and renders both directions through the shared trace table', async () => {
     const previousWorker = globalThis.Worker
     class WorkerStub {
@@ -450,26 +480,97 @@ describe('AES-128 encryption and decryption (#84)', () => {
         dimensions: { width: 900, height: 500 },
         execution: encryptSnapshot,
         executionIdentity: 'aes-cipher-encrypt',
-        invocation: { id: 'aes-cipher@1' },
         locale: 'en-US',
         reducedMotion: true,
       }))
       expect(encrypted.queryByRole('alert')).toBeNull()
-      expect(encrypted.getByRole('heading', { name: 'AES-128 encryption' })).toBeVisible()
+      expect(encrypted.getByRole('heading', { name: 'Execution trace' })).toBeVisible()
+      expect(encrypted.getByRole('row', { name: /^SubBytes 1 1 0x/ })).toBeVisible()
+      expect(encrypted.getByRole('row', { name: /^Output — 0x69c4e0d86a7b0430d8cdb78070b4c55a$/ })).toBeVisible()
+      expect(encrypted.queryByRole('row', { name: /MixColumns 10/ })).toBeNull()
+      encrypted.unmount()
 
       const decryptedRender = render(React.createElement(RenderHost, {
         dimensions: { width: 900, height: 500 },
         execution: decryptSnapshot,
         executionIdentity: 'aes-cipher-decrypt',
-        invocation: { id: 'aes-cipher@1' },
         locale: 'zh-CN',
         reducedMotion: true,
       }))
       expect(decryptedRender.queryByRole('alert')).toBeNull()
-      expect(decryptedRender.getByRole('heading', { name: 'AES-128 解密' })).toBeVisible()
+      expect(decryptedRender.getByRole('heading', { name: '执行轨迹' })).toBeVisible()
+      expect(decryptedRender.getByRole('row', { name: /^密文输入 — 0x69c4e0d86a7b0430d8cdb78070b4c55a$/ })).toBeVisible()
+      expect(decryptedRender.getByRole('row', { name: /^逆字节替换 1 1 0x/ })).toBeVisible()
+      decryptedRender.unmount()
+
+      const bound = render(React.createElement(RenderHost, {
+        dimensions: { width: 900, height: 500 },
+        execution: encryptSnapshot,
+        executionIdentity: 'aes-cipher-bound',
+        invocation: { id: 'aes-cipher@1' },
+        locale: 'en-US',
+        reducedMotion: true,
+      }))
+      expect(bound.getByRole('heading', { name: 'AES-128 encryption' })).toBeVisible()
+      expect(bound.getByRole('row', { name: /^SubBytes 1 1 0x/ })).toBeVisible()
       session.value.dispose()
     } finally {
       globalThis.Worker = previousWorker
     }
+  })
+})
+
+describe('Descriptor-free generic traces (ADR 0006)', () => {
+  it('renders an ordinary SPN trace as semantic rows with operation details and no lineage controls', () => {
+    const response = executeWorkerRequest({ requestId: 'generic-spn', kind: 'execute', payload: { graph: teachingSpnGraph } })
+    expect(response.kind).toBe('snapshot')
+    if (response.kind !== 'snapshot') return
+    render(React.createElement(RenderHost, {
+      dimensions: { width: 900, height: 500 },
+      execution: response.snapshot,
+      executionIdentity: 'generic-spn',
+      locale: 'en-US',
+      reducedMotion: true,
+    }))
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByRole('columnheader', { name: 'Operation detail' })).toBeVisible()
+    expect(screen.getByRole('row', { name: /^Key mixing 1 1 0x/ })).toBeVisible()
+    expect(screen.getByRole('row', { name: /^Substitution 1 1 0x\w+ S-box: / })).toBeVisible()
+    expect(screen.getByRole('row', { name: /^Permutation 1 1 0x\w+ 0 → 0/ })).toBeVisible()
+    expect(screen.queryByRole('button')).toBeNull()
+  })
+
+  it('renders an ordinary classical trace with retained output text and no registered descriptor', () => {
+    const latin = { id: 'latin', symbols: [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'] }
+    const response = executeWorkerRequest({
+      requestId: 'generic-caesar',
+      kind: 'execute',
+      payload: {
+        graph: {
+          alphabetMappings: [latin],
+          nodes: [
+            { id: 'text', operation: 'core.source@1', parameters: { type: { family: 'alphabet-text', mapping: 'latin' } } },
+            { id: 'shift', operation: 'core.source@1', parameters: { type: { family: 'integer', signed: true, safe: true } } },
+            { id: 'policy', operation: 'core.source@1', parameters: { type: { family: 'alphabet-policy' } } },
+            { id: 'cipher', operation: 'classical.caesar@1', inputs: { text: { node: 'text', port: 'value' }, shift: { node: 'shift', port: 'value' }, policy: { node: 'policy', port: 'value' } } },
+          ],
+          outputs: [{ node: 'cipher', port: 'text' }],
+        },
+        inputs: { 'text.value': alphabetText(latin, 'ABC'), 'shift.value': integer(3), 'policy.value': alphabetPolicy('preserve') },
+      },
+    })
+    expect(response.kind).toBe('snapshot')
+    if (response.kind !== 'snapshot') return
+    render(React.createElement(RenderHost, {
+      dimensions: { width: 320, height: 200 },
+      execution: response.snapshot,
+      executionIdentity: 'generic-caesar',
+      locale: 'zh-CN',
+      reducedMotion: true,
+    }))
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByRole('heading', { name: '执行轨迹' })).toBeVisible()
+    expect(screen.getByRole('row', { name: '输出 (cipher.text) — DEF' })).toBeVisible()
+    expect(screen.getByRole('row', { name: '轨迹值 (shift.value) — —' })).toBeVisible()
   })
 })

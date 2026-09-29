@@ -16,13 +16,14 @@ if (!root) {
     )))
     const documents = { lesson: await readFile(join(root, 'lesson.yaml'), 'utf8'), locales }
     const server = await createServer({
-      configFile: false,
+      logLevel: 'silent',
       optimizeDeps: { noDiscovery: true },
       server: { middlewareMode: true },
       appType: 'custom',
     })
     const { validateLessonDocuments } = await server.ssrLoadModule('/src/lesson_runtime/index.ts')
-    const report = validateLessonDocuments(documents)
+    const { visualizerCatalog } = await server.ssrLoadModule('/src/visualizers/index.ts')
+    const report = validateLessonDocuments(documents, visualizerCatalog)
     await server.close()
     process.stdout.write(`${JSON.stringify(report)}\n`)
     if (!report.ok) process.exitCode = 1

@@ -5,9 +5,11 @@ import { classicalCipherPositions, ClassicalCipherRenderer } from './ClassicalCi
 import { TeachingSpnRenderer } from './TeachingSpn'
 import { AesKeyExpansionRenderer } from './AesKeyExpansion'
 import { AesCipherRenderer } from './AesCipher'
+import { ExecutionTraceRenderer } from './ExecutionTrace'
 
 export type RenderHostProps = {
-  readonly invocation: { readonly id: string }
+  /** Absent for descriptor-free Steps, whose execution renders as a generic trace. */
+  readonly invocation?: { readonly id: string }
   readonly comparison?: AvalancheComparison
   readonly execution?: WorkerExecutionSnapshot
   readonly locale: string
@@ -75,31 +77,37 @@ class IsolatedRenderer extends React.Component<Pick<RenderHostProps, 'comparison
 
 export const RenderHost: React.FC<RenderHostProps> = (props) =>
   <IsolatedRenderer comparison={props.comparison} execution={props.execution} key={props.executionIdentity} locale={props.locale}>
-      {props.invocation.id === 'avalanche@1' && props.comparison
+      {!props.invocation && props.execution
+        ? <ExecutionTraceRenderer
+            execution={props.execution}
+            executionIdentity={props.executionIdentity}
+            locale={props.locale}
+          />
+        : props.invocation?.id === 'avalanche@1' && props.comparison
         ? <AvalancheRenderer
             comparison={props.comparison}
             executionIdentity={props.executionIdentity}
             locale={props.locale}
           />
-        : props.invocation.id === 'teaching-spn@1' && props.execution
+        : props.invocation?.id === 'teaching-spn@1' && props.execution
           ? <TeachingSpnRenderer
               execution={props.execution}
               executionIdentity={props.executionIdentity}
               locale={props.locale}
             />
-          : props.invocation.id === 'aes-key-expansion@1' && props.execution
+          : props.invocation?.id === 'aes-key-expansion@1' && props.execution
             ? <AesKeyExpansionRenderer
                 execution={props.execution}
                 executionIdentity={props.executionIdentity}
                 locale={props.locale}
               />
-            : props.invocation.id === 'aes-cipher@1' && props.execution
+            : props.invocation?.id === 'aes-cipher@1' && props.execution
               ? <AesCipherRenderer
                   execution={props.execution}
                   executionIdentity={props.executionIdentity}
                   locale={props.locale}
                 />
-              : props.invocation.id === 'classical-cipher@1' && props.classicalCipher
+              : props.invocation?.id === 'classical-cipher@1' && props.classicalCipher
               ? <ClassicalCipherRenderer
                   {...props.classicalCipher}
                   positions={classicalCipherPositions(
