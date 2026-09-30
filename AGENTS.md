@@ -1,5 +1,10 @@
 # Agent guidance
 
+## Communication and records
+
+- Communicate with the maintainer in Chinese.
+- Record work in English, including code comments, documentation, issue or PR text, review notes, and change summaries.
+
 ## Hard constraints
 
 - Never run `git commit`. Stage completed work with `git add` and stop; committing is the

@@ -109,6 +109,8 @@ export type LearningRow = {
   readonly selectableBits?: readonly LearningBit[]
   readonly selectableKey?: LearningRoundKey
   readonly relationships?: readonly LearningRelationship[]
+  /** Draws a boundary every `size` bits; `active` marks one group. Absent means no boundaries. */
+  readonly bitGrouping?: { readonly size: number; readonly active?: number }
   readonly detail?: ReactNode
 }
 
@@ -182,6 +184,13 @@ export const relatedBitIds = (presentation: LearningPresentation, selected: stri
   return new Set([...reach('from', 'to'), ...reach('to', 'from')])
 }
 
+const bitGroups = (row: LearningRow): readonly (readonly LearningBit[])[] => {
+  const selectable = row.selectableBits ?? []
+  if (!row.bitGrouping) return [selectable]
+  const { size } = row.bitGrouping
+  return Array.from({ length: Math.ceil(selectable.length / size) }, (_, group) => selectable.slice(group * size, (group + 1) * size))
+}
+
 const initialSelectionFor = (presentation: LearningPresentation): LearningSelection | undefined =>
   presentation.initialKeySelection
     ? { kind: 'key', id: presentation.initialKeySelection }
@@ -220,20 +229,24 @@ const lineageStroke = (state: LearningState): string => {
 
 export const LineageDiagram = ({ relationships, locations, width, height, related, selected }: LineageDiagramProps): ReactNode => {
   if (!relationships.length) return null
+  const lines = relationships.map((relationship) => ({
+    relationship,
+    state: relationship.from === selected?.id || relationship.to === selected?.id
+      ? 'selected' as const
+      : related.has(relationship.from) && related.has(relationship.to)
+        ? 'related' as const
+        : relationship.state ?? 'default',
+  }))
   return <svg aria-hidden="true" data-lineage height={height} style={{ left: 0, pointerEvents: 'none', position: 'absolute', top: 0 }} viewBox={`0 0 ${width} ${height}`} width={width}>
-    {relationships.map((relationship) => {
+    {[...lines.filter((line) => line.state === 'default'), ...lines.filter((line) => line.state !== 'default')].map(({ relationship, state }) => {
       const from = locations.get(relationship.from)
       const to = locations.get(relationship.to)
       if (!from || !to) return null
-      const state = relationship.from === selected?.id || relationship.to === selected?.id
-        ? 'selected'
-        : related.has(relationship.from) && related.has(relationship.to)
-          ? 'related'
-          : relationship.state ?? 'default'
       return <line
         data-state={state}
         key={`${relationship.from}-${relationship.to}`}
         stroke={lineageStroke(state)}
+        strokeOpacity={state === 'default' && selected ? 0.15 : 0.6}
         strokeWidth={state === 'default' ? 1 : 3}
         x1={from.x}
         x2={to.x}
@@ -254,6 +267,9 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
     setOpenKeyId(presentation.initialKeySelection)
   }, [presentation.executionIdentity])
   const related = useMemo(() => relatedBitIds(presentation, selected?.id), [presentation, selected])
+  const relationships = relationshipsFor(presentation)
+  // Wider rows carry longer diagonal lines, so give them proportionally more vertical room.
+  const lineageGap = Math.max(6, ...presentation.sections.flatMap((section) => section.rows.map((row) => row.selectableBits?.length ?? 0)))
   const rows = presentation.sections.flatMap((section) => section.rows)
   const laneBits = Object.values(presentation.keyExpansionLane?.rowsById ?? {}).flatMap((row) => row.selectableBits ?? [])
   const selectedTarget = selected?.kind === 'bit'
@@ -358,17 +374,17 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
     setLineage({ width: bounds.width, height: bounds.height, locations })
   }, [presentation, laneOpen, keyExpansionLayout])
 
-  return <section aria-label={presentation.title}>
+  return <section aria-label={presentation.title} style={{ overflowX: 'auto' }}>
     <h3>{presentation.title}</h3>
     {presentation.instructions && <p>{presentation.instructions}</p>}
     {presentation.selectionStatus && <p aria-live="polite" role="status">{presentation.selectionStatus(selectedTarget)}</p>}
     {presentation.sections.filter((section) => section.rows.some((row) => row.state === 'incomplete'))
       .map((section) => <p key={`${section.kind}-${section.caption}`} role="status">{section.caption}</p>)}
-    <div ref={lineageContainer} style={{ position: 'relative' }}>
+    <div ref={lineageContainer} style={{ minWidth: '100%', position: 'relative', width: 'max-content' }}>
       <LineageDiagram
         height={lineage.height}
         locations={lineage.locations}
-        relationships={relationshipsFor(presentation)}
+        relationships={relationships}
         related={related}
         selected={selected}
         width={lineage.width}
@@ -379,18 +395,35 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
         return <TraceTable caption={section.caption} headers={section.headers} key={`${section.kind}-${section.caption}`}>
           {section.rows.map((row) => <ComparisonRow key={row.id} label={row.label} rowId={row.id} rowRef={rowRef(row.id)} state={row.state}>
             {row.cells.map((cell, index) => <ValueCell ariaLabel={cell.ariaLabel} key={index} state={cell.state}>{cell.value}</ValueCell>)}
-            {hasControls && <td data-cover-start={presentation.keyExpansionLane ? 'true' : undefined} style={{ whiteSpace: 'nowrap' }}>{(row.selectableBits ?? []).map((bit) => {
-              const state = bitState(bit, selected, related)
-              return <button
-                aria-label={bit.ariaLabel}
-                aria-pressed={state === 'selected'}
-                data-state={state}
-                key={bit.id}
-                onClick={() => selectBit(bit.id)}
-                ref={targetRef(bit.id)}
-                style={{ ...stateStyles[state], borderColor: learningColors.border, color: learningColors.text, position: 'relative' }}
-                type="button"
-              >{bit.value}</button>
+            {hasControls && <td data-cover-start={presentation.keyExpansionLane ? 'true' : undefined} style={{ paddingBlock: relationships.length ? lineageGap : undefined, whiteSpace: 'nowrap' }}>{bitGroups(row).map((group, index) => {
+              const buttons = group.map((bit, position) => {
+                const state = bitState(bit, selected, related)
+                return <button
+                  aria-label={bit.ariaLabel}
+                  aria-pressed={state === 'selected'}
+                  data-state={state}
+                  key={bit.id}
+                  onClick={() => selectBit(bit.id)}
+                  ref={targetRef(bit.id)}
+                  style={{
+                    ...stateStyles[state],
+                    borderColor: learningColors.border,
+                    // A shadow rather than a border so group boundaries never shift bit columns.
+                    boxShadow: row.bitGrouping && index && !position ? `-2px 0 0 ${learningColors.text}` : undefined,
+                    color: learningColors.text,
+                    position: 'relative',
+                  }}
+                  type="button"
+                >{bit.value}</button>
+              })
+              return row.bitGrouping
+                ? <span
+                    data-active={index === row.bitGrouping.active ? 'true' : undefined}
+                    data-bit-group={index}
+                    key={index}
+                    style={{ outline: index === row.bitGrouping.active ? `2px dashed ${learningColors.text}` : undefined, outlineOffset: 2 }}
+                  >{buttons}</span>
+                : buttons
             })}{/* Hidden (rather than removed) while the lane is open: this cell must stay in the
                 DOM so `data-cover-start` keeps measuring the covered column's position, but the
                 lane renders this same chip on top of it (see `renderKeyChip`) so it remains

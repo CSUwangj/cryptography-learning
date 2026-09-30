@@ -1067,10 +1067,10 @@ export const aesKeyExpansionGraph = (keySize: 128 | 192 | 256): AuthoredGraph =>
  */
 export const aesCipherGraph = (keySize: 128 | 192 | 256 = 128): AuthoredGraph => {
   const rounds = aesKeyExpansionParameters[keySize].nr
-  const nodes: AuthoredNode[] = [{ id: 'plaintext', operation: 'core.source@1', parameters: { type: { family: 'bits', size: 128 } } }]
-  for (let round = 0; round <= rounds; round += 1) {
-    nodes.push({ id: `round-key-${round}`, operation: 'core.source@1', parameters: { type: { family: 'bits', size: 128 } } })
-  }
+  // Each round key is declared right before the AddRoundKey that consumes it, so the trace
+  // (which follows node order) shows it where encryption uses it.
+  const roundKey = (round: number): AuthoredNode => ({ id: `round-key-${round}`, operation: 'core.source@1', parameters: { type: { family: 'bits', size: 128 } } })
+  const nodes: AuthoredNode[] = [{ id: 'plaintext', operation: 'core.source@1', parameters: { type: { family: 'bits', size: 128 } } }, roundKey(0)]
   nodes.push({ id: 'cipher-0-add-round-key', operation: 'core.xor@1', inputs: { left: { node: 'plaintext', port: 'value' }, right: { node: 'round-key-0', port: 'value' } } })
   let previous = 'cipher-0-add-round-key'
   for (let round = 1; round <= rounds; round += 1) {
@@ -1081,6 +1081,7 @@ export const aesCipherGraph = (keySize: 128 | 192 | 256 = 128): AuthoredGraph =>
       nodes.push({ id: `cipher-${round}-mix-columns`, operation: 'aes.mix-columns@1', inputs: { value: { node: mixed, port: 'value' } } })
       mixed = `cipher-${round}-mix-columns`
     }
+    nodes.push(roundKey(round))
     nodes.push({ id: `cipher-${round}-add-round-key`, operation: 'core.xor@1', inputs: { left: { node: mixed, port: 'value' }, right: { node: `round-key-${round}`, port: 'value' } } })
     previous = `cipher-${round}-add-round-key`
   }
@@ -1094,15 +1095,14 @@ export const aesCipherGraph = (keySize: 128 | 192 | 256 = 128): AuthoredGraph =>
  */
 export const aesInverseCipherGraph = (keySize: 128 | 192 | 256 = 128): AuthoredGraph => {
   const rounds = aesKeyExpansionParameters[keySize].nr
-  const nodes: AuthoredNode[] = [{ id: 'ciphertext', operation: 'core.source@1', parameters: { type: { family: 'bits', size: 128 } } }]
-  for (let round = 0; round <= rounds; round += 1) {
-    nodes.push({ id: `round-key-${round}`, operation: 'core.source@1', parameters: { type: { family: 'bits', size: 128 } } })
-  }
+  const roundKey = (round: number): AuthoredNode => ({ id: `round-key-${round}`, operation: 'core.source@1', parameters: { type: { family: 'bits', size: 128 } } })
+  const nodes: AuthoredNode[] = [{ id: 'ciphertext', operation: 'core.source@1', parameters: { type: { family: 'bits', size: 128 } } }, roundKey(rounds)]
   nodes.push({ id: `cipher-${rounds}-add-round-key`, operation: 'core.xor@1', inputs: { left: { node: 'ciphertext', port: 'value' }, right: { node: `round-key-${rounds}`, port: 'value' } } })
   let previous = `cipher-${rounds}-add-round-key`
   for (let round = rounds - 1; round >= 0; round -= 1) {
     nodes.push({ id: `cipher-${round}-inv-shift-rows`, operation: 'aes.inv-shift-rows@1', inputs: { value: { node: previous, port: 'value' } } })
     nodes.push({ id: `cipher-${round}-inv-sub-bytes`, operation: 'aes.inv-sub-bytes@1', inputs: { value: { node: `cipher-${round}-inv-shift-rows`, port: 'value' } } })
+    nodes.push(roundKey(round))
     nodes.push({ id: `cipher-${round}-add-round-key`, operation: 'core.xor@1', inputs: { left: { node: `cipher-${round}-inv-sub-bytes`, port: 'value' }, right: { node: `round-key-${round}`, port: 'value' } } })
     previous = `cipher-${round}-add-round-key`
     if (round > 0) {

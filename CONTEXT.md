@@ -30,6 +30,21 @@
   independent of any Lesson.
 - **Visualizer** — A compiled-in, versioned teaching view that transforms typed
   CryptoGraph values and semantic traces into an interactive presentation.
+- **Bit-Width Value** — A complete cryptographic value represented as `bit<size>`;
+  teaching views preserve the operation's full state width instead of splitting
+  the main presentation into implementation-level words.
+- **Operation Row** — One ordered trace stage in a teaching view. An operation
+  row presents the complete state for that stage; internal word-sized steps may
+  remain in trace metadata without becoming separate main-view rows.
+- **Detail Lineage View** — The key-schedule presentation that draws every
+  structural bit dependency by default, including dense fan-in and fan-out.
+- **Bit Grouping** — Optional per-operation metadata that draws boundaries at a
+  fixed interval such as every 8 or 32 bits. Rows without grouping remain an
+  unsegmented bit sequence; the grouping is presentation metadata, not a new
+  cryptographic value type.
+- **Pass-Through Lineage** — A stage relation in which bits unaffected by an
+  operation continue through the stage without a new dependency edge; only the
+  operation's actual injection or transformation point receives new lineage.
 - **Bit Lineage** — The structural dependency relationships connecting a selected
   bit to its ancestors and descendants through cryptographic operations. Lineage
   does not assert that the selected bit individually caused an observed difference.

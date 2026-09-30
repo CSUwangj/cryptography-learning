@@ -644,10 +644,10 @@ steps:
     const withoutPresentation = compileLesson(aesCipherDemoDocuments(128))
     expect(withoutPresentation.ok).toBe(true)
     if (!withoutPresentation.ok) return
-    // AES-128 keeps #84 descriptor-free steps so LearningPage still hits ExecutionTrace.
+    // AES-128 keeps #84 descriptor-free cipher steps so LearningPage still hits ExecutionTrace.
     expect(withoutPresentation.value.steps.map((step) => [step.id, step.presentation])).toEqual([
       ['enter-input', undefined],
-      ['expand-key', undefined],
+      ['expand-key', { kind: 'key-expansion', algorithm: 'AES', variant: 128 }],
       ['encrypt', undefined],
       ['decrypt', undefined],
     ])

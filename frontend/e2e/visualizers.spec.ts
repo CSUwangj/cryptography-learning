@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { aesKeyExpansionDemoDocuments } from '../demos/aesKeyExpansionLesson'
+import { aes128CipherDemoDocuments, aes256CipherDemoDocuments } from '../demos/aes128CipherLesson'
 
 const lesson = `version: 1
 id: avalanche
@@ -330,5 +331,65 @@ test.describe('AES Key Expansion Visualizer (#83)', () => {
     await expect(lane).toBeVisible()
     await page.getByRole('button', { name: 'Close key expansion' }).click()
     await expect(lane).toBeHidden()
+  })
+})
+
+test.describe('Full-state AES key-schedule detail (#91)', () => {
+  test('draws visible lineage over complete 256-bit rows inside a horizontal scroller', async ({ page }) => {
+    test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses the synthetic Lesson fixture')
+    test.slow()
+    await page.addInitScript(() => localStorage.setItem('i18nextLng', 'en-US'))
+    await page.route('**/query', async (route) => {
+      await route.fulfill({ json: { data: { lessonDocuments: {
+        lesson: aes256CipherDemoDocuments.lesson,
+        locale: aes256CipherDemoDocuments.locales['en-US'],
+      } } } })
+    })
+
+    await page.goto('/learning/aes-256')
+    await page.getByRole('button', { name: 'Next' }).click()
+    const section = page.getByRole('region', { name: 'AES-256 key expansion', exact: true })
+    await expect(section).toBeVisible({ timeout: 30_000 })
+    await expect(section.getByRole('rowheader', { name: 'RotWord 2' })).toBeVisible()
+    await expect(section.locator('svg[data-lineage]')).toBeVisible()
+    await expect(section.locator('svg[data-lineage] line').first()).toBeAttached()
+    expect(await section.locator('svg[data-lineage] line').count()).toBeGreaterThan(1000)
+
+    const scroll = await section.evaluate((element) => ({ client: element.clientWidth, scroll: element.scrollWidth }))
+    expect(scroll.scroll).toBeGreaterThan(scroll.client)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+
+    const lastBit = section.getByRole('button', { name: 'Input, Bit 255: 1' })
+    await lastBit.scrollIntoViewIfNeeded()
+    await expect(lastBit).toBeInViewport()
+    await lastBit.focus()
+    await page.keyboard.press('Enter')
+    await expect(lastBit).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  test('routes the AES-128 demo key expansion through the full-state schedule and opens its round-key lane', async ({ page }) => {
+    test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses the synthetic Lesson fixture')
+    await page.addInitScript(() => localStorage.setItem('i18nextLng', 'en-US'))
+    await page.route('**/query', async (route) => {
+      await route.fulfill({ json: { data: { lessonDocuments: {
+        lesson: aes128CipherDemoDocuments.lesson,
+        locale: aes128CipherDemoDocuments.locales['en-US'],
+      } } } })
+    })
+
+    await page.goto('/learning/aes-128')
+    await page.getByRole('button', { name: 'Next' }).click()
+    const section = page.getByRole('region', { name: 'AES-128 key expansion', exact: true })
+    await expect(section).toBeVisible({ timeout: 30_000 })
+    await expect(section.getByRole('rowheader', { name: 'RotWord 1', exact: true })).toBeVisible()
+    await expect(section.getByRole('rowheader', { name: 'Round key 10' })).toBeVisible()
+
+    await section.getByRole('button', { name: /^Round key 0:/ }).click()
+    const lane = section.getByRole('region', { name: 'Key expansion', exact: true })
+    await expect(lane).toBeVisible()
+    await expect(lane.getByRole('button', { name: 'Master key, Bit 0: 0' })).toBeAttached()
+    const inputRow = (await section.locator('table [data-row-id="input"]').first().boundingBox())!
+    const laneRow = (await lane.locator('[data-row-id="input"]').boundingBox())!
+    expect(Math.abs(inputRow.y - laneRow.y)).toBeLessThan(5)
   })
 })

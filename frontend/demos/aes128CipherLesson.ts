@@ -43,9 +43,8 @@ const locales = {
 } as const
 
 const presentationYaml = (variant: 128 | 192 | 256, kind: 'key-expansion' | 'encrypt' | 'decrypt'): string => {
-  // AES-128 keeps the #84 descriptor-free shape (generic ExecutionTrace). #85 presentation
-  // metadata is only for the new 192/256 Lesson paths.
-  if (variant === 128) return ''
+  // AES-128 encryption/decryption keep the #84 descriptor-free shape (generic ExecutionTrace);
+  // every variant's key expansion uses the full-state schedule presentation (#91).
   if (kind === 'key-expansion') {
     return `
     presentation:
@@ -53,6 +52,7 @@ const presentationYaml = (variant: 128 | 192 | 256, kind: 'key-expansion' | 'enc
       algorithm: AES
       variant: ${variant}`
   }
+  if (variant === 128) return ''
   return `
     presentation:
       kind: block-cipher
