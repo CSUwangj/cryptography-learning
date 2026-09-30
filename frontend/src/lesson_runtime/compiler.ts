@@ -71,11 +71,26 @@ export type LessonComparison = {
   readonly traceLevel: 'detail'
 }
 
+/** Explicit presentation metadata for descriptor-free algorithm traces (ADR 0006 / #85). */
+export type LessonPresentation =
+  | {
+    readonly kind: 'block-cipher'
+    readonly algorithm: 'AES'
+    readonly variant: 128 | 192 | 256
+    readonly direction: 'encrypt' | 'decrypt'
+  }
+  | {
+    readonly kind: 'key-expansion'
+    readonly algorithm: 'AES'
+    readonly variant: 128 | 192 | 256
+  }
+
 export type CompiledStep = {
   readonly id: string
   readonly prose?: string
   readonly inputs?: readonly { readonly input: string; readonly prompt: string; readonly type: PortType }[]
   readonly execute?: { readonly graph: string; readonly bindings: Readonly<Record<string, LessonValueReference>> }
+  readonly presentation?: LessonPresentation
   readonly visualizer?: {
     readonly id: string
     readonly bindings?: Readonly<Record<string, unknown>>
@@ -297,6 +312,18 @@ const decodeValue = (
     // an odd digit count, or a stray prefix should read as a rejected value, not a padded guess.
     const packed = packHexDigits(type, value)
     if (packed) return packed
+    // Even-length valid hex of the wrong width reports expected/actual bit sizes. Odd length and
+    // non-hex forms fall through to the bare invalid-input diagnostic without inventing a size.
+    if (type.family === 'bits' && typeof type.size === 'number' && value.length % 2 === 0) {
+      diagnostics.push(diagnostic(
+        'lesson.invalid-input',
+        'Value does not match its declared type and encoding.',
+        path,
+        spans.get(path),
+        { expectedBits: type.size, actualBits: value.length * 4 },
+      ))
+      return undefined
+    }
   }
   diagnostics.push(diagnostic('lesson.invalid-input', 'Value does not match its declared type and encoding.', path, spans.get(path)))
   return undefined
@@ -692,13 +719,13 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
     const path = `steps.${index}`
     const step = requireMap(raw, path, lesson.spans, diagnostics)
     if (!step) continue
-    checkFields(step, ['id', 'prose', 'inputs', 'execute', 'visualizer', 'accepted_error_codes', 'check'], path, lesson.spans, diagnostics)
+    checkFields(step, ['id', 'prose', 'inputs', 'execute', 'presentation', 'visualizer', 'accepted_error_codes', 'check'], path, lesson.spans, diagnostics)
     if (typeof step.id !== 'string' || !identifier.test(step.id) || stepIds.has(step.id)) {
       diagnostics.push(diagnostic('lesson.invalid-input', 'Step ID is invalid or duplicated.', `${path}.id`, lesson.spans.get(`${path}.id`)))
       continue
     }
     stepIds.add(step.id)
-    const compiled: { id: string; prose?: string; inputs?: { input: string; prompt: string; type: PortType }[]; execute?: { graph: string; bindings: Record<string, LessonValueReference> }; visualizer?: CompiledStep['visualizer']; acceptedErrorCodes?: string[]; check?: LessonCheck } = { id: step.id }
+    const compiled: { id: string; prose?: string; inputs?: { input: string; prompt: string; type: PortType }[]; execute?: { graph: string; bindings: Record<string, LessonValueReference> }; presentation?: LessonPresentation; visualizer?: CompiledStep['visualizer']; acceptedErrorCodes?: string[]; check?: LessonCheck } = { id: step.id }
     if (typeof step.prose === 'string') {
       compiled.prose = step.prose
       textIds.add(step.prose)
@@ -755,6 +782,24 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
           }
           compiled.execute = { graph: execute.graph as string, bindings: compiledBindings }
           executionSteps.set(step.id, graph)
+        }
+      }
+    }
+    if (step.presentation !== undefined) {
+      const presentation = requireMap(step.presentation, `${path}.presentation`, lesson.spans, diagnostics)
+      if (presentation) {
+        checkFields(presentation, ['kind', 'algorithm', 'variant', 'direction'], `${path}.presentation`, lesson.spans, diagnostics)
+        const kind = presentation.kind
+        const algorithm = presentation.algorithm
+        const variant = presentation.variant
+        const direction = presentation.direction
+        const validVariant = variant === 128 || variant === 192 || variant === 256
+        if (kind === 'block-cipher' && algorithm === 'AES' && validVariant && (direction === 'encrypt' || direction === 'decrypt')) {
+          compiled.presentation = { kind, algorithm, variant, direction }
+        } else if (kind === 'key-expansion' && algorithm === 'AES' && validVariant && direction === undefined) {
+          compiled.presentation = { kind, algorithm, variant }
+        } else {
+          diagnostics.push(diagnostic('lesson.invalid-input', 'Presentation metadata is invalid.', `${path}.presentation`, lesson.spans.get(`${path}.presentation`)))
         }
       }
     }

@@ -1057,21 +1057,16 @@ export const aesKeyExpansionGraph = (keySize: 128 | 192 | 256): AuthoredGraph =>
   return { nodes, outputs, traceLevel: 'detail' }
 }
 
-// FIPS-197 AES-128 round count (Nr=10). Issue #84 scopes this builder to AES-128 only (exactly
-// one 16-byte block/key); AES-192/256 have their own round counts and known-answer vectors and
-// belong to issue #85's own builder, not a parameter here without that issue's authority.
-const aesCipherRounds = 10
-
 /**
- * Composes the AES-128 forward-cipher CryptoGraph from registered SubBytes/ShiftRows/
+ * Composes the AES-128/192/256 forward-cipher CryptoGraph from registered SubBytes/ShiftRows/
  * MixColumns primitives; AddRoundKey reuses `core.xor@1` rather than a duplicate fixed-width
  * XOR. Round keys are typed `bits<128>` source inputs (`round-key-<r>.value`), so a Lesson
  * binds them from a separate `aesKeyExpansionGraph` execution's own outputs through ordinary
- * Lesson step bindings instead of this graph re-deriving them itself (issue #83's key-expansion
- * outputs feeding an encryption graph "through ordinary graph edges").
+ * Lesson step bindings instead of this graph re-deriving them itself. Default `keySize` 128
+ * preserves the no-argument AES-128 builder contract from #84.
  */
-export const aesCipherGraph = (): AuthoredGraph => {
-  const rounds = aesCipherRounds
+export const aesCipherGraph = (keySize: 128 | 192 | 256 = 128): AuthoredGraph => {
+  const rounds = aesKeyExpansionParameters[keySize].nr
   const nodes: AuthoredNode[] = [{ id: 'plaintext', operation: 'core.source@1', parameters: { type: { family: 'bits', size: 128 } } }]
   for (let round = 0; round <= rounds; round += 1) {
     nodes.push({ id: `round-key-${round}`, operation: 'core.source@1', parameters: { type: { family: 'bits', size: 128 } } })
@@ -1093,12 +1088,12 @@ export const aesCipherGraph = (): AuthoredGraph => {
 }
 
 /**
- * Composes the matching AES-128 inverse cipher (FIPS-197 Figure 15: InvShiftRows, InvSubBytes,
- * AddRoundKey, InvMixColumns per round, applied in round-key order Nr downto 0), from the same
+ * Composes the matching AES-128/192/256 inverse cipher (FIPS-197 Figure 15), from the same
  * registered primitives and the same `round-key-<r>.value` source inputs as `aesCipherGraph`.
+ * Default `keySize` 128 preserves the no-argument AES-128 builder contract from #84.
  */
-export const aesInverseCipherGraph = (): AuthoredGraph => {
-  const rounds = aesCipherRounds
+export const aesInverseCipherGraph = (keySize: 128 | 192 | 256 = 128): AuthoredGraph => {
+  const rounds = aesKeyExpansionParameters[keySize].nr
   const nodes: AuthoredNode[] = [{ id: 'ciphertext', operation: 'core.source@1', parameters: { type: { family: 'bits', size: 128 } } }]
   for (let round = 0; round <= rounds; round += 1) {
     nodes.push({ id: `round-key-${round}`, operation: 'core.source@1', parameters: { type: { family: 'bits', size: 128 } } })
@@ -1325,8 +1320,24 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
             if (node.operation === 'core.source@1') {
               const value = parameters.value as CryptoValue | undefined
               if (!value) return { ok: false, diagnostics: [diagnostic('missing-execution-input', 'Source needs an execution input.', `${id}.value`, node)] }
-              if (!isCryptoValue(value) || !isPortType(parameters.type) || !typeMatches(parameters.type, actualType(value), new Map())) {
-                return { ok: false, diagnostics: [diagnostic('invalid-execution-input', 'Execution input does not match source type.', `${id}.value`, node)] }
+              const declaredType = parameters.type
+              if (!isCryptoValue(value) || !isPortType(declaredType) || !typeMatches(declaredType, actualType(value), new Map())) {
+                // Width mismatch on an otherwise valid bits value: expose expected/actual bit
+                // sizes. Wrong family/type or malformed values keep the bare diagnostic.
+                let details: Diagnostic['details'] = {}
+                if (isCryptoValue(value) && isPortType(declaredType)
+                  && declaredType.family === 'bits' && value.type.family === 'bits'
+                  && typeof declaredType.size === 'number'
+                  && declaredType.size !== value.type.size) {
+                  details = { expectedBits: declaredType.size, actualBits: value.type.size }
+                }
+                return { ok: false, diagnostics: [diagnostic(
+                  'invalid-execution-input',
+                  'Execution input does not match source type.',
+                  `${id}.value`,
+                  node,
+                  details,
+                )] }
               }
               if ('symbol' in value && !mappings.get(value.type.mapping)?.symbols.includes(value.symbol)) {
                 return { ok: false, diagnostics: [diagnostic('invalid-execution-input', 'Alphabet symbol is not in declared mapping.', `${id}.value`, node)] }

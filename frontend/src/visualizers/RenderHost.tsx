@@ -1,15 +1,20 @@
 import React from 'react'
 import { hex, type AlphabetMapping, type AlphabetPolicyValue, type AlphabetTextValue, type AvalancheComparison, type WorkerExecutionSnapshot } from 'crypto_graph'
+import type { LessonPresentation } from '../lesson_runtime'
 import { AvalancheRenderer } from './Avalanche'
 import { classicalCipherPositions, ClassicalCipherRenderer } from './ClassicalCipher'
 import { TeachingSpnRenderer } from './TeachingSpn'
 import { AesKeyExpansionRenderer } from './AesKeyExpansion'
 import { AesCipherRenderer } from './AesCipher'
+import { BlockCipherRenderer } from './BlockCipher'
+import { KeyExpansionRenderer } from './KeyExpansion'
 import { ExecutionTraceRenderer } from './ExecutionTrace'
 
 export type RenderHostProps = {
   /** Absent for descriptor-free Steps, whose execution renders as a generic trace. */
   readonly invocation?: { readonly id: string }
+  /** Explicit presentation metadata; never inferred from key length or graph identity. */
+  readonly presentation?: LessonPresentation
   readonly comparison?: AvalancheComparison
   readonly execution?: WorkerExecutionSnapshot
   readonly locale: string
@@ -77,7 +82,21 @@ class IsolatedRenderer extends React.Component<Pick<RenderHostProps, 'comparison
 
 export const RenderHost: React.FC<RenderHostProps> = (props) =>
   <IsolatedRenderer comparison={props.comparison} execution={props.execution} key={props.executionIdentity} locale={props.locale}>
-      {!props.invocation && props.execution
+      {props.presentation?.kind === 'block-cipher' && props.execution
+        ? <BlockCipherRenderer
+            execution={props.execution}
+            executionIdentity={props.executionIdentity}
+            locale={props.locale}
+            presentation={props.presentation}
+          />
+        : props.presentation?.kind === 'key-expansion' && props.execution
+          ? <KeyExpansionRenderer
+              execution={props.execution}
+              executionIdentity={props.executionIdentity}
+              locale={props.locale}
+              presentation={props.presentation}
+            />
+        : !props.invocation && props.execution
         ? <ExecutionTraceRenderer
             execution={props.execution}
             executionIdentity={props.executionIdentity}

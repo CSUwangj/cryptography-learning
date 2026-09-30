@@ -1009,3 +1009,129 @@ describe('AES-128 encryption and decryption (#84)', () => {
     expect(hex(response.snapshot.outputs['cipher-10-add-round-key.value'] as ReturnType<typeof bits>)).toBe(`0x${kat.ciphertext}`)
   })
 })
+
+describe('AES-192/256 encryption and decryption (#85)', () => {
+  const hexToBytes = (value: string): Uint8Array => Uint8Array.from(value.match(/../g)!.map((byte) => Number.parseInt(byte, 16)))
+  const variants = [
+    {
+      keySize: 192 as const,
+      rounds: 12,
+      key: '000102030405060708090a0b0c0d0e0f1011121314151617',
+      plaintext: '00112233445566778899aabbccddeeff',
+      ciphertext: 'dda97ca4864cdfe06eaf70a0ec0d7191',
+    },
+    {
+      keySize: 256 as const,
+      rounds: 14,
+      key: '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f',
+      plaintext: '00112233445566778899aabbccddeeff',
+      ciphertext: '8ea2b7ca516745bfeafc49904b496089',
+    },
+  ]
+
+  const roundKeyInputs = (keySize: 128 | 192 | 256, key: string): Record<string, ReturnType<typeof bits>> => {
+    const expanded = compile(aesKeyExpansionGraph(keySize))
+    if (!expanded.ok) throw new Error('unreachable: AES key-expansion graph must compile')
+    const execution = expanded.value.execute({ 'key.value': bits(keySize, hexToBytes(key)) })
+    if (!execution.ok) throw new Error('unreachable: key expansion must execute')
+    const rounds = { 128: 10, 192: 12, 256: 14 }[keySize]
+    return Object.fromEntries(Array.from({ length: rounds + 1 }, (_, round) =>
+      [`round-key-${round}.value`, execution.value.outputs[`round-key-${round}.value`] as ReturnType<typeof bits>]))
+  }
+
+  const encryptCheckpoints = (rounds: number): Array<[string, number | undefined, string]> => {
+    const rows: Array<[string, number | undefined, string]> = [
+      ['plaintext', undefined, 'input'],
+      ['cipher-0-add-round-key', 0, 'add-round-key'],
+    ]
+    for (let round = 1; round <= rounds; round += 1) {
+      rows.push([`cipher-${round}-sub-bytes`, round, 'sub-bytes'])
+      rows.push([`cipher-${round}-shift-rows`, round, 'shift-rows'])
+      if (round < rounds) rows.push([`cipher-${round}-mix-columns`, round, 'mix-columns'])
+      rows.push([`cipher-${round}-add-round-key`, round, 'add-round-key'])
+    }
+    rows.push(['output', undefined, 'output'])
+    return rows
+  }
+
+  const decryptCheckpoints = (rounds: number): Array<[string, number | undefined, string]> => {
+    const rows: Array<[string, number | undefined, string]> = [
+      ['ciphertext', undefined, 'input'],
+      [`cipher-${rounds}-add-round-key`, rounds, 'add-round-key'],
+    ]
+    for (let round = rounds - 1; round >= 0; round -= 1) {
+      rows.push([`cipher-${round}-inv-shift-rows`, round, 'inv-shift-rows'])
+      rows.push([`cipher-${round}-inv-sub-bytes`, round, 'inv-sub-bytes'])
+      rows.push([`cipher-${round}-add-round-key`, round, 'add-round-key'])
+      if (round > 0) rows.push([`cipher-${round}-inv-mix-columns`, round, 'inv-mix-columns'])
+    }
+    rows.push(['output', undefined, 'output'])
+    return rows
+  }
+
+  for (const variant of variants) {
+    it(`encrypts and decrypts the FIPS-197 AES-${variant.keySize} known-answer vector`, () => {
+      const roundKeys = roundKeyInputs(variant.keySize, variant.key)
+
+      const cipher = compile(aesCipherGraph(variant.keySize))
+      expect(cipher.ok).toBe(true)
+      if (!cipher.ok) return
+      const encrypted = cipher.value.execute({ ...roundKeys, 'plaintext.value': bits(128, hexToBytes(variant.plaintext)) })
+      expect(encrypted.ok).toBe(true)
+      if (!encrypted.ok) return
+      expect(hex(encrypted.value.outputs[`cipher-${variant.rounds}-add-round-key.value`] as ReturnType<typeof bits>)).toBe(`0x${variant.ciphertext}`)
+
+      const inverse = compile(aesInverseCipherGraph(variant.keySize))
+      expect(inverse.ok).toBe(true)
+      if (!inverse.ok) return
+      const decrypted = inverse.value.execute({ ...roundKeys, 'ciphertext.value': bits(128, hexToBytes(variant.ciphertext)) })
+      expect(decrypted.ok).toBe(true)
+      if (!decrypted.ok) return
+      expect(hex(decrypted.value.outputs['cipher-0-add-round-key.value'] as ReturnType<typeof bits>)).toBe(`0x${variant.plaintext}`)
+    })
+
+    it(`exposes AES-${variant.keySize} encryption and inverse checkpoints in FIPS-197 order`, () => {
+      const roundKeys = roundKeyInputs(variant.keySize, variant.key)
+      const cipher = compile(aesCipherGraph(variant.keySize))
+      if (!cipher.ok) throw new Error('unreachable')
+      const encrypted = cipher.value.execute({ ...roundKeys, 'plaintext.value': bits(128, hexToBytes(variant.plaintext)) })
+      if (!encrypted.ok) throw new Error('unreachable')
+      const encryptTrace = encrypted.value.trace as readonly TraceEvent[]
+      expect(encryptTrace.filter((event) => event.path === 'plaintext' || event.path.startsWith('cipher-') || event.path === 'output')
+        .map((event) => [event.path, event.round, event.stage])).toEqual(encryptCheckpoints(variant.rounds))
+
+      const inverse = compile(aesInverseCipherGraph(variant.keySize))
+      if (!inverse.ok) throw new Error('unreachable')
+      const decrypted = inverse.value.execute({ ...roundKeys, 'ciphertext.value': bits(128, hexToBytes(variant.ciphertext)) })
+      if (!decrypted.ok) throw new Error('unreachable')
+      const decryptTrace = decrypted.value.trace as readonly TraceEvent[]
+      expect(decryptTrace.filter((event) => event.path === 'ciphertext' || event.path.startsWith('cipher-') || event.path === 'output')
+        .map((event) => [event.path, event.round, event.stage])).toEqual(decryptCheckpoints(variant.rounds))
+    })
+  }
+
+  it('preserves no-argument AES-128 builder behavior', () => {
+    expect(aesCipherGraph().nodes).toEqual(aesCipherGraph(128).nodes)
+    expect(aesInverseCipherGraph().nodes).toEqual(aesInverseCipherGraph(128).nodes)
+  })
+
+  it('rejects wrong-width keys at the CryptoGraph boundary with expectedBits/actualBits for all variants', () => {
+    for (const declared of [128, 192, 256] as const) {
+      const compiled = compile(aesKeyExpansionGraph(declared))
+      expect(compiled.ok).toBe(true)
+      if (!compiled.ok) return
+      for (const supplied of [128, 192, 256] as const) {
+        if (supplied === declared) continue
+        const result = compiled.value.execute({ 'key.value': bits(supplied, new Uint8Array(supplied / 8)) })
+        expect(result).toMatchObject({
+          ok: false,
+          diagnostics: [{ code: 'invalid-execution-input', details: { expectedBits: declared, actualBits: supplied } }],
+        })
+      }
+      const missing = compiled.value.execute()
+      expect(!missing.ok && missing.diagnostics[0].code).toBe('missing-execution-input')
+      const wrongType = compiled.value.execute({ 'key.value': integer(1) as never })
+      expect(!wrongType.ok && wrongType.diagnostics[0]).toMatchObject({ code: 'invalid-execution-input', details: {} })
+    }
+  })
+})

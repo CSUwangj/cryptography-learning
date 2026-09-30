@@ -5,15 +5,31 @@ import React from 'react'
 import { aesCipherGraph, aesKeyExpansionGraph, alphabetPolicy, alphabetText, bits, executeWorkerRequest, hex, integer, teachingSpnGraph, type CryptoValue } from '../crypto_graph'
 import { teachingSpnDemoDocuments } from '../../demos/teachingSpnLesson'
 import { aesKeyExpansionDemoDocuments } from '../../demos/aesKeyExpansionLesson'
-import { aes128CipherDemoDocuments } from '../../demos/aes128CipherLesson'
+import { aes128CipherDemoDocuments, aes192CipherDemoDocuments, aes256CipherDemoDocuments } from '../../demos/aes128CipherLesson'
 import { compileLesson, createBrowserLessonSession } from '../lesson_runtime'
 import { traceBitTargets } from './traceFlow'
 import { AvalancheRenderer } from './Avalanche'
 import { aesKeyExpansionPresentation } from './AesKeyExpansion'
 import { aesCipherPresentation } from './AesCipher'
+import { blockCipherPresentation } from './BlockCipher'
 import { executionTracePresentation } from './ExecutionTrace'
 import { classicalCipherPositions } from './ClassicalCipher'
 import { RenderHost, visualizerCatalog } from './index'
+
+/** Sync Worker stand-in for Browser Lesson session tests; routes to executeWorkerRequest. */
+class WorkerStub {
+  private listeners: Array<(event: MessageEvent<unknown>) => void> = []
+
+  addEventListener(type: string, listener: (event: MessageEvent<unknown>) => void): void {
+    if (type === 'message') this.listeners.push(listener)
+  }
+
+  postMessage(request: Parameters<typeof executeWorkerRequest>[0]): void {
+    queueMicrotask(() => this.listeners.forEach((listener) => listener({ data: executeWorkerRequest(request) } as MessageEvent<unknown>)))
+  }
+
+  terminate(): void {}
+}
 
 describe('Shared trace visuals', () => {
   it('maps selected bits through shared SPN operation semantics', () => {
@@ -113,19 +129,6 @@ describe('Visualizer Catalog (#32)', () => {
 
   it('runs the Teaching SPN fixture through the Browser Lesson runtime', async () => {
     const previousWorker = globalThis.Worker
-    class WorkerStub {
-      private listeners: Array<(event: MessageEvent<unknown>) => void> = []
-
-      addEventListener(type: string, listener: (event: MessageEvent<unknown>) => void): void {
-        if (type === 'message') this.listeners.push(listener)
-      }
-
-      postMessage(request: Parameters<typeof executeWorkerRequest>[0]): void {
-        queueMicrotask(() => this.listeners.forEach((listener) => listener({ data: executeWorkerRequest(request) } as MessageEvent<unknown>)))
-      }
-
-      terminate(): void {}
-    }
     globalThis.Worker = WorkerStub as unknown as typeof Worker
     try {
       const session = createBrowserLessonSession(teachingSpnDemoDocuments, 'en-US', visualizerCatalog)
@@ -219,19 +222,6 @@ describe('Visualizer Catalog (#32)', () => {
     // ~24s under full-suite contention (many test files/workers competing for CPU), so the
     // margin here is generous rather than tuned to an isolated run's faster time.
     const previousWorker = globalThis.Worker
-    class WorkerStub {
-      private listeners: Array<(event: MessageEvent<unknown>) => void> = []
-
-      addEventListener(type: string, listener: (event: MessageEvent<unknown>) => void): void {
-        if (type === 'message') this.listeners.push(listener)
-      }
-
-      postMessage(request: Parameters<typeof executeWorkerRequest>[0]): void {
-        queueMicrotask(() => this.listeners.forEach((listener) => listener({ data: executeWorkerRequest(request) } as MessageEvent<unknown>)))
-      }
-
-      terminate(): void {}
-    }
     globalThis.Worker = WorkerStub as unknown as typeof Worker
     try {
       const session = createBrowserLessonSession(aesKeyExpansionDemoDocuments, 'en-US', visualizerCatalog)
@@ -447,19 +437,6 @@ describe('AES-128 encryption and decryption (#84)', () => {
 
   it('runs the AES-128 cipher demo fixture through the Browser Lesson runtime and renders both directions through the shared trace table', async () => {
     const previousWorker = globalThis.Worker
-    class WorkerStub {
-      private listeners: Array<(event: MessageEvent<unknown>) => void> = []
-
-      addEventListener(type: string, listener: (event: MessageEvent<unknown>) => void): void {
-        if (type === 'message') this.listeners.push(listener)
-      }
-
-      postMessage(request: Parameters<typeof executeWorkerRequest>[0]): void {
-        queueMicrotask(() => this.listeners.forEach((listener) => listener({ data: executeWorkerRequest(request) } as MessageEvent<unknown>)))
-      }
-
-      terminate(): void {}
-    }
     globalThis.Worker = WorkerStub as unknown as typeof Worker
     try {
       const session = createBrowserLessonSession(aes128CipherDemoDocuments, 'en-US', visualizerCatalog)
@@ -476,10 +453,18 @@ describe('AES-128 encryption and decryption (#84)', () => {
       expect(hex(encryptSnapshot.outputs['cipher-10-add-round-key.value'] as never)).toBe('0x69c4e0d86a7b0430d8cdb78070b4c55a')
       expect(hex(decryptSnapshot.outputs['cipher-0-add-round-key.value'] as never)).toBe('0x00112233445566778899aabbccddeeff')
 
+      // Mirror LearningPage: pass compiled step.presentation (absent on AES-128) so a
+      // accidental metadata addition would route through BlockCipher and fail this heading.
+      const encryptPresentation = session.value.lesson.steps.find((step) => step.id === 'encrypt')?.presentation
+      const decryptPresentation = session.value.lesson.steps.find((step) => step.id === 'decrypt')?.presentation
+      expect(encryptPresentation).toBeUndefined()
+      expect(decryptPresentation).toBeUndefined()
+
       const encrypted = render(React.createElement(RenderHost, {
         dimensions: { width: 900, height: 500 },
         execution: encryptSnapshot,
         executionIdentity: 'aes-cipher-encrypt',
+        presentation: encryptPresentation,
         locale: 'en-US',
         reducedMotion: true,
       }))
@@ -494,6 +479,7 @@ describe('AES-128 encryption and decryption (#84)', () => {
         dimensions: { width: 900, height: 500 },
         execution: decryptSnapshot,
         executionIdentity: 'aes-cipher-decrypt',
+        presentation: decryptPresentation,
         locale: 'zh-CN',
         reducedMotion: true,
       }))
@@ -517,6 +503,103 @@ describe('AES-128 encryption and decryption (#84)', () => {
     } finally {
       globalThis.Worker = previousWorker
     }
+  })
+})
+
+describe('AES-192/256 Lesson paths (#85)', () => {
+  const kat = {
+    192: { ciphertext: 'dda97ca4864cdfe06eaf70a0ec0d7191', rounds: 12, documents: aes192CipherDemoDocuments },
+    256: { ciphertext: '8ea2b7ca516745bfeafc49904b496089', rounds: 14, documents: aes256CipherDemoDocuments },
+  } as const
+
+  for (const variant of [192, 256] as const) {
+    it(`compiles and runs the AES-${variant} demo through the Browser Lesson runtime with variant labels`, async () => {
+      const previousWorker = globalThis.Worker
+      globalThis.Worker = WorkerStub as unknown as typeof Worker
+      try {
+        const session = createBrowserLessonSession(kat[variant].documents, 'en-US', visualizerCatalog)
+        expect(session.ok).toBe(true)
+        if (!session.ok) return
+        await session.value.next()
+        await session.value.next()
+        const decrypted = await session.value.next()
+        expect(decrypted.ok).toBe(true)
+        if (!decrypted.ok) return
+
+        const encryptSnapshot = decrypted.value.snapshots.encrypt
+        const decryptSnapshot = decrypted.value.snapshots.decrypt
+        expect(hex(encryptSnapshot.outputs[`cipher-${kat[variant].rounds}-add-round-key.value`] as never)).toBe(`0x${kat[variant].ciphertext}`)
+        expect(hex(decryptSnapshot.outputs['cipher-0-add-round-key.value'] as never)).toBe('0x00112233445566778899aabbccddeeff')
+
+        const encrypted = render(React.createElement(RenderHost, {
+          dimensions: { width: 900, height: 500 },
+          execution: encryptSnapshot,
+          executionIdentity: `aes-${variant}-encrypt`,
+          presentation: { kind: 'block-cipher', algorithm: 'AES', variant, direction: 'encrypt' },
+          locale: 'en-US',
+          reducedMotion: true,
+        }))
+        expect(encrypted.getByRole('heading', { name: `AES-${variant} encryption` })).toBeVisible()
+        expect(encrypted.getByRole('row', { name: /^SubBytes 1 1 0x/ })).toBeVisible()
+        expect(encrypted.getByRole('row', { name: new RegExp(`^Output — 0x${kat[variant].ciphertext}$`) })).toBeVisible()
+        encrypted.unmount()
+
+        const decryptedRender = render(React.createElement(RenderHost, {
+          dimensions: { width: 900, height: 500 },
+          execution: decryptSnapshot,
+          executionIdentity: `aes-${variant}-decrypt`,
+          presentation: { kind: 'block-cipher', algorithm: 'AES', variant, direction: 'decrypt' },
+          locale: 'zh-CN',
+          reducedMotion: true,
+        }))
+        expect(decryptedRender.getByRole('heading', { name: `AES-${variant} 解密` })).toBeVisible()
+        expect(decryptedRender.getByRole('row', { name: new RegExp(`^密文输入 — 0x${kat[variant].ciphertext}$`) })).toBeVisible()
+        decryptedRender.unmount()
+        session.value.dispose()
+      } finally {
+        globalThis.Worker = previousWorker
+      }
+    })
+  }
+
+  it('keeps aes.cipher-trace-incomplete on truncated BlockCipher presentation and never labels 192/256 as AES-128', () => {
+    const zeroRoundKeys = Object.fromEntries(Array.from({ length: 13 }, (_, round) => [`round-key-${round}.value`, bits(128, new Uint8Array(16))]))
+    const response = executeWorkerRequest({
+      requestId: 'aes-192-truncated',
+      kind: 'execute',
+      payload: {
+        graph: aesCipherGraph(192),
+        inputs: { 'plaintext.value': bits(128, new Uint8Array(16)), ...zeroRoundKeys },
+        limits: { traceEvents: 3 },
+      },
+    })
+    expect(response.kind).toBe('snapshot')
+    if (response.kind !== 'snapshot') return
+    const presentation = blockCipherPresentation(
+      response.snapshot,
+      'en-US',
+      'aes-192-truncated',
+      { algorithm: 'AES', variant: 192, direction: 'encrypt' },
+    )
+    expect(presentation.title).toBe('AES-192 encryption')
+    expect(presentation.title).not.toContain('AES-128')
+    expect(presentation.diagnostics).toEqual([{
+      code: 'aes.cipher-trace-incomplete',
+      message: expect.any(String),
+      path: 'trace',
+      details: { retained: response.snapshot.traceStatus.retained, dropped: response.snapshot.traceStatus.dropped },
+    }])
+    render(React.createElement(RenderHost, {
+      dimensions: { width: 320, height: 200 },
+      execution: response.snapshot,
+      executionIdentity: 'aes-192-truncated',
+      presentation: { kind: 'block-cipher', algorithm: 'AES', variant: 192, direction: 'encrypt' },
+      locale: 'en-US',
+      reducedMotion: true,
+    }))
+    expect(screen.getByRole('heading', { name: 'AES-192 encryption' })).toBeVisible()
+    expect(screen.getByRole('row', { name: /^Plaintext input — 0x0{32}$/ })).toBeVisible()
+    expect(screen.getAllByText('Trace gap').length).toBeGreaterThan(0)
   })
 })
 

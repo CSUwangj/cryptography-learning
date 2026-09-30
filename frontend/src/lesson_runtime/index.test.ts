@@ -6,11 +6,12 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import { bits, executeWorkerRequest, hex } from '../crypto_graph'
 import { aesKeyExpansionGraphNodesYaml } from '../../demos/aesKeyExpansionLesson'
-import { aes128CipherDemoDocuments } from '../../demos/aes128CipherLesson'
+import { aes128CipherDemoDocuments, aesCipherDemoDocuments } from '../../demos/aes128CipherLesson'
 import { teachingSpnDemoDocuments } from '../../demos/teachingSpnLesson'
 import {
   compileLesson,
   createBrowserLessonSession,
+  decodeLessonValue,
   lessonDefaultLocale,
   lessonAssetUrl,
   rewriteLessonAssets,
@@ -606,6 +607,61 @@ steps:
         ok: false,
         diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'lesson.invalid-input', path: 'inputs.block.default' })]),
       })
+    }
+  })
+
+  it('rejects wrong-width hex-block keys with expectedBits/actualBits for declared AES variants (#85)', () => {
+    const matching = {
+      128: '000102030405060708090a0b0c0d0e0f',
+      192: '000102030405060708090a0b0c0d0e0f1011121314151617',
+      256: '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f',
+    } as const
+    for (const declared of [128, 192, 256] as const) {
+      expect(decodeLessonValue({ family: 'bits', size: declared }, 'hex-block', matching[declared]).ok).toBe(true)
+      for (const supplied of [128, 192, 256] as const) {
+        if (supplied === declared) continue
+        expect(decodeLessonValue({ family: 'bits', size: declared }, 'hex-block', matching[supplied])).toMatchObject({
+          ok: false,
+          diagnostics: [{
+            code: 'lesson.invalid-input',
+            details: { expectedBits: declared, actualBits: supplied },
+          }],
+        })
+      }
+      // Malformed: no fabricated actualBits
+      expect(decodeLessonValue({ family: 'bits', size: declared }, 'hex-block', '0f0g')).toMatchObject({
+        ok: false,
+        diagnostics: [{ code: 'lesson.invalid-input', details: {} }],
+      })
+      expect(decodeLessonValue({ family: 'bits', size: declared }, 'hex-block', '0f0')).toMatchObject({
+        ok: false,
+        diagnostics: [{ code: 'lesson.invalid-input', details: {} }],
+      })
+    }
+  })
+
+  it('compiles explicit AES presentation metadata on execution steps (#85)', () => {
+    const withoutPresentation = compileLesson(aesCipherDemoDocuments(128))
+    expect(withoutPresentation.ok).toBe(true)
+    if (!withoutPresentation.ok) return
+    // AES-128 keeps #84 descriptor-free steps so LearningPage still hits ExecutionTrace.
+    expect(withoutPresentation.value.steps.map((step) => [step.id, step.presentation])).toEqual([
+      ['enter-input', undefined],
+      ['expand-key', undefined],
+      ['encrypt', undefined],
+      ['decrypt', undefined],
+    ])
+
+    for (const variant of [192, 256] as const) {
+      const result = compileLesson(aesCipherDemoDocuments(variant))
+      expect(result.ok).toBe(true)
+      if (!result.ok) return
+      expect(result.value.steps.map((step) => [step.id, step.presentation])).toEqual([
+        ['enter-input', undefined],
+        ['expand-key', { kind: 'key-expansion', algorithm: 'AES', variant }],
+        ['encrypt', { kind: 'block-cipher', algorithm: 'AES', variant, direction: 'encrypt' }],
+        ['decrypt', { kind: 'block-cipher', algorithm: 'AES', variant, direction: 'decrypt' }],
+      ])
     }
   })
 

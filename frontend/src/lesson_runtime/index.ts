@@ -1,8 +1,10 @@
 export {
   compileLesson,
+  decodeLessonValue,
   lessonDefaultLocale,
   type CompiledLesson,
   type LessonDocuments,
+  type LessonPresentation,
   type Result,
   type VisualizerCatalog,
   type VisualizerDescriptor,
