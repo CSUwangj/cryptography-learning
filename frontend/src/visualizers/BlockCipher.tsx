@@ -1,9 +1,9 @@
 import React, { useMemo } from 'react'
-import { hex, type BitsValue, type TraceCheckpoint, type TraceEvent, type TraceStage, type WorkerExecutionSnapshot } from 'crypto_graph'
+import { hex, type BitsValue, type TraceCheckpoint, type TraceEvent, type WorkerExecutionSnapshot } from 'crypto_graph'
 import { LearningPresentationView, type KeyExpansionLane, type LearningPresentation, type LearningRelationship, type LearningRoundKey, type LearningRow } from '../ui/learning'
 import { executionTracePresentation } from './ExecutionTrace'
 import { keyExpansionPresentation } from './KeyExpansion'
-import { bitAt } from './traceFlow'
+import { bitAt, stateSources } from './traceFlow'
 
 type Locale = 'en-US' | 'zh-CN'
 type Variant = 128 | 192 | 256
@@ -53,19 +53,6 @@ const range = (length: number, start = 0): readonly number[] => Array.from({ len
 
 const isBitsEvent = (event: TraceCheckpoint | TraceEvent): event is TraceEvent & { readonly value: BitsValue } =>
   'level' in event && event.value?.type.family === 'bits' && 'bytes' in event.value
-
-// FIPS-197 state byte index = row + 4*column; ShiftRows reads column (c + r) mod 4, its inverse (c - r) mod 4.
-const shiftedByte = (byte: number, direction: 1 | -1): number => byte % 4 + 4 * ((Math.floor(byte / 4) + direction * (byte % 4) + 4) % 4)
-
-/** Bits of the previous state that structurally feed `bit`; whole bytes for S-boxes, whole columns for MixColumns. */
-const stateSources = (stage: TraceStage | undefined, bit: number): readonly number[] => {
-  if (stage === 'sub-bytes' || stage === 'inv-sub-bytes') return range(8, bit - bit % 8)
-  if (stage === 'shift-rows') return [shiftedByte(bit >> 3, 1) * 8 + bit % 8]
-  if (stage === 'inv-shift-rows') return [shiftedByte(bit >> 3, -1) * 8 + bit % 8]
-  if (stage === 'mix-columns' || stage === 'inv-mix-columns') return range(32, bit - bit % 32)
-  if (stage === 'add-round-key') return [bit]
-  return []
-}
 
 /**
  * Full-state block-cipher Learning presentation; variant/direction come only from explicit metadata.

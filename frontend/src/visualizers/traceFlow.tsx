@@ -6,6 +6,7 @@ import { PermutationVisual, SubstitutionVisual, XorVisual } from './OperationVis
 const pathTokens = {
   'zh-CN': {
     plaintext: '明文',
+    ciphertext: '密文',
     output: '输出',
     repeat: '重复',
     round: '轮',
@@ -21,6 +22,27 @@ export const formatTracePath = (path: string, locale: string): string =>
     ? pathTokens['zh-CN'][token as keyof typeof pathTokens['zh-CN']]
     : token).join('')
 
+const range = (length: number, start = 0): readonly number[] => Array.from({ length }, (_, index) => start + index)
+
+// FIPS-197 column-major byte index = row + 4*column. `aes.shift-rows@1` reads input column
+// (c + r) into output c; `aes.inv-shift-rows@1` reads (c - r). `stateSources` answers "which
+// prior bits feed this output bit" (sink-side). Callers that walk source→sink edges must iterate
+// output bits and attach `from: source` (see BlockCipher / flowRows AES branch) — never feed a
+// prior bit into `stateSources` as if it were a forward target map.
+const shiftedByte = (byte: number, direction: 1 | -1): number => byte % 4 + 4 * ((Math.floor(byte / 4) + direction * (byte % 4) + 4) % 4)
+
+/** Bits of the previous state that structurally feed `bit`; whole bytes for S-boxes, whole columns for MixColumns. */
+export const stateSources = (stage: TraceStage | undefined, bit: number): readonly number[] => {
+  if (stage === 'sub-bytes' || stage === 'inv-sub-bytes') return range(8, bit - bit % 8)
+  if (stage === 'shift-rows') return [shiftedByte(bit >> 3, 1) * 8 + bit % 8]
+  if (stage === 'inv-shift-rows') return [shiftedByte(bit >> 3, -1) * 8 + bit % 8]
+  // Column-major layout: column c is bytes 4c..4c+3 (32 consecutive bits), matching aes.mix-columns@1.
+  if (stage === 'mix-columns' || stage === 'inv-mix-columns') return range(32, Math.floor((bit >> 3) / 4) * 32)
+  if (stage === 'add-round-key') return [bit]
+  return []
+}
+
+/** Forward SPN bit targets from a prior-stage bit; AES stages use sink-side `stateSources` instead. */
 export const traceBitTargets = (
   stage: TraceStage | undefined,
   permutation: readonly number[] | undefined,
@@ -32,6 +54,11 @@ export const traceBitTargets = (
     : [bit]
 
 export const bitAt = (value: BitsValue, bit: number): number => (value.bytes[Math.floor(bit / 8)] >> (7 - bit % 8)) & 1
+
+const aesStateStage = (stage: TraceStage | undefined): boolean =>
+  stage === 'add-round-key' || stage === 'sub-bytes' || stage === 'inv-sub-bytes'
+  || stage === 'shift-rows' || stage === 'inv-shift-rows'
+  || stage === 'mix-columns' || stage === 'inv-mix-columns'
 
 /** One traced state; `values` holds one value per compared execution. */
 export type FlowNode = {
@@ -52,7 +79,8 @@ export type FlowText = {
 }
 
 const connected = (before: FlowNode, after: FlowNode): boolean =>
-  (after.stage === 'key-mix' && (before.stage === 'input' || before.stage === 'output'))
+  (aesStateStage(after.stage) && (before.stage === 'input' || aesStateStage(before.stage)))
+  || (after.stage === 'key-mix' && (before.stage === 'input' || before.stage === 'output'))
   || (after.stage === 'substitute' && before.stage === 'key-mix')
   || (after.stage === 'permute' && before.stage === 'substitute')
   || (after.stage === 'output' && (before.stage === 'permute' || before.stage === 'output'))
@@ -60,7 +88,7 @@ const connected = (before: FlowNode, after: FlowNode): boolean =>
 const bitId = (node: FlowNode, bit: number): string => `${node.path}#${bit}`
 const bitRange = (node: FlowNode): readonly number[] => Array.from({ length: node.values[0].type.size }, (_, bit) => bit)
 
-/** Rows in trace order without `cells`; round keys become whole-key rows linked to their key-mix bits. */
+/** Rows in trace order without `cells`; round keys become whole-key rows linked to their key-mix / AddRoundKey bits. */
 export const flowRows = (
   nodes: readonly FlowNode[],
   text: FlowText,
@@ -71,7 +99,8 @@ export const flowRows = (
   return nodes.map((node) => {
     if (node.stage === 'round-key') {
       keys.set(node.round, node)
-      const mix = nodes.find((item) => item.stage === 'key-mix' && item.round === node.round)
+      const mix = nodes.find((item) =>
+        (item.stage === 'key-mix' || item.stage === 'add-round-key') && item.round === node.round)
       return {
         id: node.path,
         label: `${text.keys} ${node.round ?? ''}`.trim(),
@@ -96,8 +125,11 @@ export const flowRows = (
           ariaLabel: `${stageName(node)}, ${text.bit} ${bit}: ${value}${different ? `, ${text.different}` : ''}`,
         }
       }),
-      relationships: previous && bitRange(previous).flatMap((bit) =>
-        traceBitTargets(node.stage, node.operation?.permutation, bit).map((target) => ({ from: bitId(previous, bit), to: bitId(node, target) }))),
+      relationships: previous && (aesStateStage(node.stage)
+        ? bitRange(node).flatMap((bit) =>
+          stateSources(node.stage, bit).map((source) => ({ from: bitId(previous, source), to: bitId(node, bit) })))
+        : bitRange(previous).flatMap((bit) =>
+          traceBitTargets(node.stage, node.operation?.permutation, bit).map((target) => ({ from: bitId(previous, bit), to: bitId(node, target) })))),
       detail: previous && node.stage === 'key-mix' && key
         ? <XorVisual label={text.xor} terms={node.values.map((value, lane) => ({ left: hex(previous.values[lane]), right: hex(key.values[lane]), output: hex(value) }))} />
         : previous && node.stage === 'substitute' && node.operation?.sBox

@@ -1115,6 +1115,122 @@ describe('AES-192/256 encryption and decryption (#85)', () => {
     expect(aesInverseCipherGraph().nodes).toEqual(aesInverseCipherGraph(128).nodes)
   })
 
+  it('compares AES ciphertext paths by id with one plaintext or round-key bit change (#86)', () => {
+    const flipBit0 = (value: Uint8Array): Uint8Array => {
+      const bytes = new Uint8Array(value)
+      bytes[0] ^= 0x80
+      return bytes
+    }
+    const plaintext = hexToBytes('00112233445566778899aabbccddeeff')
+    const keys = {
+      128: '000102030405060708090a0b0c0d0e0f',
+      192: '000102030405060708090a0b0c0d0e0f1011121314151617',
+      256: '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f',
+    } as const
+
+    for (const variant of [128, 192, 256] as const) {
+      const rounds = { 128: 10, 192: 12, 256: 14 }[variant]
+      const roundKeys = roundKeyInputs(variant, keys[variant])
+
+      const plaintextCompare = executeWorkerRequest({
+        requestId: `aes-${variant}-plaintext`,
+        kind: 'compare',
+        payload: {
+          left: { graph: aesCipherGraph(variant), inputs: { 'plaintext.value': bits(128, plaintext), ...roundKeys } },
+          right: { graph: aesCipherGraph(variant), inputs: { 'plaintext.value': bits(128, flipBit0(plaintext)), ...roundKeys } },
+        },
+      })
+      expect(plaintextCompare.kind).toBe('comparison')
+      if (plaintextCompare.kind !== 'comparison') return
+      expect(plaintextCompare.comparison.truncated).toBe(false)
+      expect(plaintextCompare.comparison.checkpoints.every((checkpoint) => checkpoint.complete)).toBe(true)
+      const plaintextCheckpoint = plaintextCompare.comparison.checkpoints.find((checkpoint) => checkpoint.path === 'plaintext')
+      expect(plaintextCheckpoint).toMatchObject({ complete: true, changedBits: 1 })
+      if (!plaintextCheckpoint?.complete) return
+      expect(hex(plaintextCheckpoint.mask)).toBe('0x80000000000000000000000000000000')
+      const final = plaintextCompare.comparison.checkpoints.find((checkpoint) =>
+        checkpoint.path === `cipher-${rounds}-add-round-key`)
+      expect(final).toMatchObject({ complete: true })
+      if (!final?.complete) return
+      expect(final.changedBits).toBeGreaterThan(1)
+      const ciphertext = final.left
+
+      const keyCompare = executeWorkerRequest({
+        requestId: `aes-${variant}-key`,
+        kind: 'compare',
+        payload: {
+          left: { graph: aesCipherGraph(variant), inputs: { 'plaintext.value': bits(128, plaintext), ...roundKeys } },
+          right: {
+            graph: aesCipherGraph(variant),
+            inputs: {
+              'plaintext.value': bits(128, plaintext),
+              ...roundKeys,
+              'round-key-0.value': bits(128, flipBit0(roundKeys['round-key-0.value'].bytes)),
+            },
+          },
+        },
+      })
+      expect(keyCompare.kind).toBe('comparison')
+      if (keyCompare.kind !== 'comparison') return
+      const keyCheckpoint = keyCompare.comparison.checkpoints.find((checkpoint) => checkpoint.path === 'round-key-0')
+      expect(keyCheckpoint).toMatchObject({ complete: true, changedBits: 1 })
+      if (!keyCheckpoint?.complete) return
+      expect(hex(keyCheckpoint.mask)).toBe('0x80000000000000000000000000000000')
+
+      const decryptCompare = executeWorkerRequest({
+        requestId: `aes-${variant}-ciphertext`,
+        kind: 'compare',
+        payload: {
+          left: { graph: aesInverseCipherGraph(variant), inputs: { 'ciphertext.value': ciphertext, ...roundKeys } },
+          right: {
+            graph: aesInverseCipherGraph(variant),
+            inputs: { 'ciphertext.value': bits(128, flipBit0(ciphertext.bytes)), ...roundKeys },
+          },
+        },
+      })
+      expect(decryptCompare.kind).toBe('comparison')
+      if (decryptCompare.kind !== 'comparison') return
+      const ciphertextCheckpoint = decryptCompare.comparison.checkpoints.find((checkpoint) => checkpoint.path === 'ciphertext')
+      expect(ciphertextCheckpoint).toMatchObject({ complete: true, changedBits: 1 })
+      if (!ciphertextCheckpoint?.complete) return
+      expect(hex(ciphertextCheckpoint.left)).toBe(hex(ciphertext))
+      expect(hex(ciphertextCheckpoint.left)).not.toBe(hex(bits(128, plaintext)))
+      const recovered = decryptCompare.comparison.checkpoints.find((checkpoint) => checkpoint.path === 'cipher-0-add-round-key')
+      expect(recovered).toMatchObject({ complete: true })
+      if (!recovered?.complete) return
+      expect(hex(recovered.left)).toBe(hex(bits(128, plaintext)))
+    }
+  })
+
+  it('keeps AES comparison gaps explicit when a trace is truncated (#86)', () => {
+    const plaintext = hexToBytes('00112233445566778899aabbccddeeff')
+    const roundKeys = roundKeyInputs(128, '000102030405060708090a0b0c0d0e0f')
+    const incomplete = executeWorkerRequest({
+      requestId: 'aes-truncated-comparison',
+      kind: 'compare',
+      payload: {
+        left: {
+          graph: aesCipherGraph(128),
+          inputs: { 'plaintext.value': bits(128, plaintext), ...roundKeys },
+          limits: { traceEvents: 3 },
+        },
+        right: { graph: aesCipherGraph(128), inputs: { 'plaintext.value': bits(128, plaintext), ...roundKeys } },
+      },
+    })
+    expect(incomplete).toMatchObject({
+      kind: 'comparison',
+      comparison: {
+        truncated: true,
+        checkpoints: expect.arrayContaining([
+          expect.objectContaining({ path: 'plaintext', complete: true, changedBits: 0 }),
+          expect.objectContaining({ complete: false }),
+        ]),
+      },
+    })
+    if (incomplete.kind !== 'comparison') return
+    expect(incomplete.comparison.checkpoints.some((checkpoint) => checkpoint.complete && !('left' in checkpoint))).toBe(false)
+  })
+
   it('rejects wrong-width keys at the CryptoGraph boundary with expectedBits/actualBits for all variants', () => {
     for (const declared of [128, 192, 256] as const) {
       const compiled = compile(aesKeyExpansionGraph(declared))

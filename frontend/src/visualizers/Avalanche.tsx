@@ -38,6 +38,15 @@ const copy = {
     different: 'different',
     run: 'Run',
     sBox: 'S-box',
+    stages: {
+      'add-round-key': 'AddRoundKey',
+      'sub-bytes': 'SubBytes',
+      'inv-sub-bytes': 'InvSubBytes',
+      'shift-rows': 'ShiftRows',
+      'inv-shift-rows': 'InvShiftRows',
+      'mix-columns': 'MixColumns',
+      'inv-mix-columns': 'InvMixColumns',
+    },
   },
   'zh-CN': {
     title: '连续雪崩比较',
@@ -64,16 +73,29 @@ const copy = {
     different: '不同',
     run: '执行',
     sBox: 'S 盒',
+    stages: {
+      'add-round-key': '轮密钥加',
+      'sub-bytes': '字节替换',
+      'inv-sub-bytes': '逆字节替换',
+      'shift-rows': '行移位',
+      'inv-shift-rows': '逆行移位',
+      'mix-columns': '列混合',
+      'inv-mix-columns': '逆列混合',
+    },
   },
 } as const
 
 const textFor = (locale: string) => copy[locale as Locale] ?? copy['en-US']
 
-const stageName = (checkpoint: { readonly path: string; readonly stage?: string }, locale: string): string => {
+const stageName = (checkpoint: { readonly path: string; readonly stage?: string; readonly round?: number }, locale: string): string => {
   const text = textFor(locale)
   if (checkpoint.stage === 'key-mix') return text.keyMix
   if (checkpoint.stage === 'substitute') return text.substitution
   if (checkpoint.stage === 'permute') return text.permutation
+  if (checkpoint.stage && checkpoint.stage in text.stages) {
+    const label = text.stages[checkpoint.stage as keyof typeof text.stages]
+    return checkpoint.round === undefined ? label : `${label} ${checkpoint.round}`
+  }
   return formatTracePath(checkpoint.path, locale)
 }
 
@@ -99,12 +121,14 @@ export const avalanchePresentation = (comparison: AvalancheComparison, locale: s
     : { id: checkpoint.path, label: stageName(checkpoint, locale), cells: [{ value: text.gap }] })
   const retained: readonly LearningRow[] = (['baseline', 'changed'] as const).flatMap((run) => comparison.executions[run].trace.flatMap((event) =>
     'value' in event && event.value && 'bytes' in event.value ? [{ id: `${run}-${event.path}`, label: text[run], cells: [{ value: event.path }, { value: hex(event.value) }] }] : []))
-  const plaintext = rows.find((row) => row.id === 'plaintext' && row.selectableBits)
+  const input = rows.find((row) => (row.id === 'plaintext' || row.id === 'ciphertext') && row.selectableBits)
+  const initialChanged = input?.selectableBits?.find((bit) => bit.state === 'changed')?.id
+    ?? rows.flatMap((row) => row.selectableBits ?? []).find((bit) => bit.state === 'changed')?.id
   return {
     title: text.title,
     instructions: text.instructions,
     executionIdentity,
-    initialSelection: plaintext?.selectableBits?.find((bit) => bit.state === 'changed')?.id,
+    initialSelection: initialChanged,
     selectionStatus: (selected) => !selected
       ? text.noSelection
       : 'bit' in selected

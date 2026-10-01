@@ -3,8 +3,9 @@ import userEvent from '@testing-library/user-event'
 import React from 'react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { teachingSpnDemoDocuments } from '../../demos/teachingSpnLesson'
-import { executeWorkerRequest } from '../crypto_graph'
-import { createBrowserLessonSession, type LessonDocuments, type LessonSessionState } from '../lesson_runtime'
+import { aes128CipherComparisonDocuments, aesCipherComparisonDocuments } from '../../demos/aesCipherComparisonLesson'
+import { executeWorkerRequest, hex } from '../crypto_graph'
+import { createBrowserLessonSession, compileLesson, type LessonDocuments, type LessonSessionState } from '../lesson_runtime'
 import { avalanchePresentation } from './Avalanche'
 import { teachingSpnPresentation } from './TeachingSpn'
 import { RenderHost, visualizerCatalog } from './index'
@@ -223,5 +224,90 @@ describe('Avalanche presentation adapter', () => {
     expect(within(raw).getAllByRole('rowheader', { name: 'Baseline' }).length).toBeGreaterThan(0)
     expect(within(raw).getByRole('rowheader', { name: 'Trace gap' }).closest('tr')).toHaveAttribute('data-state', 'incomplete')
     expect(screen.getByRole('table', { name: 'Comparison summary' })).toHaveTextContent('Trace gap')
+  })
+})
+
+describe('AES comparison and per-bit avalanche (#86)', () => {
+  it('compiles AES-128/192/256 comparison Lessons and executes the AES-128 plaintext/key/ciphertext steps', async () => {
+    for (const variant of [128, 192, 256] as const) {
+      const compiled = compileLesson(aesCipherComparisonDocuments(variant), visualizerCatalog)
+      expect(compiled.ok).toBe(true)
+      if (!compiled.ok) return
+      expect(compiled.value.steps.map((step) => [step.id, step.visualizer?.compare?.kind])).toEqual([
+        ['compare-plaintext', 'avalanche'],
+        ['compare-key', 'generic'],
+        ['compare-ciphertext', 'generic'],
+        ['compare-decrypt-key', 'generic'],
+      ])
+    }
+
+    const session = createBrowserLessonSession(aes128CipherComparisonDocuments, 'en-US', visualizerCatalog)
+    expect(session.ok).toBe(true)
+    if (!session.ok) return
+    const entered = await session.value.enter()
+    expect(entered.ok).toBe(true)
+    if (!entered.ok) return
+    const plaintext = entered.value.comparisons['compare-plaintext']
+    expect(plaintext.truncated).toBe(false)
+    expect(plaintext.checkpoints.find((checkpoint) => checkpoint.path === 'plaintext')).toMatchObject({
+      complete: true,
+      changedBits: 1,
+    })
+    expect(plaintext.checkpoints.every((checkpoint) => checkpoint.complete)).toBe(true)
+    const final = [...plaintext.checkpoints].reverse().find((checkpoint) =>
+      checkpoint.path.endsWith('-add-round-key') && checkpoint.complete)
+    expect(final && final.complete && final.changedBits > 1).toBe(true)
+
+    await session.value.next()
+    const key = session.value.state().comparisons['compare-key']
+    expect(key.checkpoints.some((checkpoint) =>
+      checkpoint.complete && checkpoint.path === 'round-key-0' && checkpoint.changedBits === 1)).toBe(true)
+
+    await session.value.next()
+    const ciphertext = session.value.state().comparisons['compare-ciphertext']
+    const ciphertextCheckpoint = ciphertext.checkpoints.find((checkpoint) => checkpoint.path === 'ciphertext')
+    expect(ciphertextCheckpoint).toMatchObject({ complete: true, changedBits: 1 })
+    if (!ciphertextCheckpoint?.complete) return
+    // FIPS-197 C.1 ciphertext — must not reuse the plaintext default (#86 R1).
+    expect(hex(ciphertextCheckpoint.left)).toBe('0x69c4e0d86a7b0430d8cdb78070b4c55a')
+    expect(hex(ciphertextCheckpoint.mask)).toBe('0x80000000000000000000000000000000')
+    const recovered = [...ciphertext.checkpoints].reverse().find((checkpoint) =>
+      checkpoint.path === 'cipher-0-add-round-key' && checkpoint.complete)
+    expect(recovered).toMatchObject({ complete: true })
+    if (!recovered?.complete) return
+    expect(hex(recovered.left)).toBe('0x00112233445566778899aabbccddeeff')
+    session.value.dispose()
+  }, 45_000)
+
+  it.each([
+    { locale: 'en-US' as const, summary: 'Comparison summary', stage: 'AddRoundKey 0', different: 'different' },
+    { locale: 'zh-CN' as const, summary: '比较摘要', stage: '轮密钥加 0', different: '不同' },
+  ])('adapts $locale AES comparison into shared Learning rows with text/ARIA difference meaning', async (text) => {
+    const state = await run(aes128CipherComparisonDocuments, text.locale)
+    const presentation = avalanchePresentation(state.comparisons['compare-plaintext'], text.locale, 'aes')
+    expect(presentation.sections[1]).toMatchObject({ kind: 'comparison', caption: text.summary })
+    expect(presentation.initialSelection).toBe('plaintext#0')
+    const addRoundKey = presentation.sections[0].rows.find((row) => row.id === 'cipher-0-add-round-key')
+    expect(addRoundKey?.label).toBe(text.stage)
+    expect(addRoundKey?.relationships?.some((relationship) => relationship.from === 'plaintext#0' && relationship.to === 'cipher-0-add-round-key#0')).toBe(true)
+    // ShiftRows is a permutation: sink-side sources must not be wired as forward targets (#86).
+    const shiftRows = presentation.sections[0].rows.find((row) => row.id === 'cipher-1-shift-rows')
+    expect(shiftRows?.relationships?.filter((relationship) => relationship.to === 'cipher-1-shift-rows#8').map((relationship) => relationship.from))
+      .toEqual(['cipher-1-sub-bytes#40'])
+    const mixColumns = presentation.sections[0].rows.find((row) => row.id === 'cipher-1-mix-columns')
+    expect(mixColumns?.relationships?.filter((relationship) => relationship.to === 'cipher-1-mix-columns#40').map((relationship) => relationship.from).sort())
+      .toEqual(Array.from({ length: 32 }, (_, bit) => `cipher-1-shift-rows#${32 + bit}`).sort())
+    expect(addRoundKey?.selectableBits?.[0]).toMatchObject({
+      bit: 0,
+      state: 'changed',
+      ariaLabel: expect.stringContaining(text.different),
+    })
+    expect(presentation.sections[1].rows[0]).toMatchObject({
+      id: 'plaintext',
+      cells: expect.arrayContaining([
+        expect.objectContaining({ value: expect.stringMatching(/^0x/) }),
+        expect.objectContaining({ value: 1 }),
+      ]),
+    })
   })
 })
