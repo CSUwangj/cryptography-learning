@@ -342,7 +342,7 @@ steps:
     try {
       expect(validate('aes', aes128CipherDemoDocuments)).toMatchObject({
         status: 0,
-        report: { ok: true, diagnostics: [], dryRun: { steps: [{ id: 'enter-input' }, { id: 'expand-key' }, { id: 'encrypt' }, { id: 'decrypt' }] } },
+        report: { ok: true, diagnostics: [], dryRun: { steps: [{ id: 'enter-input' }, { id: 'encrypt' }, { id: 'decrypt' }] } },
       })
       expect(validate('spn', teachingSpnDemoDocuments)).toMatchObject({
         status: 0,
@@ -641,28 +641,25 @@ steps:
   })
 
   it('compiles explicit AES presentation metadata on execution steps (#85)', () => {
-    const withoutPresentation = compileLesson(aesCipherDemoDocuments(128))
-    expect(withoutPresentation.ok).toBe(true)
-    if (!withoutPresentation.ok) return
-    // AES-128 keeps #84 descriptor-free cipher steps so LearningPage still hits ExecutionTrace.
-    expect(withoutPresentation.value.steps.map((step) => [step.id, step.presentation])).toEqual([
-      ['enter-input', undefined],
-      ['expand-key', { kind: 'key-expansion', algorithm: 'AES', variant: 128 }],
-      ['encrypt', undefined],
-      ['decrypt', undefined],
-    ])
-
-    for (const variant of [192, 256] as const) {
+    for (const variant of [128, 192, 256] as const) {
       const result = compileLesson(aesCipherDemoDocuments(variant))
       expect(result.ok).toBe(true)
       if (!result.ok) return
       expect(result.value.steps.map((step) => [step.id, step.presentation])).toEqual([
         ['enter-input', undefined],
-        ['expand-key', { kind: 'key-expansion', algorithm: 'AES', variant }],
         ['encrypt', { kind: 'block-cipher', algorithm: 'AES', variant, direction: 'encrypt' }],
         ['decrypt', { kind: 'block-cipher', algorithm: 'AES', variant, direction: 'decrypt' }],
       ])
     }
+
+    const documents = aesCipherDemoDocuments(256)
+    const standaloneSchedule = compileLesson({
+      ...documents,
+      lesson: documents.lesson.replace('kind: block-cipher\n      algorithm: AES\n      variant: 256\n      direction: encrypt', 'kind: key-expansion\n      algorithm: AES\n      variant: 256'),
+    })
+    expect(standaloneSchedule.ok).toBe(true)
+    if (!standaloneSchedule.ok) return
+    expect(standaloneSchedule.value.steps[1].presentation).toEqual({ kind: 'key-expansion', algorithm: 'AES', variant: 256 })
   })
 
   it('uses stable diagnostics with source locations and rejects forbidden YAML', () => {

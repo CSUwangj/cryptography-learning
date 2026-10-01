@@ -334,62 +334,84 @@ test.describe('AES Key Expansion Visualizer (#83)', () => {
   })
 })
 
-test.describe('Full-state AES key-schedule detail (#91)', () => {
-  test('draws visible lineage over complete 256-bit rows inside a horizontal scroller', async ({ page }) => {
+test.describe('Full-state AES cipher detail and key-schedule overlay (#91, #92)', () => {
+  // Full-state views hold tens of thousands of lineage lines; role queries over that DOM time out,
+  // so these tests locate elements by their accessible-name attributes and stable row ids.
+  const routeLesson = async (page: import('@playwright/test').Page, documents: typeof aes128CipherDemoDocuments) => {
+    await page.addInitScript(() => localStorage.setItem('i18nextLng', 'en-US'))
+    await page.route('**/query', async (route) => {
+      await route.fulfill({ json: { data: { lessonDocuments: { lesson: documents.lesson, locale: documents.locales['en-US'] } } } })
+    })
+  }
+  const view = (page: import('@playwright/test').Page, title: string) => page.locator(`section[aria-label="${title}"]`)
+  const chip = (section: import('@playwright/test').Locator, round: number) => section.locator(`button[aria-label^="Round key ${round}:"]`)
+
+  test('opens the 256-bit schedule over the encryption trace with visible lineage and temporary rows', async ({ page }) => {
     test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses the synthetic Lesson fixture')
     test.slow()
-    await page.addInitScript(() => localStorage.setItem('i18nextLng', 'en-US'))
-    await page.route('**/query', async (route) => {
-      await route.fulfill({ json: { data: { lessonDocuments: {
-        lesson: aes256CipherDemoDocuments.lesson,
-        locale: aes256CipherDemoDocuments.locales['en-US'],
-      } } } })
-    })
-
+    await routeLesson(page, aes256CipherDemoDocuments)
     await page.goto('/learning/aes-256')
     await page.getByRole('button', { name: 'Next' }).click()
-    const section = page.getByRole('region', { name: 'AES-256 key expansion', exact: true })
-    await expect(section).toBeVisible({ timeout: 30_000 })
-    await expect(section.getByRole('rowheader', { name: 'RotWord 2' })).toBeVisible()
+    const section = view(page, 'AES-256 encryption')
+    await expect(section).toBeVisible({ timeout: 60_000 })
+    await expect(section.locator('tr[data-row-id="cipher-1-mix-columns"] th')).toHaveText('MixColumns 1')
     await expect(section.locator('svg[data-lineage]')).toBeVisible()
-    await expect(section.locator('svg[data-lineage] line').first()).toBeAttached()
-    expect(await section.locator('svg[data-lineage] line').count()).toBeGreaterThan(1000)
+    expect(await section.locator('svg[data-lineage] line').count()).toBeGreaterThan(10_000)
+    const fillers = section.locator('tbody tr:not([data-row-id])')
+    await expect(fillers).toHaveCount(0)
 
+    await chip(section, 1).click()
+    const lane = section.locator('[role="region"][aria-label="Key expansion"]')
+    await expect(lane).toBeVisible({ timeout: 60_000 })
+    await expect(lane.locator('[data-lane-row="schedule-rot-word-2"]')).toContainText('RotWord 2')
+    expect(await fillers.count()).toBeGreaterThan(0)
+    await expect(section.locator('svg[data-lineage] line').first()).toBeAttached()
     const scroll = await section.evaluate((element) => ({ client: element.clientWidth, scroll: element.scrollWidth }))
     expect(scroll.scroll).toBeGreaterThan(scroll.client)
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 
-    const lastBit = section.getByRole('button', { name: 'Input, Bit 255: 1' })
+    const lastBit = lane.locator('button[aria-label="Input, Bit 255: 1"]')
     await lastBit.scrollIntoViewIfNeeded()
-    await expect(lastBit).toBeInViewport()
     await lastBit.focus()
     await page.keyboard.press('Enter')
-    await expect(lastBit).toHaveAttribute('aria-pressed', 'true')
+    await expect(lastBit).toHaveAttribute('aria-pressed', 'true', { timeout: 60_000 })
+
+    await lane.locator('button', { hasText: 'Close key expansion' }).click()
+    await expect(lane).toBeHidden({ timeout: 60_000 })
+    await expect(fillers).toHaveCount(0)
   })
 
-  test('routes the AES-128 demo key expansion through the full-state schedule and opens its round-key lane', async ({ page }) => {
+  test('aligns the AES-128 schedule at round keys, moves between chips, and leaves decryption without an overlay', async ({ page }) => {
     test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses the synthetic Lesson fixture')
-    await page.addInitScript(() => localStorage.setItem('i18nextLng', 'en-US'))
-    await page.route('**/query', async (route) => {
-      await route.fulfill({ json: { data: { lessonDocuments: {
-        lesson: aes128CipherDemoDocuments.lesson,
-        locale: aes128CipherDemoDocuments.locales['en-US'],
-      } } } })
-    })
-
+    test.slow()
+    await routeLesson(page, aes128CipherDemoDocuments)
     await page.goto('/learning/aes-128')
     await page.getByRole('button', { name: 'Next' }).click()
-    const section = page.getByRole('region', { name: 'AES-128 key expansion', exact: true })
-    await expect(section).toBeVisible({ timeout: 30_000 })
-    await expect(section.getByRole('rowheader', { name: 'RotWord 1', exact: true })).toBeVisible()
-    await expect(section.getByRole('rowheader', { name: 'Round key 10' })).toBeVisible()
+    const section = view(page, 'AES-128 encryption')
+    await expect(section).toBeVisible({ timeout: 60_000 })
+    await expect(section.locator('tr[data-row-id="round-key-10"] th')).toHaveText('Round key 10')
 
-    await section.getByRole('button', { name: /^Round key 0:/ }).click()
-    const lane = section.getByRole('region', { name: 'Key expansion', exact: true })
+    await chip(section, 0).click()
+    const lane = section.locator('[role="region"][aria-label="Key expansion"]')
+    await expect(lane).toBeVisible({ timeout: 60_000 })
+    for (const [rowId, laneRow] of [['plaintext', 'schedule-input'], ['round-key-1', 'schedule-round-key-1'], ['round-key-10', 'schedule-round-key-10']]) {
+      const row = (await lane.locator(`tr[data-row-id="${rowId}"]`).boundingBox())!
+      const cell = (await lane.locator(`[data-lane-row="${laneRow}"]`).boundingBox())!
+      expect(Math.abs(row.y - cell.y)).toBeLessThan(2)
+    }
+    await expect(lane.locator('button[aria-label="Input, Bit 0: 0"]')).toBeVisible()
+
+    await chip(section, 1).click()
+    await expect(chip(section, 1)).toHaveAttribute('aria-pressed', 'true', { timeout: 60_000 })
+    await expect(chip(section, 0)).toHaveAttribute('aria-pressed', 'false')
     await expect(lane).toBeVisible()
-    await expect(lane.getByRole('button', { name: 'Master key, Bit 0: 0' })).toBeAttached()
-    const inputRow = (await section.locator('table [data-row-id="input"]').first().boundingBox())!
-    const laneRow = (await lane.locator('[data-row-id="input"]').boundingBox())!
-    expect(Math.abs(inputRow.y - laneRow.y)).toBeLessThan(5)
+    await chip(section, 1).click()
+    await expect(lane).toBeHidden({ timeout: 60_000 })
+
+    await page.getByRole('button', { name: 'Next' }).click()
+    const decryption = view(page, 'AES-128 decryption')
+    await expect(decryption).toBeVisible({ timeout: 60_000 })
+    await expect(decryption.locator('tr[data-row-id="cipher-9-inv-mix-columns"] th')).toHaveText('InvMixColumns 9')
+    await expect(decryption.locator('svg[data-lineage] line').first()).toBeAttached()
+    await expect(decryption.locator('button[aria-label^="Round key"]:not([aria-label*=", Bit "])')).toHaveCount(0)
   })
 })

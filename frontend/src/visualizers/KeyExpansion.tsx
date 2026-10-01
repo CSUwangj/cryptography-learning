@@ -211,9 +211,8 @@ export const keyExpansionPresentation = (
     ...rows.flatMap((row) => [row, ...roundKeyRows.filter((key) => roundKeyAfter(key) === row.id)]),
     ...roundKeyRows.filter((key) => roundKeyAfter(key) === undefined),
   ]
-  const { 'word-0': masterKey, ...roundKeyLaneRows } = legacy.keyExpansionLane?.rowsById ?? {}
-  const keyExpansionLane = legacy.keyExpansionLane && masterKey && rows[0]?.id === 'input'
-    ? { ...legacy.keyExpansionLane, rowsById: { ...roundKeyLaneRows, input: masterKey } }
+  const keyExpansionLane = legacy.keyExpansionLane && rows[0]?.id === 'input'
+    ? { ...legacy.keyExpansionLane, rows: legacy.keyExpansionLane.rows.map((row) => row.anchor === 'word-0' ? { ...row, anchor: 'input' } : row) }
     : undefined
   const traceIncompleteDiagnostic: LearningDiagnostic | undefined = execution.traceStatus.truncated
     ? {

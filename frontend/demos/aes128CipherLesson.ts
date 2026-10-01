@@ -1,5 +1,5 @@
 import type { LessonDocuments } from '../src/lesson_runtime'
-import { aesCipherGraph, aesInverseCipherGraph, aesKeyExpansionGraph } from '../src/crypto_graph'
+import { aesCipherGraph, aesInverseCipherGraph, aesKeyExpansionGraph, type AuthoredGraph } from '../src/crypto_graph'
 
 // Real AES (Nk/Nr from FIPS-197) rather than a hand-authored toy schedule: the known-answer
 // vectors need the true key schedule and cipher, so this serializes the same tested
@@ -24,8 +24,12 @@ const kat = {
   },
 } as const
 
-const roundKeyBindings = (step: string, rounds: number): string =>
-  Array.from({ length: rounds + 1 }, (_, round) => `        round-key-${round}.value: {step: ${step}, output: round-key-${round}.value}`).join('\n')
+// The schedule's `round-key-<r>` nodes replace the cipher's same-named round-key sources, so one
+// execution traces both the key schedule and the cipher.
+const withKeySchedule = (variant: 128 | 192 | 256, cipher: AuthoredGraph): AuthoredGraph => ({
+  ...cipher,
+  nodes: [...aesKeyExpansionGraph(variant).nodes, ...cipher.nodes.filter((node) => !/^round-key-\d+$/.test(node.id))],
+})
 
 const locales = {
   128: {
@@ -42,30 +46,17 @@ const locales = {
   },
 } as const
 
-const presentationYaml = (variant: 128 | 192 | 256, kind: 'key-expansion' | 'encrypt' | 'decrypt'): string => {
-  // AES-128 encryption/decryption keep the #84 descriptor-free shape (generic ExecutionTrace);
-  // every variant's key expansion uses the full-state schedule presentation (#91).
-  if (kind === 'key-expansion') {
-    return `
-    presentation:
-      kind: key-expansion
-      algorithm: AES
-      variant: ${variant}`
-  }
-  if (variant === 128) return ''
-  return `
+const presentationYaml = (variant: 128 | 192 | 256, direction: 'encrypt' | 'decrypt'): string => `
     presentation:
       kind: block-cipher
       algorithm: AES
       variant: ${variant}
-      direction: ${kind}`
-}
+      direction: ${direction}`
 
 export const aesCipherDemoDocuments = (variant: 128 | 192 | 256): LessonDocuments => {
   const { key, plaintext, rounds } = kat[variant]
-  const expand = aesKeyExpansionGraph(variant)
-  const encrypt = aesCipherGraph(variant)
-  const decrypt = aesInverseCipherGraph(variant)
+  const encrypt = withKeySchedule(variant, aesCipherGraph(variant))
+  const decrypt = withKeySchedule(variant, aesInverseCipherGraph(variant))
   return {
     lesson: `version: 1
 id: aes-${variant}-cipher-demo
@@ -81,10 +72,6 @@ inputs:
     default: "${plaintext}"
 constants: {}
 graphs:
-  expand:
-    traceLevel: detail
-    nodes: ${JSON.stringify(expand.nodes)}
-    outputs: ${JSON.stringify(expand.outputs)}
   encrypt:
     traceLevel: detail
     nodes: ${JSON.stringify(encrypt.nodes)}
@@ -98,23 +85,18 @@ steps:
     inputs:
       - {input: key, prompt: key}
       - {input: plaintext, prompt: plaintext}
-  - id: expand-key
-    execute:
-      graph: expand
-      bindings:
-        key.value: {input: key}${presentationYaml(variant, 'key-expansion')}
   - id: encrypt
     execute:
       graph: encrypt
       bindings:
-        plaintext.value: {input: plaintext}
-${roundKeyBindings('expand-key', rounds)}${presentationYaml(variant, 'encrypt')}
+        key.value: {input: key}
+        plaintext.value: {input: plaintext}${presentationYaml(variant, 'encrypt')}
   - id: decrypt
     execute:
       graph: decrypt
       bindings:
-        ciphertext.value: {step: encrypt, output: cipher-${rounds}-add-round-key.value}
-${roundKeyBindings('expand-key', rounds)}${presentationYaml(variant, 'decrypt')}
+        key.value: {input: key}
+        ciphertext.value: {step: encrypt, output: cipher-${rounds}-add-round-key.value}${presentationYaml(variant, 'decrypt')}
 `,
     locales: locales[variant],
   }

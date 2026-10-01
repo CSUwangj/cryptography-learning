@@ -154,7 +154,7 @@ export type WorkerLimitValues = {
 }
 
 export const maxWorkerLimits = Object.freeze({
-  expandedNodes: 128,
+  expandedNodes: 256,
   inputBytes: 4_096,
   traceEvents: 512,
   traceBytes: 65_536,

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
-import { aesCipherGraph, aesInverseCipherGraph, aesKeyExpansionGraph, alphabetPolicy, alphabetText, bits, executeWorkerRequest, hex, integer, teachingSpnGraph, type CryptoValue } from '../crypto_graph'
+import { aesCipherGraph, aesInverseCipherGraph, aesKeyExpansionGraph, alphabetPolicy, alphabetText, bits, executeWorkerRequest, hex, integer, teachingSpnGraph } from '../crypto_graph'
 import { teachingSpnDemoDocuments } from '../../demos/teachingSpnLesson'
 import { aesKeyExpansionDemoDocuments } from '../../demos/aesKeyExpansionLesson'
 import { aes128CipherDemoDocuments, aes192CipherDemoDocuments, aes256CipherDemoDocuments, aesCipherDemoDocuments } from '../../demos/aes128CipherLesson'
@@ -11,7 +11,7 @@ import { traceBitTargets } from './traceFlow'
 import { AvalancheRenderer } from './Avalanche'
 import { aesKeyExpansionPresentation } from './AesKeyExpansion'
 import { aesCipherPresentation } from './AesCipher'
-import { blockCipherPresentation } from './BlockCipher'
+import { blockCipherPresentation, type BlockCipherPresentationMeta } from './BlockCipher'
 import { executionTracePresentation } from './ExecutionTrace'
 import { keyExpansionPresentation } from './KeyExpansion'
 import { classicalCipherPositions } from './ClassicalCipher'
@@ -183,13 +183,13 @@ describe('Visualizer Catalog (#32)', () => {
     // AES-192 (Nk=6): round key 0's four words (indices 0-3) are all direct key slices, so all
     // 128 bits copy. Round key 1's words are indices 4-7; only 4 and 5 are direct slices, so
     // only their 64 bits copy - the rest (from RotWord/SubWord/Rcon/XOR) must not appear.
-    const relationships192 = aesKeyExpansionPresentation(snapshotFor(192), 'en-US', 'r3-192').keyExpansionLane?.rowsById['word-0']?.relationships ?? []
+    const relationships192 = aesKeyExpansionPresentation(snapshotFor(192), 'en-US', 'r3-192').keyExpansionLane?.rows.find((row) => row.anchor === 'word-0')?.relationships ?? []
     expect(copiedBitsOfRound(relationships192, 0)).toBe(128)
     expect(copiedBitsOfRound(relationships192, 1)).toBe(64)
 
     // AES-256 (Nk=8): both round key 0 and round key 1 are full copies, since Nk=8 spans
     // exactly two round keys' worth of words; round key 2 has none (fully derived).
-    const relationships256 = aesKeyExpansionPresentation(snapshotFor(256), 'en-US', 'r3-256').keyExpansionLane?.rowsById['word-0']?.relationships ?? []
+    const relationships256 = aesKeyExpansionPresentation(snapshotFor(256), 'en-US', 'r3-256').keyExpansionLane?.rows.find((row) => row.anchor === 'word-0')?.relationships ?? []
     expect(copiedBitsOfRound(relationships256, 0)).toBe(128)
     expect(copiedBitsOfRound(relationships256, 1)).toBe(128)
     expect(copiedBitsOfRound(relationships256, 2)).toBe(0)
@@ -348,30 +348,24 @@ steps:
 })
 
 describe('AES-128 encryption and decryption (#84)', () => {
-  const roundKeysFrom = (outputs: Readonly<Record<string, CryptoValue>>): Record<string, CryptoValue> =>
-    Object.fromEntries(Array.from({ length: 11 }, (_, round) => [`round-key-${round}.value`, outputs[`round-key-${round}.value`]]))
-
-  it('compiles the descriptor-free AES-128 cipher demo fixture without any registered Visualizer and matches the FIPS-197 C.1 vector', () => {
+  it('compiles the AES-128 cipher demo fixture without any registered Visualizer, expands the key inside each cipher execution, and matches the FIPS-197 C.1 vector', () => {
     const result = compileLesson(aes128CipherDemoDocuments, { get: () => undefined })
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.value.steps.map((step) => [step.id, step.visualizer])).toEqual([
-      ['enter-input', undefined], ['expand-key', undefined], ['encrypt', undefined], ['decrypt', undefined],
+      ['enter-input', undefined], ['encrypt', undefined], ['decrypt', undefined],
     ])
+    expect(Object.keys(result.value.graphs).sort()).toEqual(['decrypt', 'encrypt'])
 
     expect(visualizerCatalog.get('aes-cipher@1')).toMatchObject({ limits: { bits: 128 }, trace: { family: 'execution', level: 'detail' } })
 
-    const expansion = result.value.graphs.expand.execute({ 'key.value': result.value.inputs.key.default })
-    expect(expansion.ok).toBe(true)
-    if (!expansion.ok) return
-    const roundKeys = roundKeysFrom(expansion.value.outputs)
-
-    const encryption = result.value.graphs.encrypt.execute({ ...roundKeys, 'plaintext.value': result.value.inputs.plaintext.default })
+    const key = result.value.inputs.key.default
+    const encryption = result.value.graphs.encrypt.execute({ 'key.value': key, 'plaintext.value': result.value.inputs.plaintext.default })
     expect(encryption.ok).toBe(true)
     if (!encryption.ok) return
     expect(hex(encryption.value.outputs['cipher-10-add-round-key.value'] as never)).toBe('0x69c4e0d86a7b0430d8cdb78070b4c55a')
 
-    const decryption = result.value.graphs.decrypt.execute({ ...roundKeys, 'ciphertext.value': encryption.value.outputs['cipher-10-add-round-key.value'] })
+    const decryption = result.value.graphs.decrypt.execute({ 'key.value': key, 'ciphertext.value': encryption.value.outputs['cipher-10-add-round-key.value'] })
     expect(decryption.ok).toBe(true)
     if (!decryption.ok) return
     expect(hex(decryption.value.outputs['cipher-0-add-round-key.value'] as never)).toBe('0x00112233445566778899aabbccddeeff')
@@ -459,8 +453,7 @@ describe('AES-128 encryption and decryption (#84)', () => {
       const session = createBrowserLessonSession(aes128CipherDemoDocuments, 'en-US', visualizerCatalog)
       expect(session.ok).toBe(true)
       if (!session.ok) return
-      await session.value.next() // enter-input -> expand-key
-      await session.value.next() // expand-key -> encrypt
+      await session.value.next() // enter-input -> encrypt
       const decrypted = await session.value.next() // encrypt -> decrypt
       expect(decrypted.ok).toBe(true)
       if (!decrypted.ok) return
@@ -470,41 +463,24 @@ describe('AES-128 encryption and decryption (#84)', () => {
       expect(hex(encryptSnapshot.outputs['cipher-10-add-round-key.value'] as never)).toBe('0x69c4e0d86a7b0430d8cdb78070b4c55a')
       expect(hex(decryptSnapshot.outputs['cipher-0-add-round-key.value'] as never)).toBe('0x00112233445566778899aabbccddeeff')
 
-      // Mirror LearningPage: pass compiled step.presentation (absent on AES-128) so a
-      // accidental metadata addition would route through BlockCipher and fail this heading.
+      // Mirror LearningPage: pass the compiled step.presentation through RenderHost.
       const encryptPresentation = session.value.lesson.steps.find((step) => step.id === 'encrypt')?.presentation
       const decryptPresentation = session.value.lesson.steps.find((step) => step.id === 'decrypt')?.presentation
-      expect(encryptPresentation).toBeUndefined()
-      expect(decryptPresentation).toBeUndefined()
+      expect(encryptPresentation).toEqual({ kind: 'block-cipher', algorithm: 'AES', variant: 128, direction: 'encrypt' })
+      expect(decryptPresentation).toEqual({ kind: 'block-cipher', algorithm: 'AES', variant: 128, direction: 'decrypt' })
 
-      const encrypted = render(React.createElement(RenderHost, {
-        dimensions: { width: 900, height: 500 },
-        execution: encryptSnapshot,
-        executionIdentity: 'aes-cipher-encrypt',
-        presentation: encryptPresentation,
-        locale: 'en-US',
-        reducedMotion: true,
-      }))
-      expect(encrypted.queryByRole('alert')).toBeNull()
-      expect(encrypted.getByRole('heading', { name: 'Execution trace' })).toBeVisible()
-      expect(encrypted.getByRole('row', { name: /^SubBytes 1 1 0x/ })).toBeVisible()
-      expect(encrypted.getByRole('row', { name: /^Output — 0x69c4e0d86a7b0430d8cdb78070b4c55a$/ })).toBeVisible()
-      expect(encrypted.queryByRole('row', { name: /MixColumns 10/ })).toBeNull()
-      encrypted.unmount()
+      const encrypted = blockCipherPresentation(encryptSnapshot, 'en-US', 'aes-cipher-encrypt', encryptPresentation as BlockCipherPresentationMeta)
+      const encryptedRow = (id: string) => encrypted.sections[0].rows.find((row) => row.id === id)
+      expect(encrypted.title).toBe('AES-128 encryption')
+      expect(encryptedRow('cipher-1-sub-bytes')).toMatchObject({ label: 'SubBytes 1', cells: [{ value: 1 }, { value: expect.stringMatching(/^0x/) }] })
+      expect(encryptedRow('output')).toMatchObject({ label: 'Output', cells: [{ value: '—' }, { value: '0x69c4e0d86a7b0430d8cdb78070b4c55a' }] })
+      expect(encryptedRow('cipher-10-mix-columns')).toBeUndefined()
 
-      const decryptedRender = render(React.createElement(RenderHost, {
-        dimensions: { width: 900, height: 500 },
-        execution: decryptSnapshot,
-        executionIdentity: 'aes-cipher-decrypt',
-        presentation: decryptPresentation,
-        locale: 'zh-CN',
-        reducedMotion: true,
-      }))
-      expect(decryptedRender.queryByRole('alert')).toBeNull()
-      expect(decryptedRender.getByRole('heading', { name: '执行轨迹' })).toBeVisible()
-      expect(decryptedRender.getByRole('row', { name: /^密文输入 — 0x69c4e0d86a7b0430d8cdb78070b4c55a$/ })).toBeVisible()
-      expect(decryptedRender.getByRole('row', { name: /^逆字节替换 1 1 0x/ })).toBeVisible()
-      decryptedRender.unmount()
+      const decryptedView = blockCipherPresentation(decryptSnapshot, 'zh-CN', 'aes-cipher-decrypt', decryptPresentation as BlockCipherPresentationMeta)
+      const decryptedRow = (id: string) => decryptedView.sections[0].rows.find((row) => row.id === id)
+      expect(decryptedView.title).toBe('AES-128 解密')
+      expect(decryptedRow('ciphertext')).toMatchObject({ label: '密文输入', cells: [{ value: '—' }, { value: '0x69c4e0d86a7b0430d8cdb78070b4c55a' }] })
+      expect(decryptedRow('cipher-1-inv-sub-bytes')?.label).toBe('逆字节替换 1')
 
       const bound = render(React.createElement(RenderHost, {
         dimensions: { width: 900, height: 500 },
@@ -538,7 +514,6 @@ describe('AES-192/256 Lesson paths (#85)', () => {
         expect(session.ok).toBe(true)
         if (!session.ok) return
         await session.value.next()
-        await session.value.next()
         const decrypted = await session.value.next()
         expect(decrypted.ok).toBe(true)
         if (!decrypted.ok) return
@@ -548,30 +523,14 @@ describe('AES-192/256 Lesson paths (#85)', () => {
         expect(hex(encryptSnapshot.outputs[`cipher-${kat[variant].rounds}-add-round-key.value`] as never)).toBe(`0x${kat[variant].ciphertext}`)
         expect(hex(decryptSnapshot.outputs['cipher-0-add-round-key.value'] as never)).toBe('0x00112233445566778899aabbccddeeff')
 
-        const encrypted = render(React.createElement(RenderHost, {
-          dimensions: { width: 900, height: 500 },
-          execution: encryptSnapshot,
-          executionIdentity: `aes-${variant}-encrypt`,
-          presentation: { kind: 'block-cipher', algorithm: 'AES', variant, direction: 'encrypt' },
-          locale: 'en-US',
-          reducedMotion: true,
-        }))
-        expect(encrypted.getByRole('heading', { name: `AES-${variant} encryption` })).toBeVisible()
-        expect(encrypted.getByRole('row', { name: /^SubBytes 1 1 0x/ })).toBeVisible()
-        expect(encrypted.getByRole('row', { name: new RegExp(`^Output — 0x${kat[variant].ciphertext}$`) })).toBeVisible()
-        encrypted.unmount()
+        const encrypted = blockCipherPresentation(encryptSnapshot, 'en-US', `aes-${variant}-encrypt`, { algorithm: 'AES', variant, direction: 'encrypt' })
+        expect(encrypted.title).toBe(`AES-${variant} encryption`)
+        expect(encrypted.sections[0].rows.find((row) => row.id === 'cipher-1-sub-bytes')?.label).toBe('SubBytes 1')
+        expect(encrypted.sections[0].rows.at(-1)).toMatchObject({ label: 'Output', cells: [{ value: '—' }, { value: `0x${kat[variant].ciphertext}` }] })
 
-        const decryptedRender = render(React.createElement(RenderHost, {
-          dimensions: { width: 900, height: 500 },
-          execution: decryptSnapshot,
-          executionIdentity: `aes-${variant}-decrypt`,
-          presentation: { kind: 'block-cipher', algorithm: 'AES', variant, direction: 'decrypt' },
-          locale: 'zh-CN',
-          reducedMotion: true,
-        }))
-        expect(decryptedRender.getByRole('heading', { name: `AES-${variant} 解密` })).toBeVisible()
-        expect(decryptedRender.getByRole('row', { name: new RegExp(`^密文输入 — 0x${kat[variant].ciphertext}$`) })).toBeVisible()
-        decryptedRender.unmount()
+        const decryptedView = blockCipherPresentation(decryptSnapshot, 'zh-CN', `aes-${variant}-decrypt`, { algorithm: 'AES', variant, direction: 'decrypt' })
+        expect(decryptedView.title).toBe(`AES-${variant} 解密`)
+        expect(decryptedView.sections[0].rows[0]).toMatchObject({ label: '密文输入', cells: [{ value: '—' }, { value: `0x${kat[variant].ciphertext}` }] })
         session.value.dispose()
       } finally {
         globalThis.Worker = previousWorker
@@ -615,7 +574,7 @@ describe('AES-192/256 Lesson paths (#85)', () => {
       reducedMotion: true,
     }))
     expect(screen.getByRole('heading', { name: 'AES-192 encryption' })).toBeVisible()
-    expect(screen.getByRole('row', { name: /^Plaintext input — 0x0{32}$/ })).toBeVisible()
+    expect(screen.getByRole('row', { name: /^Plaintext input — 0x0{32} / })).toBeVisible()
     expect(screen.getAllByText('Trace gap').length).toBeGreaterThan(0)
   })
 })
@@ -688,11 +647,10 @@ describe('Full-state AES key-schedule detail (#91)', () => {
     try {
       const session = createBrowserLessonSession(aesCipherDemoDocuments(variant), 'en-US', visualizerCatalog)
       if (!session.ok) throw new Error(session.diagnostics[0]?.message)
-      await session.value.next()
       const result = await session.value.next()
       session.value.dispose()
       if (!result.ok) throw new Error(result.diagnostics[0]?.message)
-      return result.value.snapshots['expand-key']
+      return result.value.snapshots.encrypt
     } finally {
       globalThis.Worker = previousWorker
     }
@@ -711,8 +669,8 @@ describe('Full-state AES key-schedule detail (#91)', () => {
       const all = presentation.sections[0].rows
       expect(all[all.indexOf(roundKeyRows[0]) - 1].id).toBe('input')
       expect(all.at(-1)).toBe(roundKeyRows.at(-1))
-      expect(Object.keys(presentation.keyExpansionLane?.rowsById ?? {}).sort()).toEqual(['input', ...roundKeyRows.map((row) => row.id)].sort())
-      expect(presentation.keyExpansionLane?.rowsById.input.selectableBits).toHaveLength(variant)
+      expect(presentation.keyExpansionLane?.rows.map((row) => row.anchor)).toEqual(['input', ...roundKeyRows.map((row) => row.id)])
+      expect(presentation.keyExpansionLane?.rows[0].selectableBits).toHaveLength(variant)
       expect(rows.every((row) => row.selectableBits?.length === variant && String(row.cells[1].value).length === variant / 4 + 2)).toBe(true)
       expect(rows.every((row) => /^(Input|RotWord \d+|SubWord \d+|Rcon \d+|XOR \d+)$/.test(row.label))).toBe(true)
       expect(rows[0]).toMatchObject({ label: 'Input', cells: [{ value: '—' }, { value: `0x${vectors[variant].key}` }] })
@@ -813,5 +771,70 @@ describe('Full-state AES key-schedule detail (#91)', () => {
     expect(presentation.diagnostics).toEqual([expect.objectContaining({ code: 'aes.key-expansion-trace-incomplete', path: 'trace' })])
     expect(presentation.keyExpansionLane).toBeUndefined()
     expect(presentation.sections[1]).toMatchObject({ kind: 'raw', rows: [{ label: '轨迹缺口', state: 'incomplete' }] })
+  })
+})
+
+describe('Full-state AES cipher detail and key-schedule overlay (#92)', () => {
+  const runDemo = async (variant: 128 | 192 | 256) => {
+    const previousWorker = globalThis.Worker
+    globalThis.Worker = WorkerStub as unknown as typeof Worker
+    try {
+      const session = createBrowserLessonSession(aesCipherDemoDocuments(variant), 'en-US', visualizerCatalog)
+      if (!session.ok) throw new Error(session.diagnostics[0]?.message)
+      await session.value.next()
+      const result = await session.value.next()
+      session.value.dispose()
+      if (!result.ok) throw new Error(result.diagnostics[0]?.message)
+      return result.value.snapshots
+    } finally {
+      globalThis.Worker = previousWorker
+    }
+  }
+  const fanIn = (rows: readonly import('../ui/learning').LearningRow[], to: string) =>
+    rows.flatMap((row) => row.relationships ?? []).filter((relationship) => relationship.to === to).map((relationship) => relationship.from).sort()
+
+  it('presents encryption and decryption as full-state bit rows with structural lineage and real values', async () => {
+    const { encrypt, decrypt } = await runDemo(128)
+    const encryption = blockCipherPresentation(encrypt, 'en-US', 'e', { algorithm: 'AES', variant: 128, direction: 'encrypt' })
+    const rows = encryption.sections[0].rows
+    expect(rows.slice(0, 8).map((row) => row.label)).toEqual([
+      'Plaintext input', 'Round key 0', 'AddRoundKey 0', 'SubBytes 1', 'ShiftRows 1', 'MixColumns 1', 'Round key 1', 'AddRoundKey 1',
+    ])
+    expect(rows.slice(-4).map((row) => row.label)).toEqual(['ShiftRows 10', 'Round key 10', 'AddRoundKey 10', 'Output'])
+    expect(rows.filter((row) => row.selectableKey)).toHaveLength(11)
+    expect(rows.filter((row) => row.label !== 'Output').every((row) => row.selectableBits?.length === 128)).toBe(true)
+    expect(encryption.initialSelection).toBeUndefined()
+
+    expect(fanIn(rows, 'cipher-0-add-round-key#5')).toEqual(['plaintext#5', 'round-key-0#5'])
+    expect(fanIn(rows, 'cipher-1-sub-bytes#13')).toEqual(Array.from({ length: 8 }, (_, bit) => `cipher-0-add-round-key#${8 + bit}`).sort())
+    expect(fanIn(rows, 'cipher-1-shift-rows#8')).toEqual(['cipher-1-sub-bytes#40'])
+    expect(fanIn(rows, 'cipher-1-mix-columns#40')).toHaveLength(32)
+    expect(fanIn(rows, 'cipher-1-mix-columns#40').every((from) => Number(from.split('#')[1]) >= 32 && Number(from.split('#')[1]) < 64)).toBe(true)
+
+    const bitValue = new Map(rows.flatMap((row) => (row.selectableBits ?? []).map((bit) => [bit.id, Number(bit.value)] as const)))
+    const sources = new Map<string, string[]>()
+    for (const { from, to } of rows.flatMap((row) => row.relationships ?? [])) sources.set(to, [...sources.get(to) ?? [], from])
+    for (const row of rows.filter((candidate) => /ShiftRows|AddRoundKey/.test(candidate.label))) {
+      for (const bit of row.selectableBits ?? []) {
+        expect(sources.get(bit.id)!.reduce((value, id) => value ^ bitValue.get(id)!, 0)).toBe(Number(bit.value))
+      }
+    }
+
+    const lane = encryption.keyExpansionLane!
+    expect(lane.rows.filter((row) => row.anchor).map((row) => row.anchor)).toEqual(['plaintext', ...Array.from({ length: 11 }, (_, round) => `round-key-${round}`)])
+    expect(lane.rows.find((row) => row.anchor === 'plaintext')).toMatchObject({ label: 'Input', selectableBits: expect.arrayContaining([expect.objectContaining({ id: 'input#0' })]) })
+    expect(lane.rows.some((row) => row.label === 'RotWord 1')).toBe(true)
+    expect(blockCipherPresentation(encrypt, 'zh-CN', 'e', { algorithm: 'AES', variant: 128, direction: 'encrypt' }).instructions).toContain('展开某轮密钥')
+
+    const decryption = blockCipherPresentation(decrypt, 'en-US', 'd', { algorithm: 'AES', variant: 128, direction: 'decrypt' })
+    const inverse = decryption.sections[0].rows
+    expect(inverse.slice(0, 8).map((row) => row.label)).toEqual([
+      'Ciphertext input', 'Round key 10', 'AddRoundKey 10', 'InvShiftRows 9', 'InvSubBytes 9', 'Round key 9', 'AddRoundKey 9', 'InvMixColumns 9',
+    ])
+    expect(decryption.keyExpansionLane).toBeUndefined()
+    expect(inverse.some((row) => row.selectableKey)).toBe(false)
+    expect(fanIn(inverse, 'cipher-9-inv-shift-rows#8')).toEqual(['cipher-10-add-round-key#104'])
+    expect(fanIn(inverse, 'cipher-9-inv-mix-columns#0')).toHaveLength(32)
+    expect(String(inverse.at(-1)!.cells[1].value)).toBe('0x00112233445566778899aabbccddeeff')
   })
 })

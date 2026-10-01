@@ -26,11 +26,19 @@ export default defineConfig({
   ...(process.env.PLAYWRIGHT_BASE_URL
     ? {}
     : {
-        webServer: {
-          command: 'npx vite --host 127.0.0.1 --port 4177',
-          port: 4177,
-          reuseExistingServer: !process.env.CI,
-          timeout: 120_000,
-        },
+        webServer: [
+          {
+            command: 'npx vite --host 127.0.0.1 --port 4177',
+            port: 4177,
+            reuseExistingServer: !process.env.CI,
+            timeout: 120_000,
+          },
+          {
+            command: 'npx vite --config vite.demos.config.mts --port 4178',
+            port: 4178,
+            reuseExistingServer: !process.env.CI,
+            timeout: 120_000,
+          },
+        ],
       }),
 })

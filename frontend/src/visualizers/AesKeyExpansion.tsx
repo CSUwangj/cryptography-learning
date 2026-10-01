@@ -145,8 +145,10 @@ export const aesKeyExpansionPresentation = (execution: WorkerExecutionSnapshot, 
       return {
         caption: text.lane,
         closeLabel: text.closeLane,
-        rowsById: {
-          [masterKeyRow.path]: {
+        rows: [
+          {
+            id: 'lane-master-key',
+            anchor: masterKeyRow.path,
             selectableBits: bitRange(masterKey.type.size).map((bit) => ({
               id: masterKeyBitId(bit),
               bit,
@@ -155,15 +157,17 @@ export const aesKeyExpansionPresentation = (execution: WorkerExecutionSnapshot, 
             })),
             relationships: copyRelationships.length ? copyRelationships : undefined,
           },
-          ...Object.fromEntries(roundKeyEvents.map((event) => [event.path, {
+          ...roundKeyEvents.map((event) => ({
+            id: `lane-${event.path}`,
+            anchor: event.path,
             selectableBits: bitRange(event.value.type.size).map((bit) => ({
               id: roundKeyBitId(event.round, bit),
               bit,
               value: String(bitAt(event.value, bit)),
               ariaLabel: `${text.roundKey} ${event.round}, ${text.bit} ${bit}: ${bitAt(event.value, bit)}`,
             })),
-          }])),
-        },
+          })),
+        ],
       }
     })()
     : undefined

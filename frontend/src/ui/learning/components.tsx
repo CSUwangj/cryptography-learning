@@ -13,6 +13,8 @@ export const learningColors = {
   relatedChanged: '#fca5a5',
   warning: '#fee2e2',
   incomplete: '#e5e7eb',
+  lane: '#ecfdf5',
+  laneBorder: '#059669',
 } as const
 
 const stateStyles: Record<LearningState, CSSProperties> = {
@@ -29,10 +31,12 @@ export type TraceTableProps = {
   readonly caption: string
   readonly headers: readonly string[]
   readonly children: ReactNode
+  /** Removes vertical cell spacing so a block spanning several rows reads as one region. */
+  readonly joinRows?: boolean
 }
 
-export const TraceTable = ({ caption, headers, children }: TraceTableProps): ReactNode => (
-  <table>
+export const TraceTable = ({ caption, headers, children, joinRows }: TraceTableProps): ReactNode => (
+  <table style={joinRows ? { borderSpacing: '2px 0' } : undefined}>
     <caption>{caption}</caption>
     <thead><tr>{headers.map((header) => <th key={header} scope="col">{header}</th>)}</tr></thead>
     <tbody>{children}</tbody>
@@ -121,16 +125,21 @@ export type LearningSection = {
   readonly rows: readonly LearningRow[]
 }
 
+export type KeyExpansionLaneRow = Pick<LearningRow, 'id' | 'selectableBits' | 'relationships' | 'bitGrouping'> & {
+  readonly label?: string
+  /** Trace row this lane row shares a table row with; unanchored rows follow the previous anchor. */
+  readonly anchor?: string
+}
+
 /**
- * An optional lane, hidden until a round-key chip in the trace is selected, showing round-key
- * bits aligned under the master-key bits they derive from. `rowsById` supplies bit content only
- * for rows with lane data (the master-key input row and each round-key row); every other trace
- * row renders as an empty filler row so the lane's rows line up one-to-one with the trace.
+ * An optional lane, hidden until a round-key chip in the trace is selected. While open it covers
+ * the trace's bit and detail columns. Between anchors, whichever side has fewer rows is padded with
+ * empty rows that disappear on close. Anchors must appear in the same order as their trace rows.
  */
 export type KeyExpansionLane = {
   readonly caption: string
   readonly closeLabel: string
-  readonly rowsById: Readonly<Record<string, Pick<LearningRow, 'selectableBits' | 'relationships'>>>
+  readonly rows: readonly KeyExpansionLaneRow[]
 }
 
 export type LearningSelection = { readonly kind: 'bit' | 'key'; readonly id: string }
@@ -167,8 +176,30 @@ export type LearningPresentation = {
 
 const relationshipsFor = (presentation: LearningPresentation): readonly LearningRelationship[] => [
   ...presentation.sections.flatMap((section) => section.rows.flatMap((row) => row.relationships ?? [])),
-  ...Object.values(presentation.keyExpansionLane?.rowsById ?? {}).flatMap((row) => row.relationships ?? []),
+  ...(presentation.keyExpansionLane?.rows ?? []).flatMap((row) => row.relationships ?? []),
 ]
+
+type LaneLayoutRow = { readonly row?: LearningRow; readonly lane?: KeyExpansionLaneRow }
+
+const laneLayout = (rows: readonly LearningRow[], lane: readonly KeyExpansionLaneRow[]): readonly LaneLayoutRow[] => {
+  const rowIds = new Set(rows.map((row) => row.id))
+  const anchors = new Set(lane.flatMap((row) => row.anchor && rowIds.has(row.anchor) ? [row.anchor] : []))
+  const segments = <T,>(items: readonly T[], anchorOf: (item: T) => string | undefined): Map<string | undefined, T[]> => {
+    let current: T[] = []
+    const result = new Map<string | undefined, T[]>([[undefined, current]])
+    for (const item of items) {
+      const anchor = anchorOf(item)
+      if (anchor !== undefined && anchors.has(anchor)) result.set(anchor, current = [])
+      current.push(item)
+    }
+    return result
+  }
+  const laneSegments = segments(lane, (row) => row.anchor)
+  return [...segments(rows, (row) => row.id)].flatMap(([anchor, traceRows]) => {
+    const laneRows = laneSegments.get(anchor) ?? []
+    return Array.from({ length: Math.max(traceRows.length, laneRows.length) }, (_, index) => ({ row: traceRows[index], lane: laneRows[index] }))
+  })
+}
 
 export const relatedBitIds = (presentation: LearningPresentation, selected: string | undefined): ReadonlySet<string> => {
   if (!selected) return new Set()
@@ -184,7 +215,7 @@ export const relatedBitIds = (presentation: LearningPresentation, selected: stri
   return new Set([...reach('from', 'to'), ...reach('to', 'from')])
 }
 
-const bitGroups = (row: LearningRow): readonly (readonly LearningBit[])[] => {
+const bitGroups = (row: Pick<LearningRow, 'selectableBits' | 'bitGrouping'>): readonly (readonly LearningBit[])[] => {
   const selectable = row.selectableBits ?? []
   if (!row.bitGrouping) return [selectable]
   const { size } = row.bitGrouping
@@ -269,28 +300,23 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
   const related = useMemo(() => relatedBitIds(presentation, selected?.id), [presentation, selected])
   const relationships = relationshipsFor(presentation)
   // Wider rows carry longer diagonal lines, so give them proportionally more vertical room.
-  const lineageGap = Math.max(6, ...presentation.sections.flatMap((section) => section.rows.map((row) => row.selectableBits?.length ?? 0)))
   const rows = presentation.sections.flatMap((section) => section.rows)
-  const laneBits = Object.values(presentation.keyExpansionLane?.rowsById ?? {}).flatMap((row) => row.selectableBits ?? [])
+  const laneRows = presentation.keyExpansionLane?.rows ?? []
+  const lineageGap = Math.max(6, ...[...rows, ...laneRows].map((row) => row.selectableBits?.length ?? 0))
   const selectedTarget = selected?.kind === 'bit'
-    ? [...rows.flatMap((row) => row.selectableBits ?? []), ...laneBits].find((bit) => bit.id === selected.id)
+    ? [...rows, ...laneRows].flatMap((row) => row.selectableBits ?? []).find((bit) => bit.id === selected.id)
     : rows.map((row) => row.selectableKey).find((key) => key?.id === selected?.id)
   const lineageContainer = useRef<HTMLDivElement>(null)
   const targets = useRef(new Map<string, HTMLElement>())
-  const rowTargets = useRef(new Map<string, HTMLTableRowElement>())
-  const [lineage, setLineage] = useState<{ readonly width: number; readonly height: number; readonly locations: ReadonlyMap<string, LineageLocation> }>({
+  const [lineage, setLineage] = useState<{ readonly measure: number; readonly presentation?: LearningPresentation; readonly width: number; readonly height: number; readonly locations: ReadonlyMap<string, LineageLocation> }>({
+    measure: 0,
     width: 0,
     height: 0,
     locations: new Map(),
   })
-  const [keyExpansionLayout, setKeyExpansionLayout] = useState<{ readonly left: number; readonly top: number; readonly width: number; readonly rowHeights: ReadonlyMap<string, number> } | undefined>(undefined)
   const targetRef = (id: string) => (target: HTMLButtonElement | null): void => {
     if (target) targets.current.set(id, target)
     else targets.current.delete(id)
-  }
-  const rowRef = (id: string) => (target: HTMLTableRowElement | null): void => {
-    if (target) rowTargets.current.set(id, target)
-    else rowTargets.current.delete(id)
   }
   const laneOpen = openKeyId !== undefined && presentation.keyExpansionLane !== undefined
   const select = (next: LearningSelection | undefined): void => {
@@ -304,11 +330,6 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
     select({ kind: 'bit', id })
     if (!presentation.keyExpansionLane) setOpenKeyId(undefined)
   }
-  // Shared between the trace table's own control cell and the open lane: while the lane is open
-  // it covers every row's control cell (issue #83 requires covering State flow/Operation detail
-  // while the lane is open), so a round-key row's chip renders here - and only here, via the
-  // single `targetRef` registration - so that chip stays reachable and can move the open lane to
-  // a different round key (or close it) even though the trace table's own copy is hidden beneath.
   const renderKeyChip = (key: LearningRoundKey): ReactNode => {
     const state = keyState(key, selected, openKeyId, related)
     return <button
@@ -327,41 +348,38 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
     >{key.value}</button>
   }
 
-  // Computes the lane's cover position (independent of lineage). Runs first so its resulting
-  // `keyExpansionLayout` change (below) drives the second effect to re-measure lineage targets
-  // only once the lane's own bit buttons have actually mounted.
-  useLayoutEffect(() => {
-    const container = lineageContainer.current
-    if (!container || !laneOpen) {
-      setKeyExpansionLayout(undefined)
-      return
-    }
-    const bounds = container.getBoundingClientRect()
-    const coverStart = container.querySelector('[data-cover-start="true"]')
-    const firstRow = rows[0] && rowTargets.current.get(rows[0].id)
-    if (!coverStart || !firstRow) {
-      setKeyExpansionLayout(undefined)
-      return
-    }
-    const coverBounds = coverStart.getBoundingClientRect()
-    const firstRowBounds = firstRow.getBoundingClientRect()
-    const rowHeights = new Map<string, number>()
-    for (const row of rows) {
-      const target = rowTargets.current.get(row.id)
-      if (target) rowHeights.set(row.id, target.getBoundingClientRect().height)
-    }
-    setKeyExpansionLayout({
-      left: coverBounds.left - bounds.left,
-      top: firstRowBounds.top - bounds.top,
-      width: bounds.right - coverBounds.left,
-      rowHeights,
+  const renderBits = (row: Pick<LearningRow, 'selectableBits' | 'bitGrouping'>): ReactNode => bitGroups(row).map((group, index) => {
+    const buttons = group.map((bit, position) => {
+      const state = bitState(bit, selected, related)
+      return <button
+        aria-label={bit.ariaLabel}
+        aria-pressed={state === 'selected'}
+        data-state={state}
+        key={bit.id}
+        onClick={() => selectBit(bit.id)}
+        ref={targetRef(bit.id)}
+        style={{
+          ...stateStyles[state],
+          borderColor: learningColors.border,
+          // A shadow rather than a border so group boundaries never shift bit columns.
+          boxShadow: row.bitGrouping && index && !position ? `-2px 0 0 ${learningColors.text}` : undefined,
+          color: learningColors.text,
+          position: 'relative',
+        }}
+        type="button"
+      >{bit.value}</button>
     })
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `rows` is derived from `presentation` every render
-  }, [presentation, laneOpen])
+    return row.bitGrouping
+      ? <span
+          data-active={index === row.bitGrouping.active ? 'true' : undefined}
+          data-bit-group={index}
+          key={index}
+          style={{ outline: index === row.bitGrouping.active ? `2px dashed ${learningColors.text}` : undefined, outlineOffset: 2 }}
+        >{buttons}</span>
+      : buttons
+  })
+  const controlStyle: CSSProperties = { paddingBlock: relationships.length ? lineageGap : undefined, whiteSpace: 'nowrap' }
 
-  // Measures every registered bit/key target's position for the lineage overlay. Depends on
-  // `keyExpansionLayout` so it reruns after the lane's own bit buttons mount (they only exist
-  // once the effect above has set a layout), instead of only measuring the main trace table.
   useLayoutEffect(() => {
     const container = lineageContainer.current
     if (!container) return
@@ -371,8 +389,8 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
       const targetBounds = target.getBoundingClientRect()
       locations.set(id, { x: targetBounds.left - bounds.left + targetBounds.width / 2, y: targetBounds.top - bounds.top + targetBounds.height / 2 })
     }
-    setLineage({ width: bounds.width, height: bounds.height, locations })
-  }, [presentation, laneOpen, keyExpansionLayout])
+    setLineage((previous) => ({ measure: previous.measure + 1, presentation, width: bounds.width, height: bounds.height, locations }))
+  }, [presentation, laneOpen])
 
   return <section aria-label={presentation.title} style={{ overflowX: 'auto' }}>
     <h3>{presentation.title}</h3>
@@ -381,9 +399,12 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
     {presentation.sections.filter((section) => section.rows.some((row) => row.state === 'incomplete'))
       .map((section) => <p key={`${section.kind}-${section.caption}`} role="status">{section.caption}</p>)}
     <div ref={lineageContainer} style={{ minWidth: '100%', position: 'relative', width: 'max-content' }}>
+      {/* Remount per measurement, drawing only this presentation's locations: inserting tens of
+          thousands of lines into a mounted SVG is quadratic in React. */}
       <LineageDiagram
         height={lineage.height}
-        locations={lineage.locations}
+        key={lineage.measure}
+        locations={lineage.presentation === presentation ? lineage.locations : new Map()}
         relationships={relationships}
         related={related}
         selected={selected}
@@ -392,98 +413,56 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
       {presentation.sections.map((section) => {
         const hasControls = section.rows.some((row) => row.selectableBits?.length || row.selectableKey)
         const hasDetails = section.rows.some((row) => row.detail)
-        return <TraceTable caption={section.caption} headers={section.headers} key={`${section.kind}-${section.caption}`}>
-          {section.rows.map((row) => <ComparisonRow key={row.id} label={row.label} rowId={row.id} rowRef={rowRef(row.id)} state={row.state}>
-            {row.cells.map((cell, index) => <ValueCell ariaLabel={cell.ariaLabel} key={index} state={cell.state}>{cell.value}</ValueCell>)}
-            {hasControls && <td data-cover-start={presentation.keyExpansionLane ? 'true' : undefined} style={{ paddingBlock: relationships.length ? lineageGap : undefined, whiteSpace: 'nowrap' }}>{bitGroups(row).map((group, index) => {
-              const buttons = group.map((bit, position) => {
-                const state = bitState(bit, selected, related)
-                return <button
-                  aria-label={bit.ariaLabel}
-                  aria-pressed={state === 'selected'}
-                  data-state={state}
-                  key={bit.id}
-                  onClick={() => selectBit(bit.id)}
-                  ref={targetRef(bit.id)}
-                  style={{
-                    ...stateStyles[state],
-                    borderColor: learningColors.border,
-                    // A shadow rather than a border so group boundaries never shift bit columns.
-                    boxShadow: row.bitGrouping && index && !position ? `-2px 0 0 ${learningColors.text}` : undefined,
-                    color: learningColors.text,
-                    position: 'relative',
-                  }}
-                  type="button"
-                >{bit.value}</button>
-              })
-              return row.bitGrouping
-                ? <span
-                    data-active={index === row.bitGrouping.active ? 'true' : undefined}
-                    data-bit-group={index}
-                    key={index}
-                    style={{ outline: index === row.bitGrouping.active ? `2px dashed ${learningColors.text}` : undefined, outlineOffset: 2 }}
-                  >{buttons}</span>
-                : buttons
-            })}{/* Hidden (rather than removed) while the lane is open: this cell must stay in the
-                DOM so `data-cover-start` keeps measuring the covered column's position, but the
-                lane renders this same chip on top of it (see `renderKeyChip`) so it remains
-                reachable - rendering both would fight over one `targetRef` and duplicate the
-                chip's aria-label. */}
-            {row.selectableKey && !laneOpen && renderKeyChip(row.selectableKey)}</td>}
-            {hasDetails && <ValueCell>{row.detail}</ValueCell>}
-          </ComparisonRow>)}
+        const lane = laneOpen && hasControls && section.kind === 'trace' ? presentation.keyExpansionLane : undefined
+        const key = `${section.kind}-${section.caption}`
+        const table = <TraceTable caption={section.caption} headers={section.headers} joinRows={!!lane} key={key}>
+          {lane
+            ? (() => {
+                const layout = laneLayout(section.rows, lane.rows)
+                const first = layout.findIndex((entry) => entry.lane)
+                const last = layout.findLastIndex((entry) => entry.lane)
+                return layout.map(({ row, lane: laneRow }, index) => {
+                  const inLane = index >= first && index <= last
+                  // A tinted, bordered block keeps the schedule from reading as part of the cipher trace.
+                  const laneStyle: CSSProperties = inLane
+                    ? {
+                        ...controlStyle,
+                        backgroundColor: learningColors.lane,
+                        borderInline: `2px solid ${learningColors.laneBorder}`,
+                        borderTop: index === first ? `2px solid ${learningColors.laneBorder}` : undefined,
+                        borderBottom: index === last ? `2px solid ${learningColors.laneBorder}` : undefined,
+                      }
+                    : controlStyle
+                  return <ComparisonRow
+                    key={row?.id ?? `lane-${laneRow!.id}`}
+                    label={row?.label ?? ''}
+                    rowId={row?.id}
+                    state={row?.state}
+                  >
+                    {(row ?? section.rows[0]).cells.map((cell, cellIndex) => row
+                      ? <ValueCell ariaLabel={cell.ariaLabel} key={cellIndex} state={cell.state}>{cell.value}</ValueCell>
+                      : <td key={cellIndex} />)}
+                    <td style={controlStyle}>{row?.selectableKey && renderKeyChip(row.selectableKey)}</td>
+                    <td data-lane={inLane ? 'true' : undefined} data-lane-row={laneRow?.id} style={laneStyle}>
+                      {laneRow?.label && <span style={{ marginInline: 8 }}>{laneRow.label}</span>}
+                      {laneRow && renderBits(laneRow)}
+                    </td>
+                  </ComparisonRow>
+                })
+              })()
+            : section.rows.map((row) => <ComparisonRow key={row.id} label={row.label} rowId={row.id} state={row.state}>
+                {row.cells.map((cell, index) => <ValueCell ariaLabel={cell.ariaLabel} key={index} state={cell.state}>{cell.value}</ValueCell>)}
+                {hasControls && <td style={controlStyle}>{renderBits(row)}{row.selectableKey && renderKeyChip(row.selectableKey)}</td>}
+                {hasDetails && <ValueCell>{row.detail}</ValueCell>}
+              </ComparisonRow>)}
         </TraceTable>
+        return lane
+          ? <div aria-label={lane.caption} key={key} role="region">
+              <button onClick={() => { setOpenKeyId(undefined); select(undefined) }} type="button">{lane.closeLabel}</button>
+              {table}
+            </div>
+          : table
       })}
-      {laneOpen && presentation.keyExpansionLane && keyExpansionLayout && <div
-        aria-label={presentation.keyExpansionLane.caption}
-        role="region"
-        style={{
-          left: keyExpansionLayout.left,
-          position: 'absolute',
-          top: keyExpansionLayout.top,
-          width: keyExpansionLayout.width,
-          zIndex: 1,
-        }}
-      >
-        {/* Positioned above the row-aligned area (not in its normal flow) so the close control
-            does not push the lane's rows down and out of alignment with the trace table. */}
-        <div style={{ bottom: '100%', position: 'absolute', right: 0 }}>
-          <button onClick={() => { setOpenKeyId(undefined); select(undefined) }} type="button">{presentation.keyExpansionLane.closeLabel}</button>
-        </div>
-        {/* `overflow-x: auto` keeps wide rows (e.g. a 256-bit AES-256 master key) scrollable
-            inside the lane's own fixed width instead of widening the page. */}
-        <div style={{ overflowX: 'auto', width: '100%' }}>
-          {/* No `borderCollapse`/`borderSpacing` override: the trace table above (`TraceTable`)
-              sets none either, so both tables share the browser's default row spacing and each
-              lane row's forced height (`rowHeights`, from the trace table's own measured rows)
-              lines up with its trace-table counterpart instead of drifting row over row. */}
-          <table style={{ background: learningColors.canvas, border: `1px solid ${learningColors.border}` }}>
-            <tbody>
-              {rows.map((row) => {
-                const laneRow = presentation.keyExpansionLane!.rowsById[row.id]
-                return <tr data-row-id={row.id} key={row.id} style={{ height: keyExpansionLayout.rowHeights.get(row.id) }}>
-                  <td style={{ whiteSpace: 'nowrap' }}>
-                    {row.selectableKey && <span style={{ display: 'inline-block', marginRight: 4 }}>{renderKeyChip(row.selectableKey)}</span>}
-                    {(laneRow?.selectableBits ?? []).map((bit) => {
-                      const state = bitState(bit, selected, related)
-                      return <button
-                        aria-label={bit.ariaLabel}
-                        aria-pressed={state === 'selected'}
-                        data-state={state}
-                        key={bit.id}
-                        onClick={() => selectBit(bit.id)}
-                        ref={targetRef(bit.id)}
-                        style={{ ...stateStyles[state], borderColor: learningColors.border, color: learningColors.text, display: 'inline-block', height: 20, position: 'relative', width: 16 }}
-                        type="button"
-                      >{bit.value}</button>
-                    })}
-                  </td>
-                </tr>
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>}
     </div>
   </section>
 }

@@ -66,11 +66,11 @@ const laneFixture = (): LearningPresentation => ({
   keyExpansionLane: {
     caption: 'Key expansion',
     closeLabel: 'Close key expansion',
-    rowsById: {
-      input: { selectableBits: [{ id: 'master-0', bit: 0, value: '1', ariaLabel: 'Master key bit 0' }] },
-      key: { selectableBits: [{ id: 'round-key-1-bit-0', bit: 0, value: '1', ariaLabel: 'Round key 1 bit 0' }] },
-      'key-2': { selectableBits: [{ id: 'round-key-2-bit-0', bit: 0, value: '1', ariaLabel: 'Round key 2 bit 0' }] },
-    },
+    rows: [
+      { id: 'lane-input', anchor: 'input', selectableBits: [{ id: 'master-0', bit: 0, value: '1', ariaLabel: 'Master key bit 0' }] },
+      { id: 'lane-key', anchor: 'key', selectableBits: [{ id: 'round-key-1-bit-0', bit: 0, value: '1', ariaLabel: 'Round key 1 bit 0' }] },
+      { id: 'lane-key-2', anchor: 'key-2', selectableBits: [{ id: 'round-key-2-bit-0', bit: 0, value: '1', ariaLabel: 'Round key 2 bit 0' }] },
+    ],
   },
 })
 
@@ -141,6 +141,45 @@ describe('Key expansion lane (#83)', () => {
     await user.click(screen.getByRole('button', { name: 'Round key 1 bit 0' }))
     expect(screen.getByRole('button', { name: 'Round key 1 bit 0' })).toHaveAttribute('data-state', 'selected')
     expect(screen.getByRole('button', { name: 'Master key bit 0' })).toHaveAttribute('data-state', 'related')
+  })
+
+  it('aligns lane rows by anchor and pads the shorter side with temporary empty rows (#92)', async () => {
+    const user = userEvent.setup()
+    const anchored: LearningPresentation = {
+      ...presentation(),
+      keyExpansionLane: {
+        caption: 'Key expansion',
+        closeLabel: 'Close key expansion',
+        rows: [
+          { id: 'lane-input', anchor: 'input', label: 'Schedule input', selectableBits: [{ id: 'schedule-0', bit: 0, value: '1', ariaLabel: 'Schedule input bit 0' }] },
+          { id: 'lane-rot', label: 'RotWord 1', selectableBits: [{ id: 'rot-0', bit: 0, value: '0', ariaLabel: 'RotWord 1 bit 0' }] },
+          { id: 'lane-sub', label: 'SubWord 1', selectableBits: [{ id: 'sub-0', bit: 0, value: '1', ariaLabel: 'SubWord 1 bit 0' }] },
+          { id: 'lane-key', anchor: 'key' },
+        ],
+      },
+    }
+    render(<LearningPresentationView presentation={anchored} />)
+    const bodyRows = () => [...document.querySelectorAll('tbody tr')]
+    expect(bodyRows()).toHaveLength(3)
+
+    await user.click(screen.getByRole('button', { name: 'Round key 1' }))
+    const region = screen.getByRole('region', { name: 'Key expansion' })
+    const rows = [...region.querySelectorAll('tbody tr')]
+    expect(rows.map((row) => row.getAttribute('data-row-id'))).toEqual(['input', 'output', null, 'key'])
+    expect(rows.map((row) => row.querySelector('[data-lane-row]')?.getAttribute('data-lane-row'))).toEqual(['lane-input', 'lane-rot', 'lane-sub', 'lane-key'])
+    expect(rows[1]).toHaveTextContent('RotWord 1')
+    const laneCells = rows.map((row) => row.querySelector<HTMLElement>('[data-lane-row]')!)
+    expect(laneCells.every((cell) => cell.dataset.lane === 'true' && cell.style.backgroundColor)).toBe(true)
+    expect(laneCells[0].style.borderTop).toContain('solid')
+    expect(laneCells[3].style.borderBottom).toContain('solid')
+    expect(laneCells[1].style.borderTop).toBe('')
+    expect(rows[3].querySelector('[data-lane-row]')).not.toContainElement(screen.getByRole('button', { name: 'Round key 1' }))
+    expect(screen.queryByRole('button', { name: 'Input bit 0' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Round key 1' })).toHaveAttribute('aria-pressed', 'true')
+
+    await user.click(screen.getByRole('button', { name: 'Close key expansion' }))
+    expect(bodyRows().map((row) => row.getAttribute('data-row-id'))).toEqual(['input', 'output', 'key'])
+    expect(screen.getByRole('button', { name: 'Input bit 0' })).toBeVisible()
   })
 })
 
