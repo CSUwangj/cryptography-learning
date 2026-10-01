@@ -48,6 +48,18 @@
 - **Bit Lineage** — The structural dependency relationships connecting a selected
   bit to its ancestors and descendants through cryptographic operations. Lineage
   does not assert that the selected bit individually caused an observed difference.
+- **Generic Block-Cipher Presentation** — The complete state-flow presentation for
+  a block-cipher trace, including operation rows, values, and structural relationships.
+  It is the base presentation for both encryption and decryption.
+- **Encryption Presentation** — A Generic Block-Cipher Presentation that may show a
+  key-expansion overlay aligned to encryption round keys.
+- **Decryption Presentation** — A Generic Block-Cipher Presentation without a
+  key-expansion overlay.
+- **Key-Expansion Presentation** — A standalone presentation of schedule operations
+  and their full-state lineage. It has no block-cipher frame or change background and
+  does not participate in overlays.
+- **Key-Expansion Overlay** — A key-expansion view temporarily aligned over an
+  Encryption Presentation. It is unavailable for Decryption Presentation.
 - **Mobile Practice View** — The narrow-viewport presentation of Practice in
   which one selected Lab is the primary surface and Lab navigation is secondary.
   _Avoid:_ mobile Practice page, phone layout
