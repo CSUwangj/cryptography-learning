@@ -746,8 +746,9 @@ describe('AES key expansion (#83)', () => {
     if (!execution.ok) return
     const trace = execution.value.trace as readonly TraceEvent[]
     expect(trace.filter((event) => event.path === 'word-0')).toEqual([
-      { path: 'word-0', level: 'detail', round: 0, stage: 'input', value: bits(32, hexToBytes('2b7e1516')) },
+      { path: 'word-0', level: 'detail', round: 0, stage: 'input', word: 0, value: bits(32, hexToBytes('2b7e1516')) },
     ])
+    expect(trace.filter((event) => event.path === 'word-4' || event.path.startsWith('word-4-')).map((event) => event.word)).toEqual([4, 4, 4, 4, 4])
     // Word 4 begins round 1's schedule step: RotWord, SubWord, Rcon, then two XORs (round-constant mix, then w[0]).
     expect(trace.filter((event) => event.path === 'word-4' || event.path.startsWith('word-4-')).map((event) => [event.path, event.round, event.stage, 'value' in event && event.value && hex(event.value as ReturnType<typeof bits>)])).toEqual([
       ['word-4-rot', 1, 'rot-word', '0xcf4f3c09'],

@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import { bits, executeWorkerRequest, hex } from '../crypto_graph'
 import { aesKeyExpansionGraphNodesYaml } from '../../demos/aesKeyExpansionLesson'
-import { aes128CipherDemoDocuments, aesCipherDemoDocuments } from '../../demos/aes128CipherLesson'
+import { aesCipherDemoDocuments } from '../../demos/aes128CipherLesson'
 import { teachingSpnDemoDocuments } from '../../demos/teachingSpnLesson'
 import {
   compileLesson,
@@ -340,9 +340,9 @@ steps:
       return { status: result.status, report: JSON.parse(result.stdout) }
     }
     try {
-      expect(validate('aes', aes128CipherDemoDocuments)).toMatchObject({
+      expect(validate('aes', aesCipherDemoDocuments(128))).toMatchObject({
         status: 0,
-        report: { ok: true, diagnostics: [], dryRun: { steps: [{ id: 'enter-input' }, { id: 'encrypt' }, { id: 'decrypt' }] } },
+        report: { ok: true, diagnostics: [], dryRun: { steps: [{ id: 'enter-input' }, { id: 'expand-key' }, { id: 'encrypt' }, { id: 'decrypt' }] } },
       })
       expect(validate('spn', teachingSpnDemoDocuments)).toMatchObject({
         status: 0,
@@ -647,6 +647,7 @@ steps:
       if (!result.ok) return
       expect(result.value.steps.map((step) => [step.id, step.presentation])).toEqual([
         ['enter-input', undefined],
+        ['expand-key', { kind: 'key-expansion', algorithm: 'AES', variant }],
         ['encrypt', { kind: 'block-cipher', algorithm: 'AES', variant, direction: 'encrypt' }],
         ['decrypt', { kind: 'block-cipher', algorithm: 'AES', variant, direction: 'decrypt' }],
       ])

@@ -1,5 +1,5 @@
 import type { LessonDocuments } from '../src/lesson_runtime'
-import { aesCipherGraph, aesInverseCipherGraph, aesKeyExpansionGraph, type AuthoredGraph } from '../src/crypto_graph'
+import { aesCipherGraph, aesInverseCipherGraph, aesKeyExpansionGraph } from '../src/crypto_graph'
 
 // Real AES (Nk/Nr from FIPS-197) rather than a hand-authored toy schedule: the known-answer
 // vectors need the true key schedule and cipher, so this serializes the same tested
@@ -10,68 +10,49 @@ const kat = {
   128: {
     key: '000102030405060708090a0b0c0d0e0f',
     plaintext: '00112233445566778899aabbccddeeff',
-    rounds: 10,
+    ciphertext: '69c4e0d86a7b0430d8cdb78070b4c55a',
   },
   192: {
     key: '000102030405060708090a0b0c0d0e0f1011121314151617',
     plaintext: '00112233445566778899aabbccddeeff',
-    rounds: 12,
+    ciphertext: 'dda97ca4864cdfe06eaf70a0ec0d7191',
   },
   256: {
     key: '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f',
     plaintext: '00112233445566778899aabbccddeeff',
-    rounds: 14,
+    ciphertext: '8ea2b7ca516745bfeafc49904b496089',
   },
 } as const
 
-// The schedule's `round-key-<r>` nodes replace the cipher's same-named round-key sources, so one
-// execution traces both the key schedule and the cipher.
-const withKeySchedule = (variant: 128 | 192 | 256, cipher: AuthoredGraph): AuthoredGraph => ({
-  ...cipher,
-  nodes: [...aesKeyExpansionGraph(variant).nodes, ...cipher.nodes.filter((node) => !/^round-key-\d+$/.test(node.id))],
-})
-
-const locales = {
-  128: {
-    'en-US': 'title: AES-128 encryption and decryption\nsummary: Encrypt a block, then decrypt it back with the same round keys.\ntexts: {key: Key, plaintext: Plaintext}',
-    'zh-CN': 'title: AES-128 加密与解密\nsummary: 加密一个数据块，再用相同的轮密钥解密回来。\ntexts: {key: 密钥, plaintext: 明文}',
-  },
-  192: {
-    'en-US': 'title: AES-192 encryption and decryption\nsummary: Encrypt a block, then decrypt it back with the same round keys.\ntexts: {key: Key, plaintext: Plaintext}',
-    'zh-CN': 'title: AES-192 加密与解密\nsummary: 加密一个数据块，再用相同的轮密钥解密回来。\ntexts: {key: 密钥, plaintext: 明文}',
-  },
-  256: {
-    'en-US': 'title: AES-256 encryption and decryption\nsummary: Encrypt a block, then decrypt it back with the same round keys.\ntexts: {key: Key, plaintext: Plaintext}',
-    'zh-CN': 'title: AES-256 加密与解密\nsummary: 加密一个数据块，再用相同的轮密钥解密回来。\ntexts: {key: 密钥, plaintext: 明文}',
-  },
-} as const
-
-const presentationYaml = (variant: 128 | 192 | 256, direction: 'encrypt' | 'decrypt'): string => `
-    presentation:
-      kind: block-cipher
-      algorithm: AES
-      variant: ${variant}
-      direction: ${direction}`
-
+/** Single Lesson with expand-key, encrypt, and decrypt steps sharing one authoritative key schedule execution. */
 export const aesCipherDemoDocuments = (variant: 128 | 192 | 256): LessonDocuments => {
-  const { key, plaintext, rounds } = kat[variant]
-  const encrypt = withKeySchedule(variant, aesCipherGraph(variant))
-  const decrypt = withKeySchedule(variant, aesInverseCipherGraph(variant))
+  const schedule = aesKeyExpansionGraph(variant)
+  const encrypt = aesCipherGraph(variant)
+  const decrypt = aesInverseCipherGraph(variant)
+  const nr = { 128: 10, 192: 12, 256: 14 }[variant]
   return {
     lesson: `version: 1
-id: aes-${variant}-cipher-demo
+id: aes-${variant}-demo
 default_locale: en-US
 inputs:
   key:
     type: {family: bits, size: ${variant}}
     encoding: hex-block
-    default: "${key}"
+    default: "${kat[variant].key}"
   plaintext:
     type: {family: bits, size: 128}
     encoding: hex-block
-    default: "${plaintext}"
+    default: "${kat[variant].plaintext}"
+  ciphertext:
+    type: {family: bits, size: 128}
+    encoding: hex-block
+    default: "${kat[variant].ciphertext}"
 constants: {}
 graphs:
+  expand:
+    traceLevel: detail
+    nodes: ${JSON.stringify(schedule.nodes)}
+    outputs: ${JSON.stringify(schedule.outputs)}
   encrypt:
     traceLevel: detail
     nodes: ${JSON.stringify(encrypt.nodes)}
@@ -85,23 +66,42 @@ steps:
     inputs:
       - {input: key, prompt: key}
       - {input: plaintext, prompt: plaintext}
+      - {input: ciphertext, prompt: ciphertext}
+  - id: expand-key
+    execute:
+      graph: expand
+      bindings:
+        key.value: {input: key}
+    presentation:
+      kind: key-expansion
+      algorithm: AES
+      variant: ${variant}
   - id: encrypt
     execute:
       graph: encrypt
       bindings:
-        key.value: {input: key}
-        plaintext.value: {input: plaintext}${presentationYaml(variant, 'encrypt')}
+        plaintext.value: {input: plaintext}${Array.from({ length: nr + 1 }, (_, r) => `
+        round-key-${r}.value: {step: expand-key, output: round-key-${r}.value}`).join('')}
+    presentation:
+      kind: block-cipher
+      algorithm: AES
+      variant: ${variant}
+      direction: encrypt
   - id: decrypt
     execute:
       graph: decrypt
       bindings:
-        key.value: {input: key}
-        ciphertext.value: {step: encrypt, output: cipher-${rounds}-add-round-key.value}${presentationYaml(variant, 'decrypt')}
+        ciphertext.value: {input: ciphertext}${Array.from({ length: nr + 1 }, (_, r) => `
+        round-key-${r}.value: {step: expand-key, output: round-key-${r}.value}`).join('')}
+    presentation:
+      kind: block-cipher
+      algorithm: AES
+      variant: ${variant}
+      direction: decrypt
 `,
-    locales: locales[variant],
+    locales: {
+      'en-US': `title: AES-${variant} cipher\nsummary: Encrypt and decrypt blocks with the same key, inspecting the shared key schedule.\ntexts: {key: Key, plaintext: Plaintext, ciphertext: Ciphertext}`,
+      'zh-CN': `title: AES-${variant} 密码\nsummary: 用同一密钥加密和解密数据块，查看共享的密钥编排。\ntexts: {key: 密钥, plaintext: 明文, ciphertext: 密文}`,
+    },
   }
 }
-
-export const aes128CipherDemoDocuments: LessonDocuments = aesCipherDemoDocuments(128)
-export const aes192CipherDemoDocuments: LessonDocuments = aesCipherDemoDocuments(192)
-export const aes256CipherDemoDocuments: LessonDocuments = aesCipherDemoDocuments(256)

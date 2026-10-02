@@ -43,6 +43,10 @@ export const aesKeyExpansionGraphNodesYaml = `      - {id: key, operation: core.
           w2: {node: word-6, port: value}
           w3: {node: word-7, port: value}`
 
+// Teaching-schedule boundary: Nk=2/Nr=1 is not a FIPS-197 AES variant. The presentation
+// metadata only selects the generic key-expansion mode and AES labels; the renderer derives
+// Nk and the 64-bit state width from the traced input words and titles the view as a
+// teaching schedule rather than AES-128.
 export const aesKeyExpansionDemoDocuments: LessonDocuments = {
   lesson: `version: 1
 id: aes-key-expansion-demo
@@ -67,14 +71,13 @@ steps:
       graph: expand
       bindings:
         key.value: {input: key}
-    visualizer:
-      id: aes-key-expansion@1
-      bindings:
-        trace: {step: expand-key, trace: output}
-      options: {}
+    presentation:
+      kind: key-expansion
+      algorithm: AES
+      variant: 128
 `,
   locales: {
-    'en-US': 'title: AES key expansion\nsummary: Expand a key and inspect the round keys it produces.\ntexts: {}',
-    'zh-CN': 'title: AES 密钥扩展\nsummary: 扩展密钥并查看其生成的轮密钥。\ntexts: {}',
+    'en-US': 'title: AES-style teaching key schedule\nsummary: Expand a small 64-bit teaching key (Nk=2, not a FIPS-197 AES variant) and inspect the round keys it produces.\ntexts: {}',
+    'zh-CN': 'title: AES 风格教学密钥编排\nsummary: 扩展一个 64 位小型教学密钥（Nk=2，非 FIPS-197 AES 变体），并查看其生成的轮密钥。\ntexts: {}',
   },
 }

@@ -133,6 +133,8 @@ export type TraceEvent = {
   readonly round?: number
   readonly stage?: TraceStage
   readonly operation?: TraceOperation
+  /** Key-schedule word index for internal word-sized events; such events are metadata, not student-facing rows. */
+  readonly word?: number
   readonly value?: CryptoValue
 }
 
@@ -1389,14 +1391,14 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
               }
             } else if (compiledGraph.traceLevel === 'detail' && node.operation === 'aes.key-word@1' && /^word-\d+$/.test(id)) {
               const wordIndex = Number(/^word-(\d+)$/.exec(id)![1])
-              appendTrace({ path: id, level: 'detail', round: Math.floor(wordIndex / 4), stage: 'input', value: cloneValue(result.value) })
+              appendTrace({ path: id, level: 'detail', round: Math.floor(wordIndex / 4), stage: 'input', word: wordIndex, value: cloneValue(result.value) })
             } else if (compiledGraph.traceLevel === 'detail' && /^word-\d+-(rot|sub|rcon|temp)$/.test(id)) {
               const [, wordIndex, stageToken] = /^word-(\d+)-(rot|sub|rcon|temp)$/.exec(id)!
               const aesStage = { rot: 'rot-word', sub: 'sub-word', rcon: 'rcon', temp: 'word-xor' }[stageToken as 'rot' | 'sub' | 'rcon' | 'temp'] as TraceStage
-              appendTrace({ path: id, level: 'detail', round: Math.floor(Number(wordIndex) / 4), stage: aesStage, value: cloneValue(result.value) })
+              appendTrace({ path: id, level: 'detail', round: Math.floor(Number(wordIndex) / 4), stage: aesStage, word: Number(wordIndex), value: cloneValue(result.value) })
             } else if (compiledGraph.traceLevel === 'detail' && /^word-\d+$/.test(id)) {
               const wordIndex = Number(/^word-(\d+)$/.exec(id)![1])
-              appendTrace({ path: id, level: 'detail', round: Math.floor(wordIndex / 4), stage: 'word-xor', value: cloneValue(result.value) })
+              appendTrace({ path: id, level: 'detail', round: Math.floor(wordIndex / 4), stage: 'word-xor', word: wordIndex, value: cloneValue(result.value) })
             } else if (compiledGraph.traceLevel === 'detail' && /^round-key-\d+$/.test(id)) {
               const round = Number(/^round-key-(\d+)$/.exec(id)![1])
               appendTrace({ path: id, level: 'detail', round, stage: 'round-key', value: cloneValue(result.value) })

@@ -20,12 +20,13 @@ export type BlockCipherRendererProps = {
   readonly locale: string
   readonly executionIdentity: string
   readonly presentation: BlockCipherPresentationMeta
+  readonly keyScheduleExecution?: WorkerExecutionSnapshot
 }
 
 const copy = {
   'en-US': {
-    encrypt: (variant: Variant) => `AES-${variant} encryption`,
-    decrypt: (variant: Variant) => `AES-${variant} decryption`,
+    encrypt: (algorithm: string, variant: Variant) => `${algorithm}-${variant} encryption`,
+    decrypt: (algorithm: string, variant: Variant) => `${algorithm}-${variant} decryption`,
     instructions: 'Every line is a structural bit relationship. Select a bit to emphasize its lineage.',
     openKey: ' Open a round key to see its key schedule.',
     bits: 'Bits',
@@ -36,8 +37,8 @@ const copy = {
     closeLane: 'Close key expansion',
   },
   'zh-CN': {
-    encrypt: (variant: Variant) => `AES-${variant} 加密`,
-    decrypt: (variant: Variant) => `AES-${variant} 解密`,
+    encrypt: (algorithm: string, variant: Variant) => `${algorithm}-${variant} 加密`,
+    decrypt: (algorithm: string, variant: Variant) => `${algorithm}-${variant} 解密`,
     instructions: '每条连线都是一条结构位关系。选择一位以突出显示其谱系。',
     openKey: '展开某轮密钥以查看其密钥编排。',
     bits: '位',
@@ -64,22 +65,25 @@ export const blockCipherPresentation = (
   locale: string,
   executionIdentity: string,
   meta: BlockCipherPresentationMeta,
+  keyScheduleExecution?: WorkerExecutionSnapshot,
 ): LearningPresentation => {
   const text = copy[locale as Locale] ?? copy['en-US']
   const generic = executionTracePresentation(execution, locale, executionIdentity)
+  const diagnostics = generic.diagnostics?.filter((diagnostic) => diagnostic.code === 'trace.incomplete')
+    .map((diagnostic) => ({ ...diagnostic, code: 'aes.cipher-trace-incomplete' }))
   const labels = new Map(generic.sections[0].rows.map((row) => [row.id, row.label]))
   const events = execution.trace.filter(isBitsEvent)
   const roundKeys = new Map(events.filter((event) => event.stage === 'round-key').map((event) => [event.path, event]))
   const stateEvents = events.filter((event) => event.path === 'plaintext' || event.path === 'ciphertext' || event.path.startsWith('cipher-'))
 
-  const schedule = meta.direction === 'encrypt' && stateEvents[0]
-    ? keyExpansionPresentation(execution, locale, executionIdentity, meta).sections[0].rows
+  const schedule = meta.direction === 'encrypt' && stateEvents[0] && keyScheduleExecution
+    ? keyExpansionPresentation(keyScheduleExecution, locale, executionIdentity, meta).sections[0].rows
     : []
   const keyExpansionLane: KeyExpansionLane | undefined = schedule[0]?.id === 'input'
     ? {
       caption: text.lane,
       closeLabel: text.closeLane,
-      rows: schedule.map((row) => row.selectableKey
+      rows: schedule.map((row) => roundKeys.has(row.id)
         ? { id: `schedule-${row.id}`, anchor: row.id }
         : {
           id: `schedule-${row.id}`,
@@ -127,9 +131,9 @@ export const blockCipherPresentation = (
 
   return {
     ...generic,
-    title: meta.direction === 'encrypt' ? text.encrypt(meta.variant) : text.decrypt(meta.variant),
+    title: meta.direction === 'encrypt' ? text.encrypt(meta.algorithm, meta.variant) : text.decrypt(meta.algorithm, meta.variant),
     instructions: keyExpansionLane ? text.instructions + text.openKey : text.instructions,
-    diagnostics: generic.diagnostics?.map((diagnostic) => ({ ...diagnostic, code: 'aes.cipher-trace-incomplete' })),
+    diagnostics: diagnostics?.length ? diagnostics : undefined,
     keyExpansionLane,
     selectionStatus: (selected) => selected ? `${text.selected}: ${selected.ariaLabel}.` : text.none,
     sections: [
@@ -139,10 +143,10 @@ export const blockCipherPresentation = (
   }
 }
 
-export const BlockCipherRenderer: React.FC<BlockCipherRendererProps> = ({ execution, locale, executionIdentity, presentation }) => {
+export const BlockCipherRenderer: React.FC<BlockCipherRendererProps> = ({ execution, locale, executionIdentity, presentation, keyScheduleExecution }) => {
   const learning = useMemo(
-    () => blockCipherPresentation(execution, locale, executionIdentity, presentation),
-    [execution, locale, executionIdentity, presentation],
+    () => blockCipherPresentation(execution, locale, executionIdentity, presentation, keyScheduleExecution),
+    [execution, locale, executionIdentity, presentation, keyScheduleExecution],
   )
   return <LearningPresentationView presentation={learning} />
 }

@@ -26,6 +26,7 @@ const copy = {
     checkpoint: 'Traced value',
     incomplete: 'Trace is incomplete. Retained checkpoints remain visible; later checkpoints are missing.',
     gap: 'Trace gap',
+    modeMissing: 'This trace contains a key schedule, but the Step declares no key-expansion presentation. Showing the default trace without key-schedule rows.',
     stages: {
       input: 'Input',
       'round-key': 'Round key',
@@ -60,6 +61,7 @@ const copy = {
     checkpoint: '轨迹值',
     incomplete: '轨迹不完整。保留的检查点仍可见；后续检查点缺失。',
     gap: '轨迹缺口',
+    modeMissing: '此轨迹包含密钥编排，但该步骤未声明密钥扩展展示方式。当前显示不含密钥编排行的默认轨迹。',
     stages: {
       input: '输入',
       'round-key': '轮密钥',
@@ -112,10 +114,16 @@ const operationDetail = (event: TraceEvent | TraceCheckpoint, text: ReturnType<t
 /**
  * Descriptor-free rendering for any ordinary execution trace: every retained trace event becomes
  * one row labeled from its semantic stage and round, so new algorithms need no renderer descriptor.
+ * Internal key-schedule words stay trace metadata; their presence without presentation metadata
+ * is reported instead of rendered as a word log.
  */
 export const executionTracePresentation = (execution: WorkerExecutionSnapshot, locale: string, executionIdentity: string): LearningPresentation => {
   const text = textFor(locale)
-  const rows: LearningRow[] = execution.trace.map((event) => {
+  const events = execution.trace.filter((event) => !('word' in event && event.word !== undefined))
+  const modeMissingDiagnostic: LearningDiagnostic | undefined = events.length < execution.trace.length
+    ? { code: 'presentation.key-expansion-mode-missing', message: text.modeMissing, path: 'presentation' }
+    : undefined
+  const rows: LearningRow[] = events.map((event) => {
     const detail = operationDetail(event, text)
     const value = 'summary' in event ? execution.outputs[event.path] : event.value
     return {
@@ -137,10 +145,12 @@ export const executionTracePresentation = (execution: WorkerExecutionSnapshot, l
       details: { retained: execution.traceStatus.retained, dropped: execution.traceStatus.dropped },
     }
     : undefined
+  const diagnostics = [modeMissingDiagnostic, traceIncompleteDiagnostic].filter((item): item is LearningDiagnostic => item !== undefined)
   return {
     title: text.title,
+    instructions: modeMissingDiagnostic?.message,
     executionIdentity,
-    diagnostics: traceIncompleteDiagnostic ? [traceIncompleteDiagnostic] : undefined,
+    diagnostics: diagnostics.length ? diagnostics : undefined,
     sections: [
       {
         kind: 'trace',

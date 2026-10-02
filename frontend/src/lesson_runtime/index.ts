@@ -5,6 +5,7 @@ export {
   type CompiledLesson,
   type LessonDocuments,
   type LessonPresentation,
+  type LessonValueReference,
   type Result,
   type VisualizerCatalog,
   type VisualizerDescriptor,

@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { aesKeyExpansionDemoDocuments } from '../demos/aesKeyExpansionLesson'
-import { aes128CipherDemoDocuments, aes256CipherDemoDocuments } from '../demos/aes128CipherLesson'
+import { aesCipherDemoDocuments } from '../demos/aes128CipherLesson'
 
 const lesson = `version: 1
 id: avalanche
@@ -269,8 +269,8 @@ test.describe('Teaching SPN Visualizer (#33)', () => {
   })
 })
 
-test.describe('AES Key Expansion Visualizer (#83)', () => {
-  test('opens a row-aligned key-expansion lane, draws its lineage, and does not widen the page', async ({ page }) => {
+test.describe('Teaching key schedule through the generic key-expansion mode (#93)', () => {
+  test('renders full-state Nk=2 schedule rows with its teaching boundary, no word log or overlay', async ({ page }) => {
     test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses the synthetic Lesson fixture')
     await page.addInitScript(() => localStorage.setItem('i18nextLng', 'en-US'))
     await page.route('**/query', async (route) => {
@@ -281,63 +281,22 @@ test.describe('AES Key Expansion Visualizer (#83)', () => {
     })
 
     await page.goto('/learning/aes-key-expansion')
-    await expect(page.getByRole('heading', { name: 'AES key expansion', level: 2 })).toBeVisible()
-    const widthBefore = await page.evaluate(() => document.documentElement.scrollWidth)
-
-    const roundKey0Chip = page.getByRole('button', { name: /^Round key 0:/ })
-    await roundKey0Chip.click()
-    const lane = page.getByRole('region', { name: 'Key expansion', exact: true })
-    await expect(lane).toBeVisible()
-
-    // The lane covers the trace's own columns rather than widening the page (Blocking R2).
-    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(widthBefore)
-
-    // The lane's round-key-0 row is vertically aligned with the same row in the trace table
-    // above it (Blocking R2): they share one `data-row-id`, and the trace table renders first.
-    const traceRow = page.locator('[data-row-id="round-key-0"]').first()
-    const laneRow = lane.locator('[data-row-id="round-key-0"]')
-    const traceBox = (await traceRow.boundingBox())!
-    const laneBox = (await laneRow.boundingBox())!
-    // A few subpixel rows of drift are expected: each lane row's height is set from the trace
-    // table's own measured (fractional) pixel height, and the browser can round each row
-    // independently. This still catches the original bug (missing `data-cover-start` sizing or
-    // a lane that renders before its own layout is measured produced tens of pixels of drift,
-    // not a handful).
-    expect(Math.abs(traceBox.y - laneBox.y)).toBeLessThan(5)
-
-    // Round key 0 is a byte-exact FIPS-197 copy of the master key, so opening its lane draws a
-    // lineage line to the master key row once its own bits have mounted (Blocking R1). The
-    // lineage `<svg>` overlays the whole section (trace table and lane together), not just the
-    // lane, so it is queried from the outer section rather than from `lane` itself.
-    const section = page.getByRole('region', { name: 'AES key expansion', exact: true })
-    await expect(section.locator('svg[data-lineage] line').first()).toBeAttached()
-
-    // The lane covers every row's chip cell (so opening it does not reflow other rows), so
-    // selecting a different round key's chip must work through the lane's own copy of it
-    // (Blocking R1): it moves the highlight instead of leaving round key 0 stuck open.
-    const roundKey1Chip = lane.getByRole('button', { name: /^Round key 1:/ })
-    await roundKey1Chip.click()
-    await expect(roundKey1Chip).toHaveAttribute('aria-pressed', 'true')
-    await expect(lane.getByRole('button', { name: /^Round key 0:/ })).toHaveAttribute('aria-pressed', 'false')
-    await expect(lane).toBeVisible()
-
-    // Selecting the same (now-open) chip again closes the lane, same as the trace table's own
-    // chip did before it was covered.
-    await roundKey1Chip.click()
-    await expect(lane).toBeHidden()
-
-    // The explicit close control also works, independent of re-selecting a chip.
-    await roundKey0Chip.click()
-    await expect(lane).toBeVisible()
-    await page.getByRole('button', { name: 'Close key expansion' }).click()
-    await expect(lane).toBeHidden()
+    await expect(page.getByRole('heading', { name: 'AES-style teaching key schedule', level: 2 })).toBeVisible()
+    const section = page.getByRole('region', { name: 'AES-style teaching key schedule (64-bit key, not a FIPS-197 variant)', exact: true })
+    await expect(section).toBeVisible()
+    await expect(section.getByText(/declares no key-expansion presentation/)).toHaveCount(0)
+    await expect(section.locator('[data-row-id="input"] th')).toHaveText('Input')
+    await expect(section.locator('[data-row-id="rot-word-1-w6"] th')).toHaveText('RotWord 1 (word 6)')
+    await expect(section.locator('[data-row-id="round-key-1"] th')).toHaveText('Round key 1')
+    await expect(section.locator('[data-row-id^="word-"]')).toHaveCount(0)
+    await expect(page.getByRole('region', { name: 'Key expansion', exact: true })).toHaveCount(0)
   })
 })
 
 test.describe('Full-state AES cipher detail and key-schedule overlay (#91, #92)', () => {
   // Full-state views hold tens of thousands of lineage lines; role queries over that DOM time out,
   // so these tests locate elements by their accessible-name attributes and stable row ids.
-  const routeLesson = async (page: import('@playwright/test').Page, documents: typeof aes128CipherDemoDocuments) => {
+  const routeLesson = async (page: import('@playwright/test').Page, documents: ReturnType<typeof aesCipherDemoDocuments>) => {
     await page.addInitScript(() => localStorage.setItem('i18nextLng', 'en-US'))
     await page.route('**/query', async (route) => {
       await route.fulfill({ json: { data: { lessonDocuments: { lesson: documents.lesson, locale: documents.locales['en-US'] } } } })
@@ -349,9 +308,11 @@ test.describe('Full-state AES cipher detail and key-schedule overlay (#91, #92)'
   test('opens the 256-bit schedule over the encryption trace with visible lineage and temporary rows', async ({ page }) => {
     test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses the synthetic Lesson fixture')
     test.slow()
-    await routeLesson(page, aes256CipherDemoDocuments)
+    await routeLesson(page, aesCipherDemoDocuments(256))
     await page.goto('/learning/aes-256')
-    await page.getByRole('button', { name: 'Next' }).click()
+    await page.getByRole('button', { name: 'Next' }).click() // enter-input -> expand-key
+    await expect(view(page, 'AES-256 key expansion')).toBeVisible({ timeout: 60_000 })
+    await page.getByRole('button', { name: 'Next' }).click() // expand-key -> encrypt
     const section = view(page, 'AES-256 encryption')
     await expect(section).toBeVisible({ timeout: 60_000 })
     await expect(section.locator('tr[data-row-id="cipher-1-mix-columns"] th')).toHaveText('MixColumns 1')
@@ -383,9 +344,11 @@ test.describe('Full-state AES cipher detail and key-schedule overlay (#91, #92)'
   test('aligns the AES-128 schedule at round keys, moves between chips, and leaves decryption without an overlay', async ({ page }) => {
     test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses the synthetic Lesson fixture')
     test.slow()
-    await routeLesson(page, aes128CipherDemoDocuments)
+    await routeLesson(page, aesCipherDemoDocuments(128))
     await page.goto('/learning/aes-128')
-    await page.getByRole('button', { name: 'Next' }).click()
+    await page.getByRole('button', { name: 'Next' }).click() // enter-input -> expand-key
+    await expect(view(page, 'AES-128 key expansion')).toBeVisible({ timeout: 60_000 })
+    await page.getByRole('button', { name: 'Next' }).click() // expand-key -> encrypt
     const section = view(page, 'AES-128 encryption')
     await expect(section).toBeVisible({ timeout: 60_000 })
     await expect(section.locator('tr[data-row-id="round-key-10"] th')).toHaveText('Round key 10')

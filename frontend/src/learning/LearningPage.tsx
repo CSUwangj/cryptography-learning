@@ -263,6 +263,8 @@ const LessonView: React.FC = () => {
         comparison={state.comparisons[step.id]}
         dimensions={visualizerDimensions}
         execution={state.snapshots[step.id]}
+        allSnapshots={state.snapshots}
+        executionBindings={step.execute?.bindings}
         executionIdentity={state.executionIdentities[step.id] ?? step.id}
         invocation={step.visualizer}
         presentation={step.presentation}

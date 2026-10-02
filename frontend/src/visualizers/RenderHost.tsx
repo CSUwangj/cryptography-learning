@@ -1,11 +1,9 @@
 import React from 'react'
 import { hex, type AlphabetMapping, type AlphabetPolicyValue, type AlphabetTextValue, type AvalancheComparison, type WorkerExecutionSnapshot } from 'crypto_graph'
-import type { LessonPresentation } from '../lesson_runtime'
+import type { LessonPresentation, LessonValueReference } from '../lesson_runtime'
 import { AvalancheRenderer } from './Avalanche'
 import { classicalCipherPositions, ClassicalCipherRenderer } from './ClassicalCipher'
 import { TeachingSpnRenderer } from './TeachingSpn'
-import { AesKeyExpansionRenderer } from './AesKeyExpansion'
-import { AesCipherRenderer } from './AesCipher'
 import { BlockCipherRenderer } from './BlockCipher'
 import { KeyExpansionRenderer } from './KeyExpansion'
 import { ExecutionTraceRenderer } from './ExecutionTrace'
@@ -15,6 +13,10 @@ export type RenderHostProps = {
   readonly invocation?: { readonly id: string }
   /** Explicit presentation metadata; never inferred from key length or graph identity. */
   readonly presentation?: LessonPresentation
+  /** All step snapshots in the lesson; passed so block-cipher can locate the expansion step. */
+  readonly allSnapshots?: Readonly<Record<string, WorkerExecutionSnapshot>>
+  /** bindings map from the Step that produced `execution`, for deriving the schedule step. */
+  readonly executionBindings?: Readonly<Record<string, LessonValueReference>>
   readonly comparison?: AvalancheComparison
   readonly execution?: WorkerExecutionSnapshot
   readonly locale: string
@@ -80,14 +82,21 @@ class IsolatedRenderer extends React.Component<Pick<RenderHostProps, 'comparison
   }
 }
 
-export const RenderHost: React.FC<RenderHostProps> = (props) =>
-  <IsolatedRenderer comparison={props.comparison} execution={props.execution} key={props.executionIdentity} locale={props.locale}>
+export const RenderHost: React.FC<RenderHostProps> = (props) => {
+  // Block-cipher overlay: derive the expansion step from the cipher step's round-key bindings.
+  const roundKeySource = props.presentation?.kind === 'block-cipher'
+    ? Object.values(props.executionBindings ?? {}).find((reference): reference is Extract<LessonValueReference, { readonly step: string }> =>
+      'step' in reference && reference.output.startsWith('round-key-'))
+    : undefined
+  const keyScheduleExecution = roundKeySource && props.allSnapshots?.[roundKeySource.step]
+  return <IsolatedRenderer comparison={props.comparison} execution={props.execution} key={props.executionIdentity} locale={props.locale}>
       {props.presentation?.kind === 'block-cipher' && props.execution
         ? <BlockCipherRenderer
             execution={props.execution}
             executionIdentity={props.executionIdentity}
             locale={props.locale}
             presentation={props.presentation}
+            keyScheduleExecution={keyScheduleExecution}
           />
         : props.presentation?.kind === 'key-expansion' && props.execution
           ? <KeyExpansionRenderer
@@ -114,28 +123,17 @@ export const RenderHost: React.FC<RenderHostProps> = (props) =>
               executionIdentity={props.executionIdentity}
               locale={props.locale}
             />
-          : props.invocation?.id === 'aes-key-expansion@1' && props.execution
-            ? <AesKeyExpansionRenderer
-                execution={props.execution}
-                executionIdentity={props.executionIdentity}
+          : props.invocation?.id === 'classical-cipher@1' && props.classicalCipher
+            ? <ClassicalCipherRenderer
+                {...props.classicalCipher}
+                positions={classicalCipherPositions(
+                  props.classicalCipher.input,
+                  props.classicalCipher.output,
+                  props.classicalCipher.mapping,
+                )}
                 locale={props.locale}
+                reducedMotion={props.reducedMotion}
               />
-            : props.invocation?.id === 'aes-cipher@1' && props.execution
-              ? <AesCipherRenderer
-                  execution={props.execution}
-                  executionIdentity={props.executionIdentity}
-                  locale={props.locale}
-                />
-              : props.invocation?.id === 'classical-cipher@1' && props.classicalCipher
-              ? <ClassicalCipherRenderer
-                  {...props.classicalCipher}
-                  positions={classicalCipherPositions(
-                    props.classicalCipher.input,
-                    props.classicalCipher.output,
-                    props.classicalCipher.mapping,
-                  )}
-                  locale={props.locale}
-                  reducedMotion={props.reducedMotion}
-                />
-              : <Fallback comparison={props.comparison} execution={props.execution} locale={props.locale} />}
+            : <Fallback comparison={props.comparison} execution={props.execution} locale={props.locale} />}
   </IsolatedRenderer>
+}
