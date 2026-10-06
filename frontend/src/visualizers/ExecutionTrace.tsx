@@ -27,6 +27,10 @@ const copy = {
     incomplete: 'Trace is incomplete. Retained checkpoints remain visible; later checkpoints are missing.',
     gap: 'Trace gap',
     modeMissing: 'This trace contains a key schedule, but the Step declares no key-expansion presentation. Showing the default trace without key-schedule rows.',
+    grid: 'Transposition grid', empty: 'Empty cell', emptyMarker: '[empty]', spaceMarker: '[space]', order: 'Write/read order',
+    transpositionEncryptWarning: 'The text length is smaller than the encryption parameter; encryption leaves the text unchanged.',
+    transpositionDecryptWarning: 'The text length is smaller than the decryption parameter; decryption leaves the text unchanged.',
+    writePositions: 'Write positions', readPositions: 'Read positions',
     stages: {
       input: 'Input',
       'round-key': 'Round key',
@@ -45,6 +49,7 @@ const copy = {
       'inv-shift-rows': 'InvShiftRows',
       'mix-columns': 'MixColumns',
       'inv-mix-columns': 'InvMixColumns',
+      transposition: 'Transposition',
     },
   },
   'zh-CN': {
@@ -62,6 +67,10 @@ const copy = {
     incomplete: '轨迹不完整。保留的检查点仍可见；后续检查点缺失。',
     gap: '轨迹缺口',
     modeMissing: '此轨迹包含密钥编排，但该步骤未声明密钥扩展展示方式。当前显示不含密钥编排行的默认轨迹。',
+    grid: '转置网格', empty: '空单元格', emptyMarker: '[空单元格]', spaceMarker: '[空格]', order: '写入/读取顺序',
+    transpositionEncryptWarning: '文本长度小于加密参数，加密不会改变文本。',
+    transpositionDecryptWarning: '文本长度小于解密参数，解密不会改变文本。',
+    writePositions: '写入位置', readPositions: '读取位置',
     stages: {
       input: '输入',
       'round-key': '轮密钥',
@@ -80,6 +89,7 @@ const copy = {
       'inv-shift-rows': '逆行移位',
       'mix-columns': '列混合',
       'inv-mix-columns': '逆列混合',
+      transposition: '转置',
     },
   },
 } as const satisfies Record<Locale, { readonly stages: Record<TraceStage, string> } & Record<string, unknown>>
@@ -108,6 +118,12 @@ const operationDetail = (event: TraceEvent | TraceCheckpoint, text: ReturnType<t
   const operation = 'operation' in event ? event.operation : undefined
   if (operation?.permutation) return <PermutationVisual permutation={operation.permutation} />
   if (operation?.sBox) return `${text.sBox}: ${operation.sBox.map((entry) => entry.toString(16)).join(' ')}`
+  if (operation?.grid) return <section aria-label={text.grid}>
+    <table><caption>{text.order}</caption><tbody>
+      {operation.grid.rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, columnIndex) => <td key={columnIndex} aria-label={cell === null ? text.empty : undefined} style={cell === null ? { backgroundColor: '#e5e7eb' } : undefined}>{cell === null ? text.emptyMarker : cell === ' ' ? text.spaceMarker : cell}</td>)}</tr>)}
+    </tbody></table>
+    <p>{`${text.writePositions}: ${operation.grid.writeOrder.join(', ')}; ${text.readPositions}: ${operation.grid.readOrder.join(', ')}`}</p>
+  </section>
   return undefined
 }
 
@@ -146,11 +162,17 @@ export const executionTracePresentation = (execution: WorkerExecutionSnapshot, l
     }
     : undefined
   const diagnostics = [modeMissingDiagnostic, traceIncompleteDiagnostic].filter((item): item is LearningDiagnostic => item !== undefined)
+  const warnings = execution.warnings?.map((warning) => ({
+    code: warning.code,
+    message: warning.details.direction === 'decrypt' ? text.transpositionDecryptWarning : text.transpositionEncryptWarning,
+    path: warning.path,
+  })) ?? []
+  const allDiagnostics = [...diagnostics, ...warnings]
   return {
     title: text.title,
     instructions: modeMissingDiagnostic?.message,
     executionIdentity,
-    diagnostics: diagnostics.length ? diagnostics : undefined,
+    diagnostics: allDiagnostics.length ? allDiagnostics : undefined,
     sections: [
       {
         kind: 'trace',

@@ -15,6 +15,7 @@ import {
   maxWorkerLimits,
   operationManifests,
   serializeTrace,
+  text,
   teachingSpnGraph,
   words,
   type AuthoredGraph,
@@ -159,6 +160,56 @@ describe('CryptoGraph compile/execute seam (#26)', () => {
     if (!compiled.ok) return
     const invalid = compiled.value.execute({ 'source.value': bits(16, Uint8Array.of(0, 1)) })
     expect(!invalid.ok && invalid.diagnostics[0].code).toBe('invalid-execution-input')
+  })
+
+  it('transposes Unicode text with incomplete rows in both directions', () => {
+    const graph = (direction: 'encrypt' | 'decrypt'): AuthoredGraph => ({
+      nodes: [
+        { id: 'text', operation: 'core.source@1', parameters: { type: { family: 'text' } } },
+        { id: 'rows', operation: 'core.source@1', parameters: { type: { family: 'integer', signed: true, safe: true } } },
+        { id: 'direction', operation: 'core.source@1', parameters: { type: { family: 'alphabet-direction' } } },
+        { id: 'cipher', operation: 'classical.transposition@1', inputs: { text: { node: 'text', port: 'value' }, rows: { node: 'rows', port: 'value' }, direction: { node: 'direction', port: 'value' } } },
+      ],
+      outputs: [{ node: 'cipher', port: 'text' }],
+    })
+    const encrypted = compile(graph('encrypt'))
+    expect(encrypted.ok).toBe(true)
+    if (!encrypted.ok) return
+    const result = encrypted.value.execute({ 'text.value': { type: { family: 'text' }, symbols: [...'ABCDEFG'] }, 'rows.value': integer(2), 'direction.value': alphabetDirection('encrypt') })
+    expect(result.ok && result.value.outputs['cipher.text']).toMatchObject({ symbols: [...'ACEGBDF'] })
+    const decrypted = compile(graph('decrypt'))
+    expect(decrypted.ok).toBe(true)
+    if (!decrypted.ok) return
+    const back = decrypted.value.execute({ 'text.value': { type: { family: 'text' }, symbols: [...'ACEGBDF'] }, 'rows.value': integer(2), 'direction.value': alphabetDirection('decrypt') })
+    expect(back.ok && back.value.outputs['cipher.text']).toMatchObject({ symbols: [...'ABCDEFG'] })
+  })
+
+  it('preserves duplicate positions and reports short inputs and invalid rows', () => {
+    const graph: AuthoredGraph = { nodes: [
+      { id: 'text', operation: 'core.source@1', parameters: { type: { family: 'text' } } },
+      { id: 'rows', operation: 'core.source@1', parameters: { type: { family: 'integer', signed: true, safe: true } } },
+      { id: 'direction', operation: 'core.source@1', parameters: { type: { family: 'alphabet-direction' } } },
+      { id: 'cipher', operation: 'classical.transposition@1', inputs: { text: { node: 'text', port: 'value' }, rows: { node: 'rows', port: 'value' }, direction: { node: 'direction', port: 'value' } } },
+    ], outputs: [{ node: 'cipher', port: 'text' }], traceLevel: 'detail' }
+    const compiled = compile(graph)
+    expect(compiled.ok).toBe(true)
+    if (!compiled.ok) return
+    const run = (value: string, rows: number, direction: 'encrypt' | 'decrypt') => compiled.value.execute({ 'text.value': text(value), 'rows.value': integer(rows), 'direction.value': alphabetDirection(direction) })
+    expect(run('ABC', 5, 'encrypt')).toMatchObject({ ok: true, value: { warnings: [{ details: { direction: 'encrypt' } }] } })
+    expect(run('', 5, 'decrypt')).toMatchObject({ ok: true, value: { warnings: [{ details: { direction: 'decrypt' } }] } })
+    const exact = run('ABCDE', 5, 'encrypt')
+    expect(exact.ok && exact.value.warnings).toBeUndefined()
+    const duplicate = run('AABBA', 2, 'decrypt')
+    expect(duplicate).toMatchObject({ ok: true })
+    if (duplicate.ok) {
+      const trace = duplicate.value.trace.find((event) => 'operation' in event && event.operation?.grid)
+      expect(trace && 'operation' in trace && trace.operation?.grid).toMatchObject({
+        rows: [['A', 'A', 'B'], ['B', 'A', null]],
+        readOrder: [0, 3, 1, 4, 2],
+      })
+    }
+    const invalid = run('ABC', 1, 'encrypt')
+    expect(invalid).toMatchObject({ ok: false, diagnostics: [{ code: 'cipher.invalid-transposition-rows', path: 'cipher.inputs.rows', details: { minimum: 2, maximum: 12 } }] })
   })
 })
 

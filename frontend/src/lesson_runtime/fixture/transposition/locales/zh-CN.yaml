@@ -1,0 +1,6 @@
+title: "列式转置"
+summary: "将明文向下写入每列，再从左到右读取各行。"
+texts:
+  text-prompt: "文本"
+  rows-prompt: "行数"
+  direction-prompt: "方向"

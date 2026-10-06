@@ -1,0 +1,6 @@
+title: "Columnar transposition"
+summary: "Write plaintext down each column and read rows from left to right."
+texts:
+  text-prompt: "Text"
+  rows-prompt: "Rows"
+  direction-prompt: "Direction"

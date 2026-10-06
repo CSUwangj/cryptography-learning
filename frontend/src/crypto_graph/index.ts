@@ -20,6 +20,7 @@ export type PortType =
   | { family: 'words'; size: Size; wordSize: 8 }
   | { family: 'alphabet-symbol'; mapping: string }
   | { family: 'alphabet-text'; mapping: string }
+  | { family: 'text' }
   | { family: 'integer'; signed: true; safe: true }
   | { family: 'alphabet-policy' }
   | { family: 'alphabet-direction' }
@@ -53,6 +54,7 @@ export type AlphabetTextValue = {
   type: { family: 'alphabet-text'; mapping: string }
   symbols: readonly string[]
 }
+export type TextValue = { type: { family: 'text' }; symbols: readonly string[] }
 
 export type IntegerValue = {
   type: { family: 'integer'; signed: true; safe: true }
@@ -69,7 +71,7 @@ export type AlphabetDirectionValue = {
   value: 'encrypt' | 'decrypt'
 }
 
-export type CryptoValue = BitsValue | BytesValue | WordsValue | AlphabetSymbolValue | AlphabetTextValue | IntegerValue | AlphabetPolicyValue | AlphabetDirectionValue
+export type CryptoValue = BitsValue | BytesValue | WordsValue | AlphabetSymbolValue | AlphabetTextValue | TextValue | IntegerValue | AlphabetPolicyValue | AlphabetDirectionValue
 
 type ByteValue = BitsValue | BytesValue | WordsValue
 
@@ -77,6 +79,7 @@ const isIntegerValue = (value: CryptoValue): value is IntegerValue => value.type
 const isAlphabetPolicyValue = (value: CryptoValue): value is AlphabetPolicyValue => value.type.family === 'alphabet-policy'
 const isAlphabetDirectionValue = (value: CryptoValue): value is AlphabetDirectionValue => value.type.family === 'alphabet-direction'
 const isAlphabetTextValue = (value: CryptoValue): value is AlphabetTextValue => value.type.family === 'alphabet-text'
+const isTextValue = (value: CryptoValue): value is TextValue => value.type.family === 'text'
 const isByteValue = (value: CryptoValue): value is ByteValue =>
   value.type.family === 'bits' || value.type.family === 'bytes' || value.type.family === 'words'
 
@@ -127,11 +130,12 @@ export type TraceCheckpoint = {
 }
 
 export type TraceLevel = 'summary' | 'round' | 'detail'
-export type TraceStage = 'input' | 'round-key' | 'key-mix' | 'substitute' | 'permute' | 'output' | 'rot-word' | 'sub-word' | 'rcon' | 'word-xor'
+export type TraceStage = 'input' | 'round-key' | 'key-mix' | 'substitute' | 'permute' | 'output' | 'rot-word' | 'sub-word' | 'rcon' | 'word-xor' | 'transposition'
   | 'add-round-key' | 'sub-bytes' | 'inv-sub-bytes' | 'shift-rows' | 'inv-shift-rows' | 'mix-columns' | 'inv-mix-columns'
 export type TraceOperation = {
   readonly sBox?: readonly number[]
   readonly permutation?: readonly number[]
+  readonly grid?: { readonly rows: readonly (readonly (string | null)[])[]; readonly writeOrder: readonly number[]; readonly readOrder: readonly number[] }
 }
 
 export type TraceEvent = {
@@ -152,6 +156,7 @@ export type SerializedTraceEvent = Omit<TraceEvent, 'value'> & {
 export type ExecutionSnapshot = {
   readonly outputs: Readonly<Record<string, CryptoValue>>
   readonly trace: readonly (TraceCheckpoint | TraceEvent)[]
+  readonly warnings?: readonly Diagnostic[]
 }
 
 export type WorkerLimitValues = {
@@ -269,6 +274,7 @@ const ambiguousRepeatIdentities = new WeakMap<WorkerExecutionSnapshot, boolean>(
 const cloneValue = (value: CryptoValue): CryptoValue => {
   if ('symbol' in value) return { type: { family: 'alphabet-symbol', mapping: value.type.mapping }, symbol: value.symbol }
   if (isAlphabetTextValue(value)) return { type: { family: 'alphabet-text', mapping: value.type.mapping }, symbols: [...value.symbols] }
+  if (isTextValue(value)) return { type: { family: 'text' }, symbols: [...value.symbols] }
   if (isIntegerValue(value)) return { type: { family: 'integer', signed: true, safe: true }, value: value.value }
   if (isAlphabetPolicyValue(value)) return { type: { family: 'alphabet-policy' }, value: value.value }
   if (isAlphabetDirectionValue(value)) return { type: { family: 'alphabet-direction' }, value: value.value }
@@ -288,11 +294,12 @@ const typeMatches = (expected: PortType, actual: PortType, bindings: Map<string,
   if (expected.family === 'alphabet-text' && actual.family === 'alphabet-text') {
     return expected.mapping === '*' || expected.mapping === actual.mapping
   }
+  if (expected.family === 'text') return actual.family === 'text'
   if (expected.family === 'integer' || expected.family === 'alphabet-policy' || expected.family === 'alphabet-direction') return true
   if (expected.family === 'words' && actual.family === 'words' && expected.wordSize !== actual.wordSize) return false
   if (expected.family === 'alphabet-symbol' || expected.family === 'alphabet-text' || actual.family === 'alphabet-symbol' || actual.family === 'alphabet-text') return false
-  const binaryExpected = expected as Exclude<PortType, { family: 'alphabet-symbol' | 'alphabet-text' | 'integer' | 'alphabet-policy' | 'alphabet-direction' }>
-  const binaryActual = actual as Exclude<PortType, { family: 'alphabet-symbol' | 'alphabet-text' | 'integer' | 'alphabet-policy' | 'alphabet-direction' }>
+  const binaryExpected = expected as Exclude<PortType, { family: 'alphabet-symbol' | 'alphabet-text' | 'text' | 'integer' | 'alphabet-policy' | 'alphabet-direction' }>
+  const binaryActual = actual as Exclude<PortType, { family: 'alphabet-symbol' | 'alphabet-text' | 'text' | 'integer' | 'alphabet-policy' | 'alphabet-direction' }>
   const actualSize = binaryActual.size as number
   if (typeof binaryExpected.size === 'number') return binaryExpected.size === actualSize
   const bound = bindings.get(binaryExpected.size)
@@ -306,6 +313,7 @@ const typeMatches = (expected: PortType, actual: PortType, bindings: Map<string,
 const typeText = (type: PortType): string => {
   if (type.family === 'alphabet-symbol') return `alphabet-symbol<${type.mapping}>`
   if (type.family === 'alphabet-text') return `alphabet-text<${type.mapping}>`
+  if (type.family === 'text') return 'text'
   if (type.family === 'integer') return 'integer'
   if (type.family === 'alphabet-policy') return 'alphabet-policy'
   if (type.family === 'alphabet-direction') return 'alphabet-direction'
@@ -318,6 +326,7 @@ const isPortType = (value: unknown): value is PortType => {
   const type = value as Record<string, unknown>
   if (type.family === 'alphabet-symbol') return typeof type.mapping === 'string'
   if (type.family === 'alphabet-text') return typeof type.mapping === 'string'
+  if (type.family === 'text') return true
   if (type.family === 'integer') return type.signed === true && type.safe === true
   if (type.family === 'alphabet-policy') return true
   if (type.family === 'alphabet-direction') return true
@@ -336,6 +345,7 @@ const isCryptoValue = (value: unknown): value is CryptoValue => {
   if (candidate.type.family === 'alphabet-text') {
     return Array.isArray(candidate.symbols) && candidate.symbols.every((symbol) => typeof symbol === 'string' && [...symbol].length === 1)
   }
+  if (candidate.type.family === 'text') return Array.isArray(candidate.symbols) && candidate.symbols.every((symbol) => typeof symbol === 'string' && [...symbol].length === 1)
   if (candidate.type.family === 'integer') return typeof candidate.value === 'number'
   if (candidate.type.family === 'alphabet-policy') return candidate.value === 'preserve' || candidate.value === 'strict'
   if (candidate.type.family === 'alphabet-direction') return candidate.value === 'encrypt' || candidate.value === 'decrypt'
@@ -480,7 +490,7 @@ const bytesForBits = (size: number) => Math.ceil(size / 8)
 
 const validSizedValue = (value: CryptoValue): boolean => {
   if ('symbol' in value) return true
-  if (isAlphabetTextValue(value) || isIntegerValue(value) || isAlphabetPolicyValue(value) || isAlphabetDirectionValue(value)) return true
+  if (isAlphabetTextValue(value) || isTextValue(value) || isIntegerValue(value) || isAlphabetPolicyValue(value) || isAlphabetDirectionValue(value)) return true
   if (!isByteValue(value)) return false
   const size = value.type.size
   const contents = 'words' in value ? value.words : value.bytes
@@ -526,6 +536,8 @@ export const alphabetText = (mapping: AlphabetMapping, value: string): AlphabetT
   type: { family: 'alphabet-text', mapping: mapping.id },
   symbols: [...value],
 })
+
+export const text = (value: string): TextValue => ({ type: { family: 'text' }, symbols: [...value] })
 
 export const integer = (value: number): IntegerValue => ({
   type: { family: 'integer', signed: true, safe: true },
@@ -816,6 +828,50 @@ const affine: Operation = {
   },
 }
 
+const transposition: Operation = {
+  manifest: {
+    identity: 'classical.transposition@1',
+    inputs: [
+      { name: 'text', type: { family: 'text' } },
+      { name: 'rows', type: { family: 'integer', signed: true, safe: true } },
+      { name: 'direction', type: { family: 'alphabet-direction' } },
+    ],
+    outputs: [{ name: 'text', type: { family: 'text' } }],
+  },
+  validateParameters(parameters, node) {
+    const value = parameters.rows
+    if (value === undefined) return []
+    if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 2 || value > 12) {
+      return [diagnostic('cipher.invalid-transposition-rows', 'Transposition rows must be an integer from 2 through 12.', `${node.id}.inputs.rows`, node, { reason: typeof value === 'number' && !Number.isSafeInteger(value) ? 'unsafe' : 'range', minimum: 2, maximum: 12 })]
+    }
+    return []
+  },
+  execute(inputs) {
+    const input = inputs.text as TextValue
+    const rows = inputs.rows as IntegerValue
+    const direction = inputs.direction as AlphabetDirectionValue
+    if (!Number.isSafeInteger(rows.value) || rows.value < 2 || rows.value > 12) {
+      throw new CipherDiagnostic('cipher.invalid-transposition-rows', 'Transposition rows must be an integer from 2 through 12.', { reason: Number.isSafeInteger(rows.value) ? 'range' : 'integer', minimum: 2, maximum: 12 })
+    }
+    const symbols = input.symbols
+    const textValue = (value: readonly string[]): TextValue => ({ type: { family: 'text' }, symbols: [...value] })
+    if (symbols.length < rows.value) return { text: textValue(symbols) }
+    if (direction.value === 'encrypt') {
+      const output: string[] = []
+      for (let row = 0; row < rows.value; row += 1) for (let column = 0; row + column * rows.value < symbols.length; column += 1) output.push(symbols[row + column * rows.value])
+      return { text: textValue(output) }
+    }
+    const width = Math.floor(symbols.length / rows.value)
+    const remainder = symbols.length % rows.value
+    const grid: string[][] = []
+    let offset = 0
+    for (let row = 0; row < rows.value; row += 1) { const length = width + (row < remainder ? 1 : 0); grid.push(symbols.slice(offset, offset + length) as string[]); offset += length }
+    const output: string[] = []
+    for (let column = 0; column < width + (remainder > 0 ? 1 : 0); column += 1) for (let row = 0; row < rows.value; row += 1) if (grid[row][column] !== undefined) output.push(grid[row][column])
+    return { text: textValue(output) }
+  },
+}
+
 // FIPS-197 Figure 7 S-box, reused by SubWord.
 const aesSBox: readonly number[] = [
   0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
@@ -1060,7 +1116,7 @@ const throwing: Operation = {
 
 const operations = new Map<string, Operation>([
   source, xor, substitute, permute, output,
-  caesar, affine, substitution, vigenere,
+  caesar, affine, substitution, vigenere, transposition,
   aesKeyWord, aesRotWord, aesSubWord, aesRconWord, aesWordXor, aesRoundKey,
   aesSubBytes, aesInvSubBytes, aesShiftRows, aesInvShiftRows, aesMixColumns, aesInvMixColumns,
   throwing,
@@ -1387,6 +1443,7 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
       execute(executionInputs = {}, traceLimits?: TraceCollectionLimits) {
         const values = new Map<string, Record<string, CryptoValue>>()
         const trace: (TraceCheckpoint | TraceEvent)[] = []
+        const warnings: Diagnostic[] = []
         let traceBytes = 0
         let droppedTraceEvents = 0
         let retainingTrace = true
@@ -1438,8 +1495,11 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
               result = operation.execute(inputs, parameters, mappings)
             } catch (error) {
               return { ok: false, diagnostics: [error instanceof CipherDiagnostic
-                ? diagnostic(error.code, error.message, id, node, error.details)
+                ? diagnostic(error.code, error.message, error.code === 'cipher.invalid-transposition-rows' ? `${id}.inputs.rows` : id, node, error.details)
                 : diagnostic('operation-failed', 'Operation execution failed.', id, node)] }
+            }
+            if (node.operation === 'classical.transposition@1' && (inputs.text as TextValue).symbols.length < (inputs.rows as IntegerValue).value) {
+              warnings.push(diagnostic('cipher.transposition-short-input', 'The text length is smaller than the transposition parameter; the result is unchanged.', `${id}.inputs.text`, node, { direction: (inputs.direction as AlphabetDirectionValue).value }))
             }
             for (const [port, value] of Object.entries(result)) {
               if (!validSizedValue(value)) return { ok: false, diagnostics: [diagnostic('invalid-value', 'Operation returned an invalid value.', `${id}.${port}`, node)] }
@@ -1475,8 +1535,23 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
                 value,
               })
               if (stage === 'permute' && (compiledGraph.traceLevel === 'detail' || compiledGraph.traceLevel === 'round')) {
-                appendTrace({ path: `${instance}.${round}/output`, level: 'round', round, stage: 'output', value: cloneValue(result.value) })
+                appendTrace({ path: `${instance}.${round}/output`, level: 'round', round, stage: 'output', value })
               }
+            } else if (compiledGraph.traceLevel === 'detail' && node.operation === 'classical.transposition@1') {
+              const source = inputs.text as TextValue
+              const rows = (inputs.rows as IntegerValue).value
+              const direction = (inputs.direction as AlphabetDirectionValue).value
+              const grid = direction === 'encrypt'
+                ? Array.from({ length: rows }, (_, row) => source.symbols.filter((_, index) => index % rows === row))
+                : (() => { const width = Math.floor(source.symbols.length / rows); const remainder = source.symbols.length % rows; let offset = 0; return Array.from({ length: rows }, (_, row) => { const length = width + (row < remainder ? 1 : 0); const part = source.symbols.slice(offset, offset + length); offset += length; return part }) })()
+              const readOrder = direction === 'encrypt'
+                ? grid.flatMap((row, rowIndex) => row.map((_, index) => index * rows + rowIndex))
+                : (() => {
+                  let offset = 0
+                  const ciphertextPositions = grid.map((row) => { const positions = row.map((_) => offset++); return positions })
+                  return Array.from({ length: grid[0]?.length ?? 0 }, (_, column) => grid.flatMap((row, rowIndex) => row[column] === undefined ? [] : [ciphertextPositions[rowIndex][column]])).flat()
+                })()
+              appendTrace({ path: id, level: 'detail', stage: 'transposition', operation: { grid: { rows: grid.map((row) => Array.from({ length: Math.ceil(source.symbols.length / rows) }, (_, index) => row[index] ?? null)), writeOrder: source.symbols.map((_, index) => index), readOrder } }, value: cloneValue(result.text) })
             } else if (compiledGraph.traceLevel === 'detail' && node.operation === 'aes.key-word@1' && /^word-\d+$/.test(id)) {
               const wordIndex = Number(/^word-(\d+)$/.exec(id)![1])
               appendTrace({ path: id, level: 'detail', round: Math.floor(wordIndex / 4), stage: 'input', word: wordIndex, value: cloneValue(result.value) })
@@ -1500,7 +1575,7 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
           const output = Object.values(outputs)[0]
           appendTrace({ path: 'output', level: 'summary', stage: 'output', value: cloneValue(output) })
         }
-        const snapshot = { outputs, trace }
+        const snapshot = { outputs, trace, ...(warnings.length ? { warnings } : {}) }
         if (traceLimits) traceStatuses.set(snapshot, { truncated: droppedTraceEvents > 0, retained: trace.length, dropped: droppedTraceEvents })
         return { ok: true, value: snapshot }
       },
@@ -1551,6 +1626,7 @@ type WorkerBudget = {
 const cryptoValueBytes = (value: CryptoValue): number => {
   if ('symbol' in value) return new TextEncoder().encode(value.symbol).byteLength
   if (isAlphabetTextValue(value)) return new TextEncoder().encode(value.symbols.join('')).byteLength
+  if (isTextValue(value)) return new TextEncoder().encode(value.symbols.join('')).byteLength
   if (isIntegerValue(value)) return 8
   if (isAlphabetPolicyValue(value)) return 1
   if (isAlphabetDirectionValue(value)) return 1

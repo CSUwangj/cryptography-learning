@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
-import { aesCipherGraph, aesInverseCipherGraph, aesKeyExpansionGraph, alphabetPolicy, alphabetText, bits, executeWorkerRequest, hex, integer, teachingSpnGraph, type TraceEvent, type TraceCheckpoint } from '../crypto_graph'
+import { aesCipherGraph, aesInverseCipherGraph, aesKeyExpansionGraph, alphabetPolicy, alphabetText, bits, executeWorkerRequest, hex, integer, teachingSpnGraph, type AlphabetTextValue, type TraceEvent, type TraceCheckpoint } from '../crypto_graph'
 import { teachingSpnDemoDocuments } from '../../demos/teachingSpnLesson'
 import { aesKeyExpansionDemoDocuments } from '../../demos/aesKeyExpansionLesson'
 import { aesCipherDemoDocuments } from '../../demos/aes128CipherLesson'
@@ -628,8 +628,8 @@ describe('Classical substitution and Vigenere Lessons (#87)', () => {
           locale: 'en-US',
           reducedMotion: true,
           classicalCipher: {
-            input,
-            output,
+            input: input as AlphabetTextValue,
+            output: output as AlphabetTextValue,
             mapping: compiled.value.graphs.cipher.graph.alphabetMappings![0],
             policy: result.value.inputs.policy as ReturnType<typeof alphabetPolicy>,
             policyLabel: 'Preserve unmapped characters',

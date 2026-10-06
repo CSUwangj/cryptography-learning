@@ -1,0 +1,44 @@
+version: 1
+id: transposition
+default_locale: en-US
+inputs:
+  text:
+    type: {family: text}
+    encoding: text
+    default: "ABCDEFG"
+  rows:
+    type: {family: integer, signed: true, safe: true}
+    encoding: integer
+    default: 2
+  direction:
+    type: {family: alphabet-direction}
+    encoding: direction
+    default: encrypt
+constants: {}
+graphs:
+  transpose:
+    nodes:
+      - {id: text, operation: core.source@1, parameters: {type: {family: text}}}
+      - {id: rows, operation: core.source@1, parameters: {type: {family: integer, signed: true, safe: true}}}
+      - {id: direction, operation: core.source@1, parameters: {type: {family: alphabet-direction}}}
+      - id: result
+        operation: classical.transposition@1
+        inputs:
+          text: {node: text, port: value}
+          rows: {node: rows, port: value}
+          direction: {node: direction, port: value}
+    outputs: [{node: result, port: text}]
+    traceLevel: detail
+steps:
+  - id: enter-inputs
+    inputs:
+      - {input: text, prompt: text-prompt}
+      - {input: rows, prompt: rows-prompt}
+      - {input: direction, prompt: direction-prompt}
+  - id: transpose
+    execute:
+      graph: transpose
+      bindings:
+        text.value: {input: text}
+        rows.value: {input: rows}
+        direction.value: {input: direction}

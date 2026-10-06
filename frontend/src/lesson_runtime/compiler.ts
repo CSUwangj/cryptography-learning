@@ -243,6 +243,9 @@ const typeAt = (
   } else if (family === 'alphabet-text') {
     checkFields(type, ['family', 'mapping'], path, spans, diagnostics)
     if (typeof type.mapping === 'string' && identifier.test(type.mapping)) return { family, mapping: type.mapping }
+  } else if (family === 'text') {
+    checkFields(type, ['family'], path, spans, diagnostics)
+    return { family }
   } else if (family === 'integer') {
     checkFields(type, ['family', 'signed', 'safe'], path, spans, diagnostics)
     if (type.signed === true && type.safe === true) return { family, signed: true, safe: true }
@@ -290,6 +293,8 @@ const decodeValue = (
   if (type.family === 'alphabet-symbol') {
     if (encoding === 'literal' && typeof value === 'string' && [...value].length === 1) return { type, symbol: value }
   } else if (type.family === 'alphabet-text') {
+    if (encoding === 'text' && typeof value === 'string') return { type, symbols: [...value] }
+  } else if (type.family === 'text') {
     if (encoding === 'text' && typeof value === 'string') return { type, symbols: [...value] }
   } else if (type.family === 'integer') {
     if (encoding === 'integer') {
@@ -400,6 +405,7 @@ const validateGraphNode = (
       : node.operation === 'core.xor@1' || node.operation === 'core.output@1'
         || node.operation === 'classical.caesar@1' || node.operation === 'classical.affine@1'
         || node.operation === 'classical.substitution@1' || node.operation === 'classical.vigenere@1'
+        || node.operation === 'classical.transposition@1'
         || node.operation === 'aes.rot-word@1' || node.operation === 'aes.sub-word@1'
         || node.operation === 'aes.word-xor@1' || node.operation === 'aes.round-key@1' ? []
       : undefined
@@ -430,7 +436,7 @@ const decodeSourceValues = (
   if (!type) return rawNode
   const decoded = { ...parameters }
   if (parameters.value !== undefined) {
-    const encoding = type.family === 'alphabet-text' ? 'text'
+    const encoding = type.family === 'alphabet-text' || type.family === 'text' ? 'text'
       : type.family === 'integer' ? 'integer'
         : type.family === 'alphabet-policy' ? 'policy'
           : type.family === 'alphabet-direction' ? 'direction'
@@ -574,9 +580,10 @@ const compileGraph = (
     }
     if (node.operation === 'core.xor@1' || node.operation === 'core.output@1') return forwarded(node.operation === 'core.xor@1' ? 'left' : 'value')
     if (node.operation === 'classical.caesar@1' || node.operation === 'classical.affine@1'
-      || node.operation === 'classical.substitution@1' || node.operation === 'classical.vigenere@1') return forwarded('text')
+      || node.operation === 'classical.substitution@1' || node.operation === 'classical.vigenere@1'
+      || node.operation === 'classical.transposition@1') return forwarded('text')
     const declared = operationManifests.find((manifest) => manifest.identity === node.operation)?.outputs.find((output) => output.name === port)?.type
-    if (!declared || ['alphabet-symbol', 'alphabet-text', 'integer', 'alphabet-policy', 'alphabet-direction'].includes(declared.family)
+    if (!declared || ['alphabet-symbol', 'alphabet-text', 'text', 'integer', 'alphabet-policy', 'alphabet-direction'].includes(declared.family)
       || typeof (declared as { size?: unknown }).size !== 'string') return declared
     return forwarded(Object.keys(inputs ?? {})[0])
   }

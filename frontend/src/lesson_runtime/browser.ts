@@ -58,6 +58,7 @@ const cloneValue = (value: CryptoValue): CryptoValue => {
     const text = value as { type: { mapping: string }; symbols: readonly string[] }
     return { type: { family: 'alphabet-text', mapping: text.type.mapping }, symbols: [...text.symbols] }
   }
+  if (value.type.family === 'text') return { type: { family: 'text' }, symbols: [...(value as Extract<CryptoValue, { type: { family: 'text' } }>).symbols] }
   if (value.type.family === 'integer') return { type: { family: 'integer', signed: true, safe: true }, value: (value as { value: number }).value }
   if (value.type.family === 'alphabet-policy') return { type: { family: 'alphabet-policy' }, value: (value as { value: 'preserve' | 'strict' }).value }
   if (value.type.family === 'alphabet-direction') return { type: { family: 'alphabet-direction' }, value: (value as { value: 'encrypt' | 'decrypt' }).value }

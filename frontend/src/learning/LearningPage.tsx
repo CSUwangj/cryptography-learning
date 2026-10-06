@@ -39,8 +39,8 @@ const hexValue = (value: CryptoValue): string => {
 const valueText = (value: CryptoValue): string =>
   'symbol' in value
     ? `${value.symbol} (${value.type.family}<${value.type.mapping}>)`
-    : 'symbols' in value
-      ? `${value.symbols.join('')} (${value.type.family}<${value.type.mapping}>)`
+      : 'symbols' in value
+        ? `${value.symbols.join('')} (${value.type.family}${'mapping' in value.type ? `<${value.type.mapping}>` : ''})`
       : 'value' in value
         ? `${value.value} (${value.type.family})`
         : `${hexValue(value)} (${value.type.family}<${(value.type as { size: number }).size}>)`
