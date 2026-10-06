@@ -240,10 +240,17 @@ const LessonView: React.FC = () => {
       const setInput = (next: string) => { current.setInput(input.input, next); refresh() }
       return <label key={input.input}>
         <p>{locale.texts[input.prompt]}</p>
-        {input.type.family === 'alphabet-policy'
+        {input.type.family === 'alphabet-policy' || input.type.family === 'alphabet-direction'
           ? <select value={value} onChange={(event) => setInput(event.target.value)}>
-              <option value="preserve">{t('learning.policy.preserve')}</option>
-              <option value="strict">{t('learning.policy.strict')}</option>
+              {input.type.family === 'alphabet-policy'
+                ? <>
+                    <option value="preserve">{t('learning.policy.preserve')}</option>
+                    <option value="strict">{t('learning.policy.strict')}</option>
+                  </>
+                : <>
+                    <option value="encrypt">{t('learning.direction.encrypt')}</option>
+                    <option value="decrypt">{t('learning.direction.decrypt')}</option>
+                  </>}
             </select>
           : <InputGroup
               value={value}

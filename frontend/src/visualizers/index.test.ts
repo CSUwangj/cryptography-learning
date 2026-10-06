@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
 import { aesCipherGraph, aesInverseCipherGraph, aesKeyExpansionGraph, alphabetPolicy, alphabetText, bits, executeWorkerRequest, hex, integer, teachingSpnGraph, type TraceEvent, type TraceCheckpoint } from '../crypto_graph'
 import { teachingSpnDemoDocuments } from '../../demos/teachingSpnLesson'
 import { aesKeyExpansionDemoDocuments } from '../../demos/aesKeyExpansionLesson'
 import { aesCipherDemoDocuments } from '../../demos/aes128CipherLesson'
+import { substitutionCipherDemoDocuments, vigenereCipherDemoDocuments } from '../../demos/classicalCipherLessons'
 import { compileLesson, createBrowserLessonSession } from '../lesson_runtime'
 import { traceBitTargets } from './traceFlow'
 import { AvalancheRenderer } from './Avalanche'
@@ -585,6 +586,73 @@ describe('AES-192/256 Lesson paths (#85)', () => {
   })
 })
 
+describe('Classical substitution and Vigenere Lessons (#87)', () => {
+  it('compiles bilingual synthetic Lessons and runs both through classical-cipher@1', async () => {
+    const previousWorker = globalThis.Worker
+    globalThis.Worker = WorkerStub as unknown as typeof Worker
+    try {
+      for (const documents of [substitutionCipherDemoDocuments, vigenereCipherDemoDocuments]) {
+        const compiled = compileLesson(documents, visualizerCatalog)
+        expect(compiled.ok).toBe(true)
+        if (!compiled.ok) continue
+        expect(Object.keys(compiled.value.locales)).toEqual(['en-US', 'zh-CN'])
+        expect(compiled.value.inputs.direction.type).toEqual({ family: 'alphabet-direction' })
+        expect(compiled.value.steps[1].visualizer).toMatchObject({ id: 'classical-cipher@1' })
+        const english = createBrowserLessonSession(documents, 'en-US', visualizerCatalog)
+        expect(english.ok).toBe(true)
+        if (!english.ok) continue
+        const englishRun = await english.value.next()
+        expect(englishRun.ok && englishRun.value.locale).toBe('en-US')
+        expect(englishRun.ok && englishRun.value.snapshots.encrypt).toBeDefined()
+        english.value.dispose()
+        const session = createBrowserLessonSession(documents, 'zh-CN', visualizerCatalog)
+        expect(session.ok).toBe(true)
+        if (!session.ok) continue
+        const result = await session.value.next()
+        expect(result.ok).toBe(true)
+        const expectedPlaintext = documents === substitutionCipherDemoDocuments ? 'ABC XYZ!' : 'ATTACK AT DAWN!'
+        const expectedCiphertext = documents === substitutionCipherDemoDocuments ? 'QWE BNM!' : 'KXRKGI KX BKAL!'
+        expect(result.ok && result.value.snapshots.encrypt?.outputs['cipher.text']).toMatchObject({ symbols: [...expectedCiphertext] })
+        expect(result.ok && result.value.executionIdentities.encrypt).toBeDefined()
+        if (!result.ok) continue
+        const encrypt = result.value.snapshots.encrypt
+        if (!encrypt) continue
+        const input = result.value.inputs.plaintext
+        const output = encrypt.outputs['cipher.text']
+        if (typeof input === 'string' || !('symbols' in input) || !('symbols' in output)) continue
+        render(React.createElement(RenderHost, {
+          invocation: { id: 'classical-cipher@1' },
+          dimensions: { width: 600, height: 240 },
+          execution: encrypt,
+          executionIdentity: 'classical-encrypt',
+          locale: 'en-US',
+          reducedMotion: true,
+          classicalCipher: {
+            input,
+            output,
+            mapping: compiled.value.graphs.cipher.graph.alphabetMappings![0],
+            policy: result.value.inputs.policy as ReturnType<typeof alphabetPolicy>,
+            policyLabel: 'Preserve unmapped characters',
+          },
+        }))
+        expect(screen.getByLabelText('Classical cipher position mapping')).toBeVisible()
+        expect(screen.getByText('Preserve unmapped characters')).toBeVisible()
+        const decrypted = await session.value.next()
+        expect(decrypted.ok && decrypted.value.snapshots.decrypt?.outputs['cipher.text']).toMatchObject({ symbols: [...expectedPlaintext] })
+        expect(decrypted.ok && decrypted.value.inputs.direction).toMatchObject({ value: 'encrypt' })
+        session.value.setInput('plaintext', 'CHANGED')
+        expect(session.value.state().snapshots).toEqual({})
+        session.value.setInput('direction', 'decrypt')
+        expect(session.value.state().snapshots).toEqual({})
+        session.value.dispose()
+        cleanup()
+      }
+    } finally {
+      globalThis.Worker = previousWorker
+    }
+  })
+})
+
 describe('Descriptor-free generic traces (ADR 0006)', () => {
   it('renders an ordinary SPN trace as semantic rows with operation details and no lineage controls', () => {
     const response = executeWorkerRequest({ requestId: 'generic-spn', kind: 'execute', payload: { graph: teachingSpnGraph } })
@@ -606,13 +674,12 @@ describe('Descriptor-free generic traces (ADR 0006)', () => {
   })
 
   it('renders an ordinary classical trace with retained output text and no registered descriptor', () => {
-    const latin = { id: 'latin', symbols: [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'] }
     const response = executeWorkerRequest({
       requestId: 'generic-caesar',
       kind: 'execute',
       payload: {
         graph: {
-          alphabetMappings: [latin],
+          alphabetMappings: [{ id: 'latin', symbols: [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'] }],
           nodes: [
             { id: 'text', operation: 'core.source@1', parameters: { type: { family: 'alphabet-text', mapping: 'latin' } } },
             { id: 'shift', operation: 'core.source@1', parameters: { type: { family: 'integer', signed: true, safe: true } } },
@@ -621,7 +688,11 @@ describe('Descriptor-free generic traces (ADR 0006)', () => {
           ],
           outputs: [{ node: 'cipher', port: 'text' }],
         },
-        inputs: { 'text.value': alphabetText(latin, 'ABC'), 'shift.value': integer(3), 'policy.value': alphabetPolicy('preserve') },
+        inputs: {
+          'text.value': alphabetText({ id: 'latin', symbols: [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'] }, 'ABC'),
+          'shift.value': integer(3),
+          'policy.value': alphabetPolicy('preserve'),
+        },
       },
     })
     expect(response.kind).toBe('snapshot')
@@ -637,6 +708,31 @@ describe('Descriptor-free generic traces (ADR 0006)', () => {
     expect(screen.getByRole('heading', { name: '执行轨迹' })).toBeVisible()
     expect(screen.getByRole('row', { name: '输出 (cipher.text) — DEF' })).toBeVisible()
     expect(screen.getByRole('row', { name: '轨迹值 (shift.value) — —' })).toBeVisible()
+  })
+
+  it('renders an ordinary XOR trace with the actual left/right fixture', () => {
+    const response = executeWorkerRequest({
+      requestId: 'generic-xor',
+      kind: 'execute',
+      payload: {
+        graph: {
+          nodes: [
+            { id: 'input', operation: 'core.source@1', parameters: { type: { family: 'bits', size: 8 } } },
+            { id: 'key', operation: 'core.source@1', parameters: { type: { family: 'bits', size: 8 } } },
+            { id: 'xor', operation: 'core.xor@1', inputs: { left: { node: 'input', port: 'value' }, right: { node: 'key', port: 'value' } } },
+          ],
+          outputs: [{ node: 'xor', port: 'value' }],
+        },
+        inputs: {
+          'input.value': { type: { family: 'bits', size: 8 }, bytes: new Uint8Array([0b10101010]) },
+          'key.value': { type: { family: 'bits', size: 8 }, bytes: new Uint8Array([0b11110000]) },
+        },
+      },
+    })
+    expect(response.kind).toBe('snapshot')
+    if (response.kind !== 'snapshot') return
+    render(React.createElement(RenderHost, { dimensions: { width: 320, height: 200 }, execution: response.snapshot, executionIdentity: 'generic-xor', locale: 'zh-CN', reducedMotion: true }))
+    expect(screen.getByRole('row', { name: '输出 (xor.value) — 0x5a' })).toBeVisible()
   })
 })
 

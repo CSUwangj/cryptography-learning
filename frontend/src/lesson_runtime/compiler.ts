@@ -249,6 +249,9 @@ const typeAt = (
   } else if (family === 'alphabet-policy') {
     checkFields(type, ['family'], path, spans, diagnostics)
     return { family }
+  } else if (family === 'alphabet-direction') {
+    checkFields(type, ['family'], path, spans, diagnostics)
+    return { family }
   } else if (family === 'bits' || family === 'bytes') {
     checkFields(type, ['family', 'size'], path, spans, diagnostics)
     if (Number.isSafeInteger(type.size) && (type.size as number) > 0) return { family, size: type.size as number }
@@ -303,6 +306,8 @@ const decodeValue = (
     }
   } else if (type.family === 'alphabet-policy') {
     if (encoding === 'policy' && (value === 'preserve' || value === 'strict')) return { type, value }
+  } else if (type.family === 'alphabet-direction') {
+    if (encoding === 'direction' && (value === 'encrypt' || value === 'decrypt')) return { type, value }
   } else if (encoding === 'hex' && typeof value === 'string' && /^0x[0-9A-Fa-f]+$/.test(value)) {
     const packed = packHexDigits(type, value.slice(2))
     if (packed) return packed
@@ -393,6 +398,8 @@ const validateGraphNode = (
       : node.operation === 'aes.key-word@1' ? ['index']
       : node.operation === 'aes.rcon-word@1' ? ['round']
       : node.operation === 'core.xor@1' || node.operation === 'core.output@1'
+        || node.operation === 'classical.caesar@1' || node.operation === 'classical.affine@1'
+        || node.operation === 'classical.substitution@1' || node.operation === 'classical.vigenere@1'
         || node.operation === 'aes.rot-word@1' || node.operation === 'aes.sub-word@1'
         || node.operation === 'aes.word-xor@1' || node.operation === 'aes.round-key@1' ? []
       : undefined
@@ -426,6 +433,7 @@ const decodeSourceValues = (
     const encoding = type.family === 'alphabet-text' ? 'text'
       : type.family === 'integer' ? 'integer'
         : type.family === 'alphabet-policy' ? 'policy'
+          : type.family === 'alphabet-direction' ? 'direction'
           : type.family === 'alphabet-symbol' ? 'literal'
             : 'hex'
     const value = decodeValue(parameters.value, type, encoding, `${nodePath}.parameters.value`, spans, diagnostics)
@@ -565,9 +573,10 @@ const compileGraph = (
         : undefined
     }
     if (node.operation === 'core.xor@1' || node.operation === 'core.output@1') return forwarded(node.operation === 'core.xor@1' ? 'left' : 'value')
-    if (node.operation === 'classical.caesar@1' || node.operation === 'classical.affine@1') return forwarded('text')
+    if (node.operation === 'classical.caesar@1' || node.operation === 'classical.affine@1'
+      || node.operation === 'classical.substitution@1' || node.operation === 'classical.vigenere@1') return forwarded('text')
     const declared = operationManifests.find((manifest) => manifest.identity === node.operation)?.outputs.find((output) => output.name === port)?.type
-    if (!declared || ['alphabet-symbol', 'alphabet-text', 'integer', 'alphabet-policy'].includes(declared.family)
+    if (!declared || ['alphabet-symbol', 'alphabet-text', 'integer', 'alphabet-policy', 'alphabet-direction'].includes(declared.family)
       || typeof (declared as { size?: unknown }).size !== 'string') return declared
     return forwarded(Object.keys(inputs ?? {})[0])
   }

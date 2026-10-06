@@ -45,6 +45,8 @@ const localized = (value: Diagnostic, locale: string): Diagnostic => ({
         'lesson.yaml-syntax': 'YAML 文档无效。',
         'cipher.invalid-key': '密钥必须是安全整数。',
         'cipher.invalid-affine-key': '仿射密钥 a 必须与字母表长度互素。',
+        'cipher.invalid-substitution-key': '替换密码密钥必须是完整的无重复字母表。',
+        'cipher.invalid-vigenere-key': '维吉尼亚密钥无效。',
         'cipher.unmapped-symbol': '严格字母表策略拒绝未映射字符。',
       }[value.code] ?? '课程验证失败。')
     : value.message,
@@ -58,6 +60,7 @@ const cloneValue = (value: CryptoValue): CryptoValue => {
   }
   if (value.type.family === 'integer') return { type: { family: 'integer', signed: true, safe: true }, value: (value as { value: number }).value }
   if (value.type.family === 'alphabet-policy') return { type: { family: 'alphabet-policy' }, value: (value as { value: 'preserve' | 'strict' }).value }
+  if (value.type.family === 'alphabet-direction') return { type: { family: 'alphabet-direction' }, value: (value as { value: 'encrypt' | 'decrypt' }).value }
   if ('words' in value) return { type: { family: 'words', size: value.type.size, wordSize: 8 }, words: value.words.slice() }
   const bytes = value as { type: { family: 'bits' | 'bytes'; size: number }; bytes: Uint8Array }
   return bytes.type.family === 'bits'

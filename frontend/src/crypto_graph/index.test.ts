@@ -3,6 +3,7 @@ import {
   aesCipherGraph,
   aesInverseCipherGraph,
   aesKeyExpansionGraph,
+  alphabetDirection,
   alphabetPolicy,
   alphabetText,
   bits,
@@ -17,6 +18,7 @@ import {
   teachingSpnGraph,
   words,
   type AuthoredGraph,
+  type CompiledGraph,
   type TraceEvent,
 } from './index'
 
@@ -162,57 +164,60 @@ describe('CryptoGraph compile/execute seam (#26)', () => {
 
 describe('Classical cipher operations (#65)', () => {
   const alphabet = { id: 'latin', symbols: [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'] }
-  const cipherGraph = (operation: 'classical.caesar@1' | 'classical.affine@1'): AuthoredGraph => ({
+
+  const cipherGraph = (operation: 'classical.caesar@1' | 'classical.affine@1' | 'classical.substitution@1' | 'classical.vigenere@1'): AuthoredGraph => ({
     alphabetMappings: [alphabet],
     nodes: [
       { id: 'text', operation: 'core.source@1', parameters: { type: { family: 'alphabet-text', mapping: 'latin' } } },
       { id: 'policy', operation: 'core.source@1', parameters: { type: { family: 'alphabet-policy' } } },
       ...(operation === 'classical.caesar@1'
         ? [{ id: 'shift', operation: 'core.source@1', parameters: { type: { family: 'integer', signed: true as const, safe: true as const } } }]
-        : [
-            { id: 'a', operation: 'core.source@1', parameters: { type: { family: 'integer', signed: true as const, safe: true as const } } },
-            { id: 'b', operation: 'core.source@1', parameters: { type: { family: 'integer', signed: true as const, safe: true as const } } },
-          ]),
+        : operation === 'classical.affine@1'
+          ? [
+              { id: 'a', operation: 'core.source@1', parameters: { type: { family: 'integer', signed: true as const, safe: true as const } } },
+              { id: 'b', operation: 'core.source@1', parameters: { type: { family: 'integer', signed: true as const, safe: true as const } } },
+            ]
+          : [
+              { id: 'key', operation: 'core.source@1', parameters: { type: { family: 'alphabet-text', mapping: 'latin' } } },
+              { id: 'direction', operation: 'core.source@1', parameters: { type: { family: 'alphabet-direction' } } },
+            ]),
       {
         id: 'cipher',
         operation,
         inputs: operation === 'classical.caesar@1'
           ? { text: { node: 'text', port: 'value' }, shift: { node: 'shift', port: 'value' }, policy: { node: 'policy', port: 'value' } }
-          : { text: { node: 'text', port: 'value' }, a: { node: 'a', port: 'value' }, b: { node: 'b', port: 'value' }, policy: { node: 'policy', port: 'value' } },
+          : operation === 'classical.affine@1'
+            ? { text: { node: 'text', port: 'value' }, a: { node: 'a', port: 'value' }, b: { node: 'b', port: 'value' }, policy: { node: 'policy', port: 'value' } }
+            : { text: { node: 'text', port: 'value' }, key: { node: 'key', port: 'value' }, policy: { node: 'policy', port: 'value' }, direction: { node: 'direction', port: 'value' } },
       },
     ],
     outputs: [{ node: 'cipher', port: 'text' }],
   })
 
-  it('runs Caesar and affine through compile/execute with reusable source inputs', () => {
-    const caesar = compile(cipherGraph('classical.caesar@1'))
-    const affine = compile(cipherGraph('classical.affine@1'))
-    expect(caesar.ok && affine.ok).toBe(true)
-    if (!caesar.ok || !affine.ok) return
+  const compiledGraphs = new Map<Parameters<typeof cipherGraph>[0], CompiledGraph>()
+  const execute = (operation: Parameters<typeof cipherGraph>[0], inputs: Record<string, ReturnType<typeof alphabetText> | ReturnType<typeof alphabetPolicy> | ReturnType<typeof alphabetDirection> | ReturnType<typeof integer>>) => {
+    let compiled = compiledGraphs.get(operation)
+    if (!compiled) {
+      const result = compile(cipherGraph(operation))
+      expect(result.ok).toBe(true)
+      if (!result.ok) throw new Error(result.diagnostics[0]?.message)
+      compiled = result.value
+      compiledGraphs.set(operation, compiled)
+    }
+    return compiled.execute(inputs)
+  }
 
+  it('runs Caesar and affine through compile/execute with reusable source inputs', () => {
     const text = alphabetText(alphabet, 'ABC')
-    const caesarResult = caesar.value.execute({
-      'text.value': text,
-      'shift.value': integer(3),
-      'policy.value': alphabetPolicy('preserve'),
-    })
-    const affineResult = affine.value.execute({
-      'text.value': text,
-      'a.value': integer(5),
-      'b.value': integer(8),
-      'policy.value': alphabetPolicy('preserve'),
-    })
+    const caesarResult = execute('classical.caesar@1', { 'text.value': text, 'shift.value': integer(3), 'policy.value': alphabetPolicy('preserve') })
+    const affineResult = execute('classical.affine@1', { 'text.value': text, 'a.value': integer(5), 'b.value': integer(8), 'policy.value': alphabetPolicy('preserve') })
     expect(caesarResult.ok && caesarResult.value.outputs['cipher.text']).toMatchObject({ symbols: ['D', 'E', 'F'] })
     expect(affineResult.ok && affineResult.value.outputs['cipher.text']).toMatchObject({ symbols: ['I', 'N', 'S'] })
-    const normalized = caesar.value.execute({
-      'text.value': text,
-      'shift.value': integer(Number.MAX_SAFE_INTEGER),
-      'policy.value': alphabetPolicy('preserve'),
-    })
+    const normalized = execute('classical.caesar@1', { 'text.value': text, 'shift.value': integer(Number.MAX_SAFE_INTEGER), 'policy.value': alphabetPolicy('preserve') })
     expect(normalized.ok && normalized.value.outputs['cipher.text']).toMatchObject({ symbols: ['F', 'G', 'H'] })
   })
 
-  it('reuses a compiled graph when policy preserves or strictly rejects unmapped code points', () => {
+  it('preserves or strictly rejects unmapped Caesar input and reports invalid affine keys', () => {
     const compiled = compile(cipherGraph('classical.caesar@1'))
     expect(compiled.ok).toBe(true)
     if (!compiled.ok) return
@@ -220,25 +225,89 @@ describe('Classical cipher operations (#65)', () => {
     const preserved = compiled.value.execute({ ...inputs, 'policy.value': alphabetPolicy('preserve') })
     const strict = compiled.value.execute({ ...inputs, 'policy.value': alphabetPolicy('strict') })
     expect(preserved.ok && preserved.value.outputs['cipher.text']).toMatchObject({ symbols: ['D', 'b', ' ', 'F', '!'] })
-    expect(strict).toMatchObject({
-      ok: false,
-      diagnostics: [{ code: 'cipher.unmapped-symbol', details: { symbol: 'b', index: 1, strict: true } }],
+    expect(strict).toMatchObject({ ok: false, diagnostics: [{ code: 'cipher.unmapped-symbol', details: { symbol: 'b', index: 1, strict: true } }] })
+    expect(execute('classical.affine@1', { 'text.value': alphabetText(alphabet, 'ABC'), 'a.value': integer(2), 'b.value': integer(8), 'policy.value': alphabetPolicy('preserve') })).toMatchObject({
+      ok: false, diagnostics: [{ code: 'cipher.invalid-affine-key', details: { a: 2, modulus: 26 } }],
+    })
+    expect(execute('classical.affine@1', { 'text.value': alphabetText(alphabet, 'ABC'), 'a.value': integer(1.5), 'b.value': integer(8), 'policy.value': alphabetPolicy('preserve') })).toMatchObject({
+      ok: false, diagnostics: [{ code: 'cipher.invalid-key', details: { reason: 'fraction' } }],
     })
   })
 
-  it('reports invalid key diagnostics and requires useful alphabet mappings', () => {
-    const compiled = compile(cipherGraph('classical.affine@1'))
+  it('runs substitution in both directions and validates its keyed alphabet', () => {
+    const key = alphabetText(alphabet, 'QWERTYUIOPASDFGHJKLZXCVBNM')
+    const encrypted = execute('classical.substitution@1', { 'text.value': alphabetText(alphabet, 'ABC XYZ'), 'key.value': key, 'policy.value': alphabetPolicy('preserve'), 'direction.value': alphabetDirection('encrypt') })
+    const decrypted = execute('classical.substitution@1', { 'text.value': encrypted.ok ? encrypted.value.outputs['cipher.text'] as ReturnType<typeof alphabetText> : alphabetText(alphabet, ''), 'key.value': key, 'policy.value': alphabetPolicy('preserve'), 'direction.value': alphabetDirection('decrypt') })
+    expect(encrypted.ok && encrypted.value.outputs['cipher.text']).toMatchObject({ symbols: [...'QWE BNM'] })
+    expect(decrypted.ok && decrypted.value.outputs['cipher.text']).toMatchObject({ symbols: [...'ABC XYZ'] })
+    expect(execute('classical.substitution@1', { 'text.value': alphabetText(alphabet, 'a b!'), 'key.value': key, 'policy.value': alphabetPolicy('preserve'), 'direction.value': alphabetDirection('encrypt') })).toMatchObject({ ok: true, value: { outputs: { 'cipher.text': { symbols: [...'a b!'] } } } })
+    expect(execute('classical.substitution@1', { 'text.value': alphabetText(alphabet, 'a b!'), 'key.value': key, 'policy.value': alphabetPolicy('strict'), 'direction.value': alphabetDirection('encrypt') })).toMatchObject({ ok: false, diagnostics: [{ code: 'cipher.unmapped-symbol', details: { symbol: 'a', index: 0, strict: true } }] })
+    expect(execute('classical.substitution@1', { 'text.value': alphabetText(alphabet, ''), 'key.value': key, 'policy.value': alphabetPolicy('preserve'), 'direction.value': alphabetDirection('encrypt') })).toMatchObject({ ok: true, value: { outputs: { 'cipher.text': { symbols: [] } } } })
+    for (const [keyText, reasons] of [['ABC', ['length']], ['A'.repeat(25) + 'B', ['duplicate']], ['A'.repeat(25) + 'Z', ['duplicate', 'missing']], ['QWERTYUIOPASDFGHJKLZXCVBN😀', ['unmapped']]] as const) {
+      expect(execute('classical.substitution@1', { 'text.value': alphabetText(alphabet, 'A'), 'key.value': alphabetText(alphabet, keyText), 'policy.value': alphabetPolicy('preserve'), 'direction.value': alphabetDirection('encrypt') })).toMatchObject({
+        ok: false, diagnostics: [{ code: 'cipher.invalid-substitution-key', details: { reason: expect.stringMatching(new RegExp(`^${reasons.join('|')}$`)) } }],
+      })
+    }
+    const unicode = { id: 'unicode', symbols: ['😀', '🚀', '猫'] }
+    const unicodeKey = alphabetText(unicode, '猫😀🚀')
+    const other = { id: 'other', symbols: ['A', 'B', 'C'] }
+    const unicodeGraph = cipherGraph('classical.substitution@1')
+    const graph = { ...unicodeGraph, alphabetMappings: [unicode, other], nodes: unicodeGraph.nodes.map((node) => {
+      const type = node.parameters?.type
+      return node.operation === 'core.source@1' && typeof type === 'object' && type !== null && 'family' in type && type.family === 'alphabet-text'
+        ? { ...node, parameters: { ...node.parameters, type: { family: 'alphabet-text' as const, mapping: 'unicode' } } }
+        : node
+    }) }
+    const compiled = compile(graph)
     expect(compiled.ok).toBe(true)
     if (!compiled.ok) return
-    const common = { 'text.value': alphabetText(alphabet, 'ABC'), 'b.value': integer(8), 'policy.value': alphabetPolicy('preserve') }
-    expect(compiled.value.execute({ ...common, 'a.value': integer(2) })).toMatchObject({
-      ok: false,
-      diagnostics: [{ code: 'cipher.invalid-affine-key', details: { a: 2, modulus: 26 } }],
+    expect(compiled.value.execute({ 'text.value': alphabetText(unicode, '😀?猫'), 'key.value': unicodeKey, 'policy.value': alphabetPolicy('preserve'), 'direction.value': alphabetDirection('encrypt') })).toMatchObject({ ok: true, value: { outputs: { 'cipher.text': { symbols: ['猫', '?', '🚀'] } } } })
+    const mismatchGraph = { ...graph, nodes: graph.nodes.map((node) => node.id === 'key' ? { ...node, parameters: { ...node.parameters, type: { family: 'alphabet-text' as const, mapping: 'other' } } } : node) }
+    const mismatch = compile(mismatchGraph)
+    expect(mismatch.ok).toBe(true)
+    if (!mismatch.ok) return
+    expect(mismatch.value.execute({ 'text.value': alphabetText(unicode, '😀'), 'key.value': alphabetText(other, 'ABC'), 'policy.value': alphabetPolicy('preserve'), 'direction.value': alphabetDirection('encrypt') })).toMatchObject({ ok: false, diagnostics: [{ code: 'cipher.invalid-substitution-key', details: { reason: 'unmapped' } }] })
+  })
+
+  it('runs Vigenere with cyclic keys, preserve/strict policy, empty text, and code-point indexes', () => {
+    const common = { 'key.value': alphabetText(alphabet, 'BC'), 'policy.value': alphabetPolicy('preserve'), 'direction.value': alphabetDirection('encrypt') }
+    const encrypted = execute('classical.vigenere@1', { 'text.value': alphabetText(alphabet, 'ABC'), ...common })
+    expect(encrypted.ok && encrypted.value.outputs['cipher.text']).toMatchObject({ symbols: ['B', 'D', 'D'] })
+    const decrypted = execute('classical.vigenere@1', { 'text.value': encrypted.ok ? encrypted.value.outputs['cipher.text'] as ReturnType<typeof alphabetText> : alphabetText(alphabet, ''), ...common, 'direction.value': alphabetDirection('decrypt') })
+    expect(decrypted.ok && decrypted.value.outputs['cipher.text']).toMatchObject({ symbols: ['A', 'B', 'C'] })
+    const vectorKey = alphabetText(alphabet, 'LEMON')
+    const vector = execute('classical.vigenere@1', { 'text.value': alphabetText(alphabet, 'ATTACKATDAWN'), 'key.value': vectorKey, 'policy.value': alphabetPolicy('preserve'), 'direction.value': alphabetDirection('encrypt') })
+    expect(vector.ok && vector.value.outputs['cipher.text']).toMatchObject({ symbols: [...'LXFOPVEFRNHR'] })
+    expect(execute('classical.vigenere@1', { 'text.value': vector.ok ? vector.value.outputs['cipher.text'] as ReturnType<typeof alphabetText> : alphabetText(alphabet, ''), 'key.value': vectorKey, 'policy.value': alphabetPolicy('preserve'), 'direction.value': alphabetDirection('decrypt') })).toMatchObject({ ok: true, value: { outputs: { 'cipher.text': { symbols: [...'ATTACKATDAWN'] } } } })
+    expect(execute('classical.vigenere@1', { 'text.value': alphabetText(alphabet, 'a b!'), 'key.value': vectorKey, 'policy.value': alphabetPolicy('preserve'), 'direction.value': alphabetDirection('encrypt') })).toMatchObject({ ok: true, value: { outputs: { 'cipher.text': { symbols: [...'a b!'] } } } })
+    expect(execute('classical.vigenere@1', { 'text.value': alphabetText(alphabet, ''), ...common })).toMatchObject({ ok: true, value: { outputs: { 'cipher.text': { symbols: [] } } } })
+    expect(execute('classical.vigenere@1', { 'text.value': alphabetText(alphabet, 'A?B'), ...common })).toMatchObject({ ok: true, value: { outputs: { 'cipher.text': { symbols: ['B', '?', 'D'] } } } })
+    expect(execute('classical.vigenere@1', { 'text.value': alphabetText(alphabet, 'A?B'), ...common, 'policy.value': alphabetPolicy('strict') })).toMatchObject({
+      ok: false, diagnostics: [{ code: 'cipher.unmapped-symbol', details: { symbol: '?', index: 1, strict: true } }],
     })
-    expect(compiled.value.execute({ ...common, 'a.value': integer(1.5) })).toMatchObject({
-      ok: false,
-      diagnostics: [{ code: 'cipher.invalid-key', details: { reason: 'fraction' } }],
+    expect(execute('classical.vigenere@1', { 'text.value': alphabetText(alphabet, 'A'), ...common, 'key.value': alphabetText(alphabet, '') })).toMatchObject({
+      ok: false, diagnostics: [{ code: 'cipher.invalid-vigenere-key', details: { reason: 'empty' } }],
     })
+    expect(execute('classical.vigenere@1', { 'text.value': alphabetText(alphabet, 'A'), ...common, 'key.value': alphabetText(alphabet, '?') })).toMatchObject({
+      ok: false, diagnostics: [{ code: 'cipher.invalid-vigenere-key', details: { reason: 'unmapped' } }],
+    })
+    const unicode = { id: 'unicode', symbols: ['😀', '🚀', '猫'] }
+    const unicodeGraph = cipherGraph('classical.vigenere@1')
+    const graph = {
+      ...unicodeGraph,
+      alphabetMappings: [unicode],
+      nodes: unicodeGraph.nodes.map((node) => node.operation === 'core.source@1' && typeof node.parameters?.type === 'object' && node.parameters.type !== null && 'family' in node.parameters.type && node.parameters.type.family === 'alphabet-text'
+        ? { ...node, parameters: { ...node.parameters, type: { family: 'alphabet-text' as const, mapping: 'unicode' } } }
+        : node),
+    }
+    const compiled = compile(graph)
+    expect(compiled.ok).toBe(true)
+    if (!compiled.ok) return
+    const result = compiled.value.execute({ 'text.value': alphabetText(unicode, '😀?猫'), 'key.value': alphabetText(unicode, '🚀'), 'policy.value': alphabetPolicy('preserve'), 'direction.value': alphabetDirection('encrypt') })
+    expect(result).toMatchObject({ ok: true, value: { outputs: { 'cipher.text': { symbols: ['🚀', '?', '😀'] } } } })
+  })
+
+  it('rejects invalid alphabet mappings and validates alphabet-text parameters', () => {
     expect(compile({ alphabetMappings: [{ id: 'one', symbols: ['A'] }], nodes: [], outputs: [] })).toMatchObject({
       ok: false,
       diagnostics: [{ code: 'invalid-alphabet-mapping' }],

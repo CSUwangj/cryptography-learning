@@ -75,6 +75,10 @@ i18n
               'preserve': 'Preserve unmapped characters',
               'strict': 'Reject unmapped characters',
             },
+            'direction': {
+              'encrypt': 'Encrypt',
+              'decrypt': 'Decrypt',
+            },
           },
           'notFound': {
             'title': 'Not Found',
@@ -181,6 +185,10 @@ i18n
             'policy': {
               'preserve': '保留未映射字符',
               'strict': '拒绝未映射字符',
+            },
+            'direction': {
+              'encrypt': '加密',
+              'decrypt': '解密',
             },
           },
           'notFound': {

@@ -22,6 +22,7 @@ export type PortType =
   | { family: 'alphabet-text'; mapping: string }
   | { family: 'integer'; signed: true; safe: true }
   | { family: 'alphabet-policy' }
+  | { family: 'alphabet-direction' }
 
 export type BitsValue = {
   type: { family: 'bits'; size: number }
@@ -63,12 +64,18 @@ export type AlphabetPolicyValue = {
   value: 'preserve' | 'strict'
 }
 
-export type CryptoValue = BitsValue | BytesValue | WordsValue | AlphabetSymbolValue | AlphabetTextValue | IntegerValue | AlphabetPolicyValue
+export type AlphabetDirectionValue = {
+  type: { family: 'alphabet-direction' }
+  value: 'encrypt' | 'decrypt'
+}
+
+export type CryptoValue = BitsValue | BytesValue | WordsValue | AlphabetSymbolValue | AlphabetTextValue | IntegerValue | AlphabetPolicyValue | AlphabetDirectionValue
 
 type ByteValue = BitsValue | BytesValue | WordsValue
 
 const isIntegerValue = (value: CryptoValue): value is IntegerValue => value.type.family === 'integer'
 const isAlphabetPolicyValue = (value: CryptoValue): value is AlphabetPolicyValue => value.type.family === 'alphabet-policy'
+const isAlphabetDirectionValue = (value: CryptoValue): value is AlphabetDirectionValue => value.type.family === 'alphabet-direction'
 const isAlphabetTextValue = (value: CryptoValue): value is AlphabetTextValue => value.type.family === 'alphabet-text'
 const isByteValue = (value: CryptoValue): value is ByteValue =>
   value.type.family === 'bits' || value.type.family === 'bytes' || value.type.family === 'words'
@@ -264,6 +271,7 @@ const cloneValue = (value: CryptoValue): CryptoValue => {
   if (isAlphabetTextValue(value)) return { type: { family: 'alphabet-text', mapping: value.type.mapping }, symbols: [...value.symbols] }
   if (isIntegerValue(value)) return { type: { family: 'integer', signed: true, safe: true }, value: value.value }
   if (isAlphabetPolicyValue(value)) return { type: { family: 'alphabet-policy' }, value: value.value }
+  if (isAlphabetDirectionValue(value)) return { type: { family: 'alphabet-direction' }, value: value.value }
   if ('words' in value) return { type: { family: 'words', size: value.type.size, wordSize: 8 }, words: value.words.slice() }
   return value.type.family === 'bits'
     ? { type: { family: 'bits', size: value.type.size }, bytes: value.bytes.slice() }
@@ -280,11 +288,11 @@ const typeMatches = (expected: PortType, actual: PortType, bindings: Map<string,
   if (expected.family === 'alphabet-text' && actual.family === 'alphabet-text') {
     return expected.mapping === '*' || expected.mapping === actual.mapping
   }
-  if (expected.family === 'integer' || expected.family === 'alphabet-policy') return true
+  if (expected.family === 'integer' || expected.family === 'alphabet-policy' || expected.family === 'alphabet-direction') return true
   if (expected.family === 'words' && actual.family === 'words' && expected.wordSize !== actual.wordSize) return false
   if (expected.family === 'alphabet-symbol' || expected.family === 'alphabet-text' || actual.family === 'alphabet-symbol' || actual.family === 'alphabet-text') return false
-  const binaryExpected = expected as Exclude<PortType, { family: 'alphabet-symbol' | 'alphabet-text' | 'integer' | 'alphabet-policy' }>
-  const binaryActual = actual as Exclude<PortType, { family: 'alphabet-symbol' | 'alphabet-text' | 'integer' | 'alphabet-policy' }>
+  const binaryExpected = expected as Exclude<PortType, { family: 'alphabet-symbol' | 'alphabet-text' | 'integer' | 'alphabet-policy' | 'alphabet-direction' }>
+  const binaryActual = actual as Exclude<PortType, { family: 'alphabet-symbol' | 'alphabet-text' | 'integer' | 'alphabet-policy' | 'alphabet-direction' }>
   const actualSize = binaryActual.size as number
   if (typeof binaryExpected.size === 'number') return binaryExpected.size === actualSize
   const bound = bindings.get(binaryExpected.size)
@@ -300,6 +308,7 @@ const typeText = (type: PortType): string => {
   if (type.family === 'alphabet-text') return `alphabet-text<${type.mapping}>`
   if (type.family === 'integer') return 'integer'
   if (type.family === 'alphabet-policy') return 'alphabet-policy'
+  if (type.family === 'alphabet-direction') return 'alphabet-direction'
   if (type.family === 'words') return `words<${type.size},u8>`
   return `${type.family}<${type.size}>`
 }
@@ -311,6 +320,7 @@ const isPortType = (value: unknown): value is PortType => {
   if (type.family === 'alphabet-text') return typeof type.mapping === 'string'
   if (type.family === 'integer') return type.signed === true && type.safe === true
   if (type.family === 'alphabet-policy') return true
+  if (type.family === 'alphabet-direction') return true
   if ((type.family === 'bits' || type.family === 'bytes') && (typeof type.size === 'number' || typeof type.size === 'string')) return true
   return type.family === 'words' && (typeof type.size === 'number' || typeof type.size === 'string') && type.wordSize === 8
 }
@@ -328,6 +338,7 @@ const isCryptoValue = (value: unknown): value is CryptoValue => {
   }
   if (candidate.type.family === 'integer') return typeof candidate.value === 'number'
   if (candidate.type.family === 'alphabet-policy') return candidate.value === 'preserve' || candidate.value === 'strict'
+  if (candidate.type.family === 'alphabet-direction') return candidate.value === 'encrypt' || candidate.value === 'decrypt'
   return candidate.type.family === 'words' ? isUint8Array(candidate.words) : isUint8Array(candidate.bytes)
 }
 
@@ -469,7 +480,7 @@ const bytesForBits = (size: number) => Math.ceil(size / 8)
 
 const validSizedValue = (value: CryptoValue): boolean => {
   if ('symbol' in value) return true
-  if (isAlphabetTextValue(value) || isIntegerValue(value) || isAlphabetPolicyValue(value)) return true
+  if (isAlphabetTextValue(value) || isIntegerValue(value) || isAlphabetPolicyValue(value) || isAlphabetDirectionValue(value)) return true
   if (!isByteValue(value)) return false
   const size = value.type.size
   const contents = 'words' in value ? value.words : value.bytes
@@ -523,6 +534,11 @@ export const integer = (value: number): IntegerValue => ({
 
 export const alphabetPolicy = (value: AlphabetPolicyValue['value']): AlphabetPolicyValue => ({
   type: { family: 'alphabet-policy' },
+  value,
+})
+
+export const alphabetDirection = (value: AlphabetDirectionValue['value']): AlphabetDirectionValue => ({
+  type: { family: 'alphabet-direction' },
   value,
 })
 
@@ -694,6 +710,76 @@ const caesar: Operation = {
     if (!modulus) throw new CipherDiagnostic('cipher.invalid-mapping', 'Cipher text references an unknown alphabet mapping.', { mapping: text.type.mapping })
     const normalizedShift = modulo(shift.value, modulus)
     return { text: cipherText(text, (position) => modulo(position + normalizedShift, modulus), policy, mappings) }
+  },
+}
+
+const substitution: Operation = {
+  manifest: {
+    identity: 'classical.substitution@1',
+    inputs: [
+      { name: 'text', type: { family: 'alphabet-text', mapping: '*' } },
+      { name: 'key', type: { family: 'alphabet-text', mapping: '*' } },
+      { name: 'policy', type: { family: 'alphabet-policy' } },
+      { name: 'direction', type: { family: 'alphabet-direction' } },
+    ],
+    outputs: [{ name: 'text', type: { family: 'alphabet-text', mapping: '*' } }],
+  },
+  execute(inputs, _, mappings) {
+    const text = inputs.text as AlphabetTextValue
+    const key = inputs.key as AlphabetTextValue
+    const policy = inputs.policy as AlphabetPolicyValue
+    const direction = inputs.direction as AlphabetDirectionValue
+    const mapping = mappings.get(text.type.mapping)
+    if (!mapping) throw new CipherDiagnostic('cipher.invalid-mapping', 'Cipher text references an unknown alphabet mapping.', { mapping: text.type.mapping })
+    if (key.type.mapping !== text.type.mapping) throw new CipherDiagnostic('cipher.invalid-substitution-key', 'Substitution key must use the text alphabet mapping.', { reason: 'unmapped' })
+    if (key.symbols.length !== mapping.symbols.length) {
+      throw new CipherDiagnostic('cipher.invalid-substitution-key', 'Substitution key must have the same length as the alphabet.', { reason: 'length' })
+    }
+    const positions = new Map(mapping.symbols.map((symbol, position) => [symbol, position]))
+    const seen = new Set<string>()
+    for (const symbol of key.symbols) {
+      if (!positions.has(symbol)) throw new CipherDiagnostic('cipher.invalid-substitution-key', 'Substitution key contains a symbol outside the alphabet.', { reason: 'unmapped' })
+      if (seen.has(symbol)) throw new CipherDiagnostic('cipher.invalid-substitution-key', 'Substitution key symbols must be unique.', { reason: 'duplicate' })
+      seen.add(symbol)
+    }
+    const keyed = new Map(key.symbols.map((symbol, position) => [symbol, position]))
+    return {
+      text: cipherText(text, (position) => direction.value === 'encrypt' ? positions.get(key.symbols[position])! : keyed.get(mapping.symbols[position])!, policy, mappings),
+    }
+  },
+}
+
+const vigenere: Operation = {
+  manifest: {
+    identity: 'classical.vigenere@1',
+    inputs: [
+      { name: 'text', type: { family: 'alphabet-text', mapping: '*' } },
+      { name: 'key', type: { family: 'alphabet-text', mapping: '*' } },
+      { name: 'policy', type: { family: 'alphabet-policy' } },
+      { name: 'direction', type: { family: 'alphabet-direction' } },
+    ],
+    outputs: [{ name: 'text', type: { family: 'alphabet-text', mapping: '*' } }],
+  },
+  execute(inputs, _, mappings) {
+    const text = inputs.text as AlphabetTextValue
+    const key = inputs.key as AlphabetTextValue
+    const policy = inputs.policy as AlphabetPolicyValue
+    const direction = inputs.direction as AlphabetDirectionValue
+    const mapping = mappings.get(text.type.mapping)
+    if (!mapping) throw new CipherDiagnostic('cipher.invalid-mapping', 'Cipher text references an unknown alphabet mapping.', { mapping: text.type.mapping })
+    if (key.type.mapping !== text.type.mapping) throw new CipherDiagnostic('cipher.invalid-vigenere-key', 'Vigenere key must use the text alphabet mapping.', { reason: 'unmapped' })
+    if (key.symbols.length === 0) throw new CipherDiagnostic('cipher.invalid-vigenere-key', 'Vigenere key must not be empty.', { reason: 'empty' })
+    const positions = new Map(mapping.symbols.map((symbol, position) => [symbol, position]))
+    const keyPositions = key.symbols.map((symbol) => positions.get(symbol))
+    if (keyPositions.some((position) => position === undefined)) throw new CipherDiagnostic('cipher.invalid-vigenere-key', 'Vigenere key contains a symbol outside the alphabet.', { reason: 'unmapped' })
+    let keyIndex = 0
+    return {
+      text: cipherText(text, (position) => {
+        const shift = keyPositions[keyIndex % keyPositions.length]!
+        keyIndex += 1
+        return direction.value === 'encrypt' ? modulo(position + shift, mapping.symbols.length) : modulo(position - shift, mapping.symbols.length)
+      }, policy, mappings),
+    }
   },
 }
 
@@ -973,7 +1059,8 @@ const throwing: Operation = {
 }
 
 const operations = new Map<string, Operation>([
-  source, xor, substitute, permute, output, caesar, affine,
+  source, xor, substitute, permute, output,
+  caesar, affine, substitution, vigenere,
   aesKeyWord, aesRotWord, aesSubWord, aesRconWord, aesWordXor, aesRoundKey,
   aesSubBytes, aesInvSubBytes, aesShiftRows, aesInvShiftRows, aesMixColumns, aesInvMixColumns,
   throwing,
@@ -1249,6 +1336,7 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
         : upstreamOperation?.manifest.identity === 'core.output@1'
           ? upstream?.inputs?.value
           : upstreamOperation?.manifest.identity === 'classical.caesar@1' || upstreamOperation?.manifest.identity === 'classical.affine@1'
+            || upstreamOperation?.manifest.identity === 'classical.substitution@1' || upstreamOperation?.manifest.identity === 'classical.vigenere@1'
             ? upstream?.inputs?.text
           : undefined
       const forwardedSource = forwardedInput && nodes.get(forwardedInput.node)
@@ -1465,6 +1553,7 @@ const cryptoValueBytes = (value: CryptoValue): number => {
   if (isAlphabetTextValue(value)) return new TextEncoder().encode(value.symbols.join('')).byteLength
   if (isIntegerValue(value)) return 8
   if (isAlphabetPolicyValue(value)) return 1
+  if (isAlphabetDirectionValue(value)) return 1
   return ('words' in value ? value.words : value.bytes).byteLength
 }
 
