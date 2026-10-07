@@ -53,13 +53,36 @@
   It is the base presentation for both encryption and decryption.
 - **Encryption Presentation** — A Generic Block-Cipher Presentation that may show a
   key-expansion overlay aligned to encryption round keys.
-- **Decryption Presentation** — A Generic Block-Cipher Presentation without a
-  key-expansion overlay.
+- **Decryption Presentation** — A Generic Block-Cipher Presentation that may show a
+  key-expansion overlay aligned to decryption key-consumption order.
 - **Key-Expansion Presentation** — A standalone presentation of schedule operations
   and their full-state lineage. It has no block-cipher frame or change background and
   does not participate in overlays.
 - **Key-Expansion Overlay** — A key-expansion view temporarily aligned over an
-  Encryption Presentation. It is unavailable for Decryption Presentation.
+  Encryption or Decryption Presentation. Decryption displays schedule rows in
+  cipher consumption order while retaining source iteration metadata.
+- **Key-Change Avalanche Comparison** — An `avalanche@1` comparison in which the
+  key binding is the single changed input while plaintext and other declared
+  inputs remain shared. It uses the same semantic comparison model as
+  plaintext-change avalanche.
+- **Schedule Comparison** — The baseline/changed comparison of key-expansion
+  trace checkpoints produced by one key-change avalanche execution. It may be
+  shown as a Key-Expansion Overlay or as a standalone schedule presentation
+  when no cipher state-flow is present.
+- **Key-Change Binding Contract** — A key-change comparison has exactly one
+  changed `key` binding. Baseline and changed keys have equal width; arbitrary
+  bit differences are allowed. Decryption schedule rows follow cipher
+  consumption order while retaining source iteration metadata. Paired rows
+  align only by stable semantic path/id. Incomplete pairs keep explicit gaps;
+  their ratio is unavailable. Key-change views require explicit Lesson
+  declaration and never appear in the default plaintext-change view.
+- **View-Local Lineage** — Bit lineage is computed and highlighted only within
+  the currently active schedule or cipher view. Cross-view relationships are
+  not drawn as lineage edges; baseline/changed value differences may still be
+  marked in each view and summarized accessibly.
+- **View-Scoped Selection** — A selected bit belongs only to the active view.
+  Switching between schedule and cipher views clears selection; no cross-view
+  selected-bit identity is retained.
 - **Mobile Practice View** — The narrow-viewport presentation of Practice in
   which one selected Lab is the primary surface and Lab navigation is secondary.
   _Avoid:_ mobile Practice page, phone layout
