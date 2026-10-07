@@ -8,9 +8,9 @@ is complete and closed.
 
 ### Learning demos
 
-- Added the [Teaching SPN demo](/testspn), with bounded rounds, inspectable
+- Added the Teaching SPN demo, with bounded rounds, inspectable
   substitution, permutation, key-mixing, and round-state traces.
-- Added the [Avalanche comparison demo](/testavalanche), with typed execution
+- Added the Avalanche comparison demo, with typed execution
   comparison and safe Worker-based processing.
 - Added the typed CryptoGraph runtime, localized Lesson compiler, browser and
   Node validation adapters, local Lesson checks, and accessible Visualizers.

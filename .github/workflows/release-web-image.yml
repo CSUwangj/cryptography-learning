@@ -18,6 +18,8 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
+      - uses: actions/checkout@v4
+
       - name: Invalid release tag fails before publication
         id: version
         shell: bash
@@ -27,6 +29,9 @@ jobs:
             exit 1
           fi
           echo "version=${GITHUB_REF_NAME#web-v}" >> "$GITHUB_OUTPUT"
+
+      - name: Validate changelog release notes before publication
+        run: python3 scripts/release_notes.py validate "${GITHUB_REF_NAME#web-v}"
 
   release:
     name: Test, attest, and publish web image
@@ -136,12 +141,6 @@ jobs:
             ${{ runner.temp }}/release-artifacts
           if-no-files-found: ignore
 
-      - name: Upload browser acceptance record
-        uses: actions/upload-artifact@v4
-        with:
-          name: browser-results-${{ github.ref_name }}
-          path: ${{ runner.temp }}/browser-results.txt
-
   verify-public-image:
     name: Verify anonymous public image pull
     needs: release
@@ -154,12 +153,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download browser acceptance record
-        uses: actions/download-artifact@v4
-        with:
-          name: browser-results-${{ github.ref_name }}
-          path: release-evidence
-
       - name: Pull published digest anonymously and run public synthetic-content example
         run: |
           docker logout ghcr.io || true
@@ -167,21 +160,4 @@ jobs:
           ./acceptance/run.sh "$PUBLISHED_IMAGE" --mode smoke
 
       - name: Create or update GitHub Release record
-        run: |
-          cat > release-notes.md <<EOF
-          Source commit: $GITHUB_SHA
-          Image: $PUBLISHED_IMAGE
-          Application Manifest schema: 1
-          Compatibility: this image supports Application Manifest schema version 1. Rollback requires an image that also supports schema version 1; no other schema version is supported.
-
-          Browser acceptance:
-          $(cat release-evidence/browser-results.txt)
-
-          Supported platform: linux/amd64 only.
-          This release contains the public web tier only. The maintained course Host builds locally from Git repositories; it does not pull this image. Newest Web Image Releases receive fixes; older versions remain pullable and the immediately previous version is the rollback candidate.
-          EOF
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release edit "$GITHUB_REF_NAME" --title "Web image $GITHUB_REF_NAME" --notes-file release-notes.md
-          else
-            gh release create "$GITHUB_REF_NAME" --title "Web image $GITHUB_REF_NAME" --notes-file release-notes.md
-          fi
+        run: ./scripts/publish_release_notes.sh
