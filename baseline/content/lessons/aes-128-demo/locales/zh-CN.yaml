@@ -1,0 +1,3 @@
+title: AES-128 密码
+summary: 用同一密钥加密和解密数据块，查看共享的密钥编排。
+texts: {key: 密钥, plaintext: 明文, ciphertext: 密文}

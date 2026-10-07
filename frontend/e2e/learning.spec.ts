@@ -51,6 +51,57 @@ texts: {plaintext: 明文, shift: 位移, policy: 策略}
 }
 
 test.describe('Learning Lesson (#30)', () => {
+  test('served AES binds round keys and opens and closes encryption schedule', async ({ page }, testInfo) => {
+    test.skip(!process.env.PLAYWRIGHT_BASE_URL, 'requires mounted served Lessons')
+    test.slow()
+    await page.addInitScript(() => localStorage.setItem('i18nextLng', 'en-US'))
+    await page.goto('/learning/aes-128-demo')
+    await expect(page.getByRole('heading', { name: 'AES-128 cipher' })).toBeVisible()
+    await expect(page.getByRole('textbox').nth(0)).toHaveValue('000102030405060708090a0b0c0d0e0f')
+    await expect(page.getByRole('textbox').nth(1)).toHaveValue('00112233445566778899aabbccddeeff')
+    await page.getByRole('button', { name: 'Next', exact: true }).click()
+    await expect(page.locator('section[aria-label="AES-128 key expansion"]')).toBeVisible()
+    await page.getByRole('button', { name: 'Next', exact: true }).click()
+    const cipher = page.locator('section[aria-label="AES-128 encryption"]')
+    await expect(cipher).toBeVisible()
+    await expect(page.getByRole('cell', { name: '0x69c4e0d86a7b0430d8cdb78070b4c55a (bits<128>)', exact: true })).toBeVisible()
+    await expect(cipher.locator('tr[data-row-id="cipher-1-mix-columns"] th')).toHaveText('MixColumns 1')
+    await page.evaluate(() => window.scrollTo(0, 0))
+    await page.screenshot({ path: testInfo.outputPath('served-aes-encryption.png') })
+    await cipher.locator('button[aria-label^="Round key 0:"]').click()
+    const overlay = cipher.locator('[role="region"][aria-label="Key expansion"]')
+    await expect(overlay).toBeVisible()
+    await overlay.locator('button', { hasText: 'Close key expansion' }).scrollIntoViewIfNeeded()
+    await page.screenshot({ path: testInfo.outputPath('served-aes-overlay-open.png') })
+    await overlay.locator('button', { hasText: 'Close key expansion' }).click()
+    await expect(overlay).toBeHidden()
+    await page.evaluate(() => window.scrollTo(0, 0))
+    await page.screenshot({ path: testInfo.outputPath('served-aes-overlay-closed.png') })
+  })
+
+  test('served comparison aligns checkpoints and selects a differing bit', async ({ page }, testInfo) => {
+    test.skip(!process.env.PLAYWRIGHT_BASE_URL, 'requires mounted served Lessons')
+    test.slow()
+    await page.addInitScript(() => localStorage.setItem('i18nextLng', 'en-US'))
+    await page.goto('/learning/aes-128-comparison-demo')
+    await expect(page.getByRole('heading', { name: 'AES-128 comparison and avalanche' })).toBeVisible({ timeout: 60_000 })
+    const summary = page.getByRole('table', { name: 'Comparison summary', exact: true })
+    await expect(summary).toBeVisible()
+    await expect(summary).toContainText('0x69c4e0d86a7b0430d8cdb78070b4c55a')
+    const input = summary.locator('tr[data-row-id="plaintext"]')
+    await expect(input).toContainText('0x00112233445566778899aabbccddeeff')
+    await expect(input).toContainText('0x80112233445566778899aabbccddeeff')
+    await expect(input.locator('td').nth(2)).toHaveText('1')
+    const output = summary.locator('tr[data-row-id="cipher-10-add-round-key"]')
+    await expect(output.locator('td').nth(0)).toHaveText('0x69c4e0d86a7b0430d8cdb78070b4c55a')
+    await expect(output.locator('td').nth(1)).not.toHaveText('0x69c4e0d86a7b0430d8cdb78070b4c55a')
+    expect(Number(await output.locator('td').nth(2).innerText())).toBeGreaterThan(1)
+    const bit = page.locator('button[aria-label="plaintext, Bit 0: 0|1, different"]')
+    await bit.click()
+    await expect(bit).toHaveAttribute('aria-pressed', 'true')
+    await page.screenshot({ path: testInfo.outputPath('served-comparison-selection.png') })
+  })
+
   test('loads catalog and deep link, retains input, and executes the XOR Step', async ({ page }) => {
     const progressRequests: string[] = []
     page.on('request', (request) => {
@@ -194,8 +245,8 @@ test.describe('Learning Lesson (#30)', () => {
     })
 
     await page.goto('/learning/xor-intro')
-    await page.getByRole('button', { name: 'Next' }).click()
-    await page.getByRole('button', { name: 'Next' }).click()
+    await page.getByRole('button', { name: /Next|下一步/ }).click()
+    await page.getByRole('button', { name: /Next|下一步/ }).click()
     await expect(page.getByText('operation-failed: Operation execution failed. (mixed)')).toBeVisible()
     await expect(page.getByRole('button', { name: 'Previous' })).toBeEnabled()
     await page.getByRole('button', { name: 'Next' }).click()
@@ -233,11 +284,21 @@ test.describe('Learning Lesson (#30)', () => {
 
     await page.goto('/learning/fallback-xor')
     await expect(page.getByRole('heading', { name: 'Fallback XOR' })).toBeVisible()
+    await page.screenshot({ path: 'test-results/served-locale-fallback.png', fullPage: true })
+
+    await page.goto('/learning/classical-substitution')
+    await expect(page.getByRole('heading', { name: '替换密码' })).toBeVisible()
+    await page.getByRole('button', { name: /Next|下一步/ }).click()
+    await page.getByRole('button', { name: /Next|下一步/ }).click()
+    await expect(page.getByRole('cell', { name: 'QWE BNM!', exact: true })).toBeVisible()
+    await page.screenshot({ path: 'test-results/served-classical-substitution.png', fullPage: true })
 
     await page.goto('/learning/malformed-yaml')
     await expect(page.getByText(/lesson\.yaml-syntax/)).toBeVisible()
+    await page.screenshot({ path: 'test-results/served-malformed-recovery.png', fullPage: true })
 
     await page.goto('/learning/unknown-lesson')
     await expect(page.getByRole('heading', { name: '未找到' })).toBeVisible()
+    await page.screenshot({ path: 'test-results/served-unknown-recovery.png', fullPage: true })
   })
 })

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from helpers import graphql, load_fixture, wait_until_ready
+from helpers import graphql, http_get, load_fixture, wait_until_ready
 
 PRACTICE_QUERY = """
 query Practices {
@@ -102,7 +102,7 @@ class GraphqlBaselineTest(unittest.TestCase):
         self.assertEqual(category["id"], "fundamentals")
         self.assertEqual(
             category["lessons"],
-            [{"id": "xor-intro"}, {"id": "fallback-xor"}, {"id": "malformed-yaml"}],
+            [{"id": lesson_id} for lesson_id in ["xor-intro", "fallback-xor", "malformed-yaml", "classical-substitution", "aes-128-demo", "aes-128-comparison-demo"]],
         )
         self.assertIn("default_locale: en-US", body["data"]["lessonDocuments"]["lesson"])
         self.assertIn("探索异或", body["data"]["lessonDocuments"]["locale"])
@@ -118,6 +118,16 @@ class GraphqlBaselineTest(unittest.TestCase):
         if data is None:
             return
         self.assertIsNone(data.get("lab"))
+
+    def test_learning_assets_are_scoped_and_missing_paths_are_not_spa(self):
+        status, headers, body = http_get("/learning-assets/xor-intro/README.txt")
+        self.assertEqual(status, 200)
+        self.assertIn("text/plain", headers["content-type"])
+        self.assertIn(b"Synthetic Lesson asset", body)
+        status, _, _ = http_get("/learning-assets/xor-intro/../lesson.yaml")
+        self.assertEqual(status, 404)
+        status, _, _ = http_get("/learning-assets/xor-intro/missing.txt")
+        self.assertEqual(status, 404)
 
 
 if __name__ == "__main__":

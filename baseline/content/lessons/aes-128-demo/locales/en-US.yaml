@@ -1,0 +1,3 @@
+title: AES-128 cipher
+summary: Encrypt and decrypt blocks with the same key, inspecting the shared key schedule.
+texts: {key: Key, plaintext: Plaintext, ciphertext: Ciphertext}

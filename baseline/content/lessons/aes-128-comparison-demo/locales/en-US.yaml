@@ -1,0 +1,3 @@
+title: AES-128 comparison and avalanche
+summary: Compare one plaintext or round-key bit change through AES encryption and decryption.
+texts: {plaintext: Plaintext, ciphertext: Ciphertext, changed_plaintext: Changed plaintext, changed_ciphertext: Changed ciphertext, changed_round_key: Changed round key 0}

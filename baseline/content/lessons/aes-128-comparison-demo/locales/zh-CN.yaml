@@ -1,0 +1,3 @@
+title: AES-128 比较与雪崩
+summary: 比较明文或轮密钥单比特变化在 AES 加密与解密中的传播。
+texts: {plaintext: 明文, ciphertext: 密文, changed_plaintext: 改变后的明文, changed_ciphertext: 改变后的密文, changed_round_key: 改变后的轮密钥 0}

@@ -1,0 +1,67 @@
+version: 1
+id: classical-substitution
+default_locale: en-US
+inputs:
+  plaintext:
+    type: {family: alphabet-text, mapping: latin}
+    encoding: text
+    default: "ABC XYZ!"
+  policy:
+    type: {family: alphabet-policy}
+    encoding: policy
+    default: preserve
+  key:
+    type: {family: alphabet-text, mapping: latin}
+    encoding: text
+    default: QWERTYUIOPASDFGHJKLZXCVBNM
+  direction:
+    type: {family: alphabet-direction}
+    encoding: direction
+    default: encrypt
+constants:
+  expected:
+    type: {family: alphabet-text, mapping: latin}
+    encoding: text
+    value: "QWE BNM!"
+  decrypt-direction:
+    type: {family: alphabet-direction}
+    encoding: direction
+    value: decrypt
+graphs:
+  cipher:
+    alphabetMappings:
+      - {id: latin, symbols: [A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z]}
+    nodes:
+      - {id: text, operation: core.source@1, parameters: {type: {family: alphabet-text, mapping: latin}}}
+      - {id: key, operation: core.source@1, parameters: {type: {family: alphabet-text, mapping: latin}}}
+      - {id: policy, operation: core.source@1, parameters: {type: {family: alphabet-policy}}}
+      - {id: direction, operation: core.source@1, parameters: {type: {family: alphabet-direction}}}
+      - id: cipher
+        operation: classical.substitution@1
+        inputs:
+          text: {node: text, port: value}
+          key: {node: key, port: value}
+          policy: {node: policy, port: value}
+          direction: {node: direction, port: value}
+    outputs: [{node: cipher, port: text}]
+    traceLevel: detail
+steps:
+  - id: inputs
+    inputs:
+      - {input: plaintext, prompt: plaintext}
+      - {input: key, prompt: key}
+      - {input: policy, prompt: policy}
+      - {input: direction, prompt: direction}
+  - id: execute
+    execute:
+      graph: cipher
+      bindings:
+        text.value: {input: plaintext}
+        key.value: {input: key}
+        policy.value: {input: policy}
+        direction.value: {input: direction}
+    check:
+      kind: equal
+      actual: {step: execute, output: cipher.text}
+      expected: {constant: expected}
+      feedback: {match: match, mismatch: mismatch}

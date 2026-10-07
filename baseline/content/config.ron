@@ -111,7 +111,10 @@ Configuration(
         lessons: [
           (id: "xor-intro", directory: "/content/lessons/xor-intro"),
           (id: "fallback-xor", directory: "/content/lessons/fallback-xor"),
-          (id: "malformed-yaml", directory: "/content/lessons/malformed-yaml")
+          (id: "malformed-yaml", directory: "/content/lessons/malformed-yaml"),
+          (id: "classical-substitution", directory: "/content/lessons/classical-substitution"),
+          (id: "aes-128-demo", directory: "/content/lessons/aes-128-demo"),
+          (id: "aes-128-comparison-demo", directory: "/content/lessons/aes-128-comparison-demo")
         ]
       )
     ]

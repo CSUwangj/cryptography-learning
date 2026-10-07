@@ -1,0 +1,9 @@
+title: 替换密码
+summary: 使用固定字母表替换每个字母。
+texts:
+  plaintext: 明文
+  key: 替换字母表
+  policy: 策略
+  direction: 方向
+  match: 输出正确。
+  mismatch: 输出与预期值不匹配。

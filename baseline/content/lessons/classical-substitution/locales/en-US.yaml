@@ -1,0 +1,9 @@
+title: Substitution cipher
+summary: Map each letter through a fixed alphabet.
+texts:
+  plaintext: Plaintext
+  key: Substitution alphabet
+  policy: Policy
+  direction: Direction
+  match: Correct output.
+  mismatch: Output does not match expected value.
