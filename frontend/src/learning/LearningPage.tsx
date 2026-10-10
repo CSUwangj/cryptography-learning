@@ -12,6 +12,7 @@ import {
   type BrowserLessonSession,
   type LessonDocuments as RuntimeLessonDocuments,
   type LessonSessionState,
+  type LessonValueReference,
 } from 'lesson_runtime'
 import { hex, type AlphabetPolicyValue, type AlphabetTextValue, type CryptoValue, type Diagnostic } from 'crypto_graph'
 import { RenderHost, visualizerCatalog } from '../visualizers'
@@ -63,19 +64,19 @@ const diagnosticText = (value: Diagnostic): string =>
   `${value.code}: ${value.message}${value.path ? ` (${value.path})` : ''}${value.span ? ` at ${value.span.file}:${value.span.line}:${value.span.column}` : ''}`
 
 const classicalCipherData = (
-  step: { readonly execute?: { readonly graph: string }; readonly visualizer?: { readonly id: string; readonly bindings?: Readonly<Record<string, unknown>> } },
+  step: { readonly execute?: { readonly graph: string; readonly bindings: Readonly<Record<string, LessonValueReference>> }; readonly visualizer?: { readonly id: string; readonly bindings?: Readonly<Record<string, unknown>> } },
   lesson: BrowserLessonSession['lesson'],
   state: LessonSessionState,
 ) => {
   if (step.visualizer?.id !== 'classical-cipher@1' || !step.execute) return undefined
   const value = (binding: unknown): CryptoValue | undefined => {
     if (typeof binding !== 'object' || binding === null) return undefined
-    const reference = binding as { input?: unknown; step?: unknown; output?: unknown }
+    const reference = binding as { input?: unknown; step?: unknown; output?: unknown; constant?: unknown }
     const input = typeof reference.input === 'string' ? state.inputs[reference.input] : undefined
     const output = typeof reference.step === 'string' && typeof reference.output === 'string'
       ? state.snapshots[reference.step]?.outputs[reference.output]
       : undefined
-    const resolved = input ?? output
+    const resolved = input ?? output ?? (typeof reference.constant === 'string' ? lesson.constants[reference.constant] : undefined)
     return typeof resolved === 'string' ? undefined : resolved
   }
   const plaintext = value(step.visualizer.bindings?.plaintext)
@@ -84,9 +85,18 @@ const classicalCipherData = (
   if (plaintext?.type.family !== 'alphabet-text' || ciphertext?.type.family !== 'alphabet-text' || policy?.type.family !== 'alphabet-policy') return undefined
   const input = plaintext as AlphabetTextValue
   const output = ciphertext as AlphabetTextValue
-  const mapping = lesson.graphs[step.execute.graph]?.graph.alphabetMappings?.find((item) => item.id === input.type.mapping)
+  const graph = lesson.graphs[step.execute.graph]?.graph
+  const mapping = graph?.alphabetMappings?.find((item) => item.id === input.type.mapping)
+  const outputBinding = step.visualizer.bindings?.ciphertext as { output?: string } | undefined
+  const node = graph?.nodes.find((candidate) => `${candidate.id}.text` === outputBinding?.output)
+  const directionPort = node?.operation === 'classical.caesar@1' ? node.inputs?.shift
+    : node?.operation === 'classical.vigenere@1' ? node.inputs?.direction : undefined
+  const directionValue = directionPort && value(step.execute.bindings[`${directionPort.node}.${directionPort.port}`])
+  const motionDirection = directionValue && 'value' in directionValue
+    ? directionValue.value === 'decrypt' || (typeof directionValue.value === 'number' && directionValue.value < 0) ? -1 as const : 1 as const
+    : undefined
   return mapping && input.type.mapping === output.type.mapping
-    ? { input, output, mapping, policy: policy as AlphabetPolicyValue }
+    ? { input, output, mapping, policy: policy as AlphabetPolicyValue, motionDirection }
     : undefined
 }
 
@@ -234,6 +244,30 @@ const LessonView: React.FC = () => {
     <H2>{locale.title}</H2>
     <p>{locale.summary}</p>
     {step.prose && <Markdown source={rewriteLessonAssets(locale.texts[step.prose] ?? '', lessonId)} />}
+    {step.bitFlip && state.bitFlips[step.id] && <fieldset>
+      <legend>{state.locale === 'zh-CN' ? '单比特变化' : 'One-bit change'}</legend>
+      <label htmlFor={`${step.id}-source`}>{state.locale === 'zh-CN' ? '变化来源' : 'Change source'}</label>{' '}
+      <select id={`${step.id}-source`} value={state.bitFlips[step.id].input} onChange={(event) => {
+        current.setBitFlip(step.id, event.target.value, 0)
+        refresh()
+      }}>
+        {step.bitFlip.map((option) => <option key={option.input} value={option.input}>{locale.texts[option.prompt]}</option>)}
+      </select>
+      {' '}<label htmlFor={`${step.id}-bit`}>{state.locale === 'zh-CN' ? '翻转位（从最高位 0 开始）' : 'Flip bit (MSB-first, starting at 0)'}</label>{' '}
+      <select id={`${step.id}-bit`} value={state.bitFlips[step.id].bit} onChange={(event) => {
+        current.setBitFlip(step.id, state.bitFlips[step.id].input, Number(event.target.value))
+        refresh()
+      }}>
+        {Array.from({ length: (() => {
+          const type = current.lesson.inputs[state.bitFlips[step.id].input].type
+          return type.family === 'bits' && typeof type.size === 'number' ? type.size : 0
+        })() }, (_, bit) => <option key={bit} value={bit}>{bit}</option>)}
+      </select>
+      <dl>{step.bitFlip.map((option) => <React.Fragment key={option.input}>
+        <dt>{locale.texts[option.prompt]} — {state.locale === 'zh-CN' ? '基准 / 改变后' : 'Baseline / changed'}</dt>
+        <dd>{inputText(state.inputs[option.input], current.lesson.inputs[option.input].encoding)} / {inputText(state.inputs[option.changed], current.lesson.inputs[option.changed].encoding)}</dd>
+      </React.Fragment>)}</dl>
+    </fieldset>}
     {step.inputs?.map((input) => {
       const raw = state.inputs[input.input]
       const value = inputText(raw, current.lesson.inputs[input.input]?.encoding ?? 'hex')
@@ -281,6 +315,7 @@ const LessonView: React.FC = () => {
           input: cipher.input,
           output: cipher.output,
           mapping: cipher.mapping,
+          motionDirection: cipher.motionDirection,
           policy: cipher.policy,
           policyLabel: t(`learning.policy.${cipher.policy.value}`),
         }}

@@ -15,6 +15,7 @@ export type LessonSessionState = {
   readonly locale: string
   readonly stepIndex: number
   readonly stepId: string
+  readonly bitFlips: Readonly<Record<string, { readonly input: string; readonly bit: number }>>
   readonly inputs: Readonly<Record<string, CryptoValue | string>>
   readonly inputDiagnostics: Readonly<Record<string, Diagnostic>>
   readonly snapshots: Readonly<Record<string, WorkerExecutionSnapshot>>
@@ -44,6 +45,7 @@ const localized = (value: Diagnostic, locale: string): Diagnostic => ({
         'lesson.yaml-restriction': 'YAML 使用了不支持的功能。',
         'lesson.yaml-syntax': 'YAML 文档无效。',
         'cipher.invalid-key': '密钥必须是安全整数。',
+        'cipher.invalid-transposition-rows': '转置行数必须是 2 到 12 之间的整数。',
         'cipher.invalid-affine-key': '仿射密钥 a 必须与字母表长度互素。',
         'cipher.invalid-substitution-key': '替换密码密钥必须是完整的无重复字母表。',
         'cipher.invalid-vigenere-key': '维吉尼亚密钥无效。',
@@ -79,6 +81,7 @@ export class BrowserLessonSession {
   private readonly acceptedDiagnostics = new Map<string, Diagnostic>()
   private readonly executionDiagnostics = new Map<string, Diagnostic>()
   private readonly worker = new CryptoGraphWorkerClient()
+  private readonly bitFlips: Record<string, { input: string; bit: number }> = {}
   private index = 0
   private request = 0
   private generation = 0
@@ -89,6 +92,10 @@ export class BrowserLessonSession {
     public locale: string,
   ) {
     this.inputs = Object.fromEntries(Object.entries(lesson.inputs).map(([id, input]) => [id, cloneValue(input.default)]))
+    for (const step of lesson.steps) if (step.bitFlip?.length) {
+      this.bitFlips[step.id] = { input: step.bitFlip[0].input, bit: 0 }
+    }
+    this.refreshBitFlips()
   }
 
   state(): LessonSessionState {
@@ -96,6 +103,7 @@ export class BrowserLessonSession {
       locale: this.locale,
       stepIndex: this.index,
       stepId: this.lesson.steps[this.index].id,
+      bitFlips: Object.fromEntries(Object.entries(this.bitFlips).map(([id, value]) => [id, { ...value }])),
       inputs: Object.fromEntries(Object.entries(this.inputs).map(([id, value]) => [id, typeof value === 'string' ? value : cloneValue(value)])),
       inputDiagnostics: { ...this.inputDiagnostics },
       snapshots: Object.fromEntries(this.snapshots),
@@ -133,7 +141,11 @@ export class BrowserLessonSession {
       this.worker.cancel()
       if (input) this.inputs[id] = value
       if (input) this.invalidateSnapshots(id)
+      this.refreshBitFlips()
       const diagnostics = (decoded?.diagnostics ?? [diagnostic('lesson.invalid-input', 'Input does not match its declared type.', `inputs.${id}`)])
+        .map((item) => this.lesson.id === 'transposition' && id === 'rows' && item.code === 'cipher.invalid-key'
+          ? { ...item, code: 'cipher.invalid-transposition-rows', message: 'Transposition rows must be an integer from 2 through 12.', path: `inputs.${id}`, details: { ...item.details, minimum: 2, maximum: 12 } }
+          : item)
         .map((item) => localized(item, this.locale))
       if (input) this.inputDiagnostics[id] = diagnostics[0]
       return { ok: false, diagnostics }
@@ -143,7 +155,39 @@ export class BrowserLessonSession {
     this.inputs[id] = decoded.value
     delete this.inputDiagnostics[id]
     this.invalidateSnapshots(id)
+    this.refreshBitFlips()
     return { ok: true, value: undefined }
+  }
+
+  setBitFlip(stepId: string, input: string, bit: number): Result<void> {
+    const option = this.lesson.steps.find((step) => step.id === stepId)?.bitFlip?.find((item) => item.input === input)
+    const type = this.lesson.inputs[input]?.type
+    if (!option || type?.family !== 'bits' || typeof type.size !== 'number' || !Number.isSafeInteger(bit) || bit < 0 || bit >= type.size
+      || typeof this.inputs[input] === 'string') {
+      return { ok: false, diagnostics: [localized(diagnostic('lesson.invalid-input', 'Choose a valid source and bit index.', `steps.${stepId}.bit_flip`), this.locale)] }
+    }
+    this.generation += 1
+    this.worker.cancel()
+    this.bitFlips[stepId] = { input, bit }
+    this.refreshBitFlips()
+    return { ok: true, value: undefined }
+  }
+
+  private refreshBitFlips(): void {
+    for (const step of this.lesson.steps) {
+      const selection = this.bitFlips[step.id]
+      if (!selection) continue
+      for (const option of step.bitFlip ?? []) {
+        const source = this.inputs[option.input]
+        const changed = typeof source === 'string' ? source : cloneValue(source)
+        if (typeof changed !== 'string' && 'bytes' in changed && changed.type.family === 'bits' && option.input === selection.input) {
+          const packedBit = changed.bytes.length * 8 - changed.type.size + selection.bit
+          changed.bytes[Math.floor(packedBit / 8)] ^= 1 << (7 - packedBit % 8)
+        }
+        this.inputs[option.changed] = changed
+        this.invalidateSnapshots(option.changed)
+      }
+    }
   }
 
   private invalidateSnapshots(input: string): void {

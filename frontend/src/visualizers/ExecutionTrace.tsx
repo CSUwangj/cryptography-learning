@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react'
 import { hex, type CryptoValue, type TraceCheckpoint, type TraceEvent, type TraceStage, type WorkerExecutionSnapshot } from 'crypto_graph'
-import { LearningPresentationView, type LearningDiagnostic, type LearningPresentation, type LearningRow } from '../ui/learning'
+import { learningColors, LearningPresentationView, type LearningDiagnostic, type LearningPresentation, type LearningRow } from '../ui/learning'
 import { PermutationVisual } from './OperationVisuals'
 
 type Locale = 'en-US' | 'zh-CN'
@@ -30,7 +30,8 @@ const copy = {
     grid: 'Transposition grid', empty: 'Empty cell', emptyMarker: '[empty]', spaceMarker: '[space]', order: 'Write/read order',
     transpositionEncryptWarning: 'The text length is smaller than the encryption parameter; encryption leaves the text unchanged.',
     transpositionDecryptWarning: 'The text length is smaller than the decryption parameter; decryption leaves the text unchanged.',
-    writePositions: 'Write positions', readPositions: 'Read positions',
+    writePositions: 'Write order', readPositions: 'Read order',
+    positionLegend: 'Each cell shows input index:character. Input indices start at 0; follow the arrows in order.',
     stages: {
       input: 'Input',
       'round-key': 'Round key',
@@ -70,7 +71,8 @@ const copy = {
     grid: '转置网格', empty: '空单元格', emptyMarker: '[空单元格]', spaceMarker: '[空格]', order: '写入/读取顺序',
     transpositionEncryptWarning: '文本长度小于加密参数，加密不会改变文本。',
     transpositionDecryptWarning: '文本长度小于解密参数，解密不会改变文本。',
-    writePositions: '写入位置', readPositions: '读取位置',
+    writePositions: '写入顺序', readPositions: '读取顺序',
+    positionLegend: '每格显示输入序号:字符。输入序号从 0 开始，按箭头顺序写入或读取。',
     stages: {
       input: '输入',
       'round-key': '轮密钥',
@@ -118,12 +120,25 @@ const operationDetail = (event: TraceEvent | TraceCheckpoint, text: ReturnType<t
   const operation = 'operation' in event ? event.operation : undefined
   if (operation?.permutation) return <PermutationVisual permutation={operation.permutation} />
   if (operation?.sBox) return `${text.sBox}: ${operation.sBox.map((entry) => entry.toString(16)).join(' ')}`
-  if (operation?.grid) return <section aria-label={text.grid}>
-    <table><caption>{text.order}</caption><tbody>
-      {operation.grid.rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, columnIndex) => <td key={columnIndex} aria-label={cell === null ? text.empty : undefined} style={cell === null ? { backgroundColor: '#e5e7eb' } : undefined}>{cell === null ? text.emptyMarker : cell === ' ' ? text.spaceMarker : cell}</td>)}</tr>)}
-    </tbody></table>
-    <p>{`${text.writePositions}: ${operation.grid.writeOrder.join(', ')}; ${text.readPositions}: ${operation.grid.readOrder.join(', ')}`}</p>
-  </section>
+  if (operation?.grid) {
+    const grid = operation.grid
+    const symbolText = (cell: string) => cell === ' ' ? text.spaceMarker : cell
+    const symbols = new Map(grid.rows.flatMap((row, rowIndex) => row.flatMap((cell, columnIndex) =>
+      cell === null ? [] : [[grid.inputPositions[rowIndex][columnIndex], symbolText(cell)] as const])))
+    const sequence = (positions: readonly number[]) => positions.map((position) => `${position}:${symbols.get(position)}`).join(' → ')
+    return <section aria-label={text.grid}>
+      <p>{text.positionLegend}</p>
+      <table><caption>{text.order}</caption><tbody>
+        {grid.rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, columnIndex) => <td key={columnIndex}
+          aria-label={cell === null ? text.empty : undefined}
+          style={{ border: `1px solid ${learningColors.border}`, padding: '0.5rem', textAlign: 'center', whiteSpace: 'pre-wrap', backgroundColor: cell === null ? learningColors.incomplete : undefined }}>
+          {cell === null ? text.emptyMarker : `${grid.inputPositions[rowIndex][columnIndex]}:${symbolText(cell)}`}
+        </td>)}</tr>)}
+      </tbody></table>
+      <p>{text.writePositions}: {sequence(grid.writeOrder)}</p>
+      <p>{text.readPositions}: {sequence(grid.readOrder)}</p>
+    </section>
+  }
   return undefined
 }
 

@@ -2,13 +2,13 @@
 
 ## Outcome
 
-Ordinary AES and classical operation traces render through shared Learning components using semantic CryptoGraph trace data. Public Lesson validation uses the same Visualizer catalog as normal Lesson compilation. New algorithms do not require algorithm-specific renderer descriptors.
+Ordinary AES and classical execution traces support shared Learning components using semantic CryptoGraph trace data. Classical symbol-mapping teaching uses the approved existing `classical-cipher@1` exception in ADR 0006. Public Lesson validation uses the same Visualizer catalog as normal Lesson compilation. New algorithms do not require algorithm-specific renderer descriptors.
 
 ## Requirements and provenance
 
 - **R1 — Generic rendering boundary**: #69, #81, ADR 0006. Generic trace rows support stable IDs, localized labels, typed values, operation details, retained values, explicit gaps, and structural relationships.
 - **R2 — Shared interaction modes**: #69, #81, #86, #67. Comparison, avalanche, and lineage/key-expansion inspection are shared interaction modes over semantic trace data. They must not create AES-specific renderer contracts.
-- **R3 — Registry boundary**: ADR 0006 and the Visualizer architecture decisions. Keep the registry for genuinely distinct data or interaction contracts that generic trace, comparison, and lineage models cannot express. Existing descriptors may remain while consumers migrate.
+- **R3 — Registry boundary**: ADR 0006 and the Visualizer architecture decisions. Keep the registry for genuinely distinct data or interaction contracts that generic trace, comparison, and lineage models cannot express. Existing descriptors may remain while consumers migrate. Classical symbol mapping is a maintained exception, not a required migration: reuse `classical-cipher@1` for paired symbols, alphabet positions, explicit unmapped state, and policy (maintainer amendment to #69).
 - **R4 — CLI parity**: #49, #56, existing `validateLessonDocuments` API. The CLI must pass the public catalog when validating descriptor-using Lessons and must also accept descriptor-free Lessons.
 - **R5 — Compatibility**: #81, #82, #84, #85. Preserve existing AES, SPN, avalanche, localization, accessibility, truncation, and error-isolation behavior while moving ordinary traces to shared rendering.
 
@@ -24,9 +24,9 @@ Ordinary AES and classical operation traces render through shared Learning compo
 | ID | Observable claim | Proof seam | Counterexample | Verification |
 |---|---|---|---|---|
 | P1 | Ordinary AES trace renders without `aes-cipher@1`. | Generic Lesson compile/session/render path. | Remove/register no AES descriptor while AES fixture still renders rows, labels, values, and details. | `fish -lc 'cd frontend; nvm use; npx vitest run src/visualizers/index.test.ts src/lesson_runtime/index.test.ts'` |
-| P2 | Ordinary SPN/classical trace does not require an algorithm renderer descriptor. | Shared adapter and renderer tests. | Descriptor-free synthetic classical fixture renders semantic trace rows. | Focused visualizer/adapter tests. |
+| P2 | Ordinary SPN/classical execution traces support descriptor-free rendering; classical symbol mapping uses the ADR 0006 exception. | Shared adapter and renderer tests. | Descriptor-free synthetic classical fixture renders semantic trace rows. | Focused visualizer/adapter tests. |
 | P3 | Comparison, avalanche, and lineage remain usable as shared modes. | Existing comparison/lineage public component seams. | Truncated trace leaves explicit gaps; no fabricated alignment; selection remains accessible. | Existing `src/ui/learning` and avalanche tests plus focused regression tests. |
-| P4 | Existing specialized descriptor consumers remain compatible during migration. | Catalog/Render Host tests. | Existing SPN/key-expansion fixture with descriptor still compiles and renders, or is migrated in the same change. | `npx vitest run src/visualizers/index.test.ts src/visualizers/migration.test.tsx`. |
+| P4 | Existing specialized descriptor consumers remain compatible; retain the approved classical symbol-mapping view. | Catalog/Render Host tests. | Existing SPN/key-expansion fixture compiles and renders or is migrated in the same change; classical symbol-mapping fixtures retain paired symbols, mapped positions, unmapped markers, and policy through classical-cipher@1. | `npx vitest run src/visualizers/index.test.ts src/visualizers/migration.test.tsx`. |
 | P5 | CLI validates descriptor-free Lessons. | `scripts/validate_lessons.mjs` process boundary. | AES/content fixture with no visualizer binding returns `ok:true`, empty diagnostics, dry run. | Exact content validation command. |
 | P6 | CLI validates legitimately descriptor-using Lessons with catalog lookup. | Same CLI process boundary. | Fixture binding a registered descriptor returns `ok:true`; unknown ID returns structured failure. | CLI fixture checks. |
 | P7 | Locales, keyboard/accessibility, resize, truncation, and error isolation remain intact. | Shared renderer/browser seams. | Missing trace/value or narrow layout does not crash Lesson or lose accessible summary. | Existing focused tests; browser test if shared presentation changes. |

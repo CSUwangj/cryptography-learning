@@ -29,6 +29,7 @@ export type RenderHostProps = {
     readonly mapping: AlphabetMapping
     readonly policy: AlphabetPolicyValue
     readonly policyLabel: string
+    readonly motionDirection?: 1 | -1
   }
 }
 

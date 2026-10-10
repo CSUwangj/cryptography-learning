@@ -88,6 +88,7 @@ export type LessonPresentation =
 export type CompiledStep = {
   readonly id: string
   readonly prose?: string
+  readonly bitFlip?: readonly { readonly input: string; readonly changed: string; readonly prompt: string }[]
   readonly inputs?: readonly { readonly input: string; readonly prompt: string; readonly type: PortType }[]
   readonly execute?: { readonly graph: string; readonly bindings: Readonly<Record<string, LessonValueReference>> }
   readonly presentation?: LessonPresentation
@@ -735,13 +736,13 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
     const path = `steps.${index}`
     const step = requireMap(raw, path, lesson.spans, diagnostics)
     if (!step) continue
-    checkFields(step, ['id', 'prose', 'inputs', 'execute', 'presentation', 'visualizer', 'accepted_error_codes', 'check'], path, lesson.spans, diagnostics)
+    checkFields(step, ['id', 'prose', 'bit_flip', 'inputs', 'execute', 'presentation', 'visualizer', 'accepted_error_codes', 'check'], path, lesson.spans, diagnostics)
     if (typeof step.id !== 'string' || !identifier.test(step.id) || stepIds.has(step.id)) {
       diagnostics.push(diagnostic('lesson.invalid-input', 'Step ID is invalid or duplicated.', `${path}.id`, lesson.spans.get(`${path}.id`)))
       continue
     }
     stepIds.add(step.id)
-    const compiled: { id: string; prose?: string; inputs?: { input: string; prompt: string; type: PortType }[]; execute?: { graph: string; bindings: Record<string, LessonValueReference> }; presentation?: LessonPresentation; visualizer?: CompiledStep['visualizer']; acceptedErrorCodes?: string[]; check?: LessonCheck } = { id: step.id }
+    const compiled: { id: string; prose?: string; bitFlip?: CompiledStep['bitFlip']; inputs?: { input: string; prompt: string; type: PortType }[]; execute?: { graph: string; bindings: Record<string, LessonValueReference> }; presentation?: LessonPresentation; visualizer?: CompiledStep['visualizer']; acceptedErrorCodes?: string[]; check?: LessonCheck } = { id: step.id }
     if (typeof step.prose === 'string') {
       compiled.prose = step.prose
       textIds.add(step.prose)
@@ -763,6 +764,33 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
           }
         }
       }
+    }
+    if (step.bit_flip !== undefined) {
+      const flipPath = `${path}.bit_flip`
+      const options: { input: string; changed: string; prompt: string }[] = []
+      if (!Array.isArray(step.bit_flip) || step.bit_flip.length === 0 || step.execute !== undefined) {
+        diagnostics.push(diagnostic('lesson.invalid-input', 'Bit flipping requires source options in a non-execution Step.', flipPath, lesson.spans.get(flipPath)))
+      } else for (const [optionIndex, rawOption] of step.bit_flip.entries()) {
+        const optionPath = `${flipPath}.${optionIndex}`
+        const option = requireMap(rawOption, optionPath, lesson.spans, diagnostics)
+        if (!option) continue
+        checkFields(option, ['input', 'changed', 'prompt'], optionPath, lesson.spans, diagnostics)
+        const source = typeof option.input === 'string' && inputs[option.input]
+        const target = typeof option.changed === 'string' && inputs[option.changed]
+        if (!source || !target || source.type.family !== 'bits' || !equalTypes(source.type, target.type)
+          || typeof option.prompt !== 'string' || option.input === option.changed) {
+          diagnostics.push(diagnostic('lesson.invalid-input', 'Bit flip inputs must be distinct bit values of equal size with a prompt.', optionPath, lesson.spans.get(optionPath)))
+        } else {
+          options.push({ input: option.input as string, changed: option.changed as string, prompt: option.prompt })
+          textIds.add(option.prompt)
+        }
+      }
+      const sources = options.map((option) => option.input)
+      const targets = options.map((option) => option.changed)
+      if (new Set(sources).size !== sources.length || new Set(targets).size !== targets.length || targets.some((target) => sources.includes(target))) {
+        diagnostics.push(diagnostic('lesson.invalid-input', 'Bit flip sources and targets must not overlap or repeat.', flipPath, lesson.spans.get(flipPath)))
+      }
+      compiled.bitFlip = options
     }
     if (step.execute !== undefined) {
       if (step.inputs !== undefined) diagnostics.push(diagnostic('lesson.invalid-input', 'A Step cannot request inputs and execute a graph.', path, lesson.spans.get(path)))
@@ -988,7 +1016,7 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
         diagnostics.push(diagnostic('lesson.invalid-input', 'Check kind must be equal or choice.', `${checkPath}.kind`, lesson.spans.get(`${checkPath}.kind`)))
       }
     }
-    if (!compiled.prose && !compiled.inputs && !compiled.execute && !compiled.visualizer && !compiled.check) diagnostics.push(diagnostic('lesson.invalid-input', 'Step must contain content.', path, lesson.spans.get(path)))
+    if (!compiled.prose && !compiled.bitFlip && !compiled.inputs && !compiled.execute && !compiled.visualizer && !compiled.check) diagnostics.push(diagnostic('lesson.invalid-input', 'Step must contain content.', path, lesson.spans.get(path)))
     steps.push(compiled)
   }
   const locales: Record<string, { title: string; summary: string; texts: Record<string, string> }> = {}

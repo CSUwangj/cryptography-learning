@@ -637,6 +637,9 @@ describe('Classical substitution and Vigenere Lessons (#87)', () => {
         }))
         expect(screen.getByLabelText('Classical cipher position mapping')).toBeVisible()
         expect(screen.getByText('Preserve unmapped characters')).toBeVisible()
+        expect(screen.getAllByText('[space] → [space]').length).toBeGreaterThan(0)
+        const firstReel = screen.getAllByLabelText(`A moves 0 ${documents === substitutionCipherDemoDocuments ? 16 : 10}`)[0].firstElementChild
+        expect(firstReel).toHaveStyle({ flexDirection: 'column', transform: `translateY(-${documents === substitutionCipherDemoDocuments ? 32 : 20}rem)` })
         const decrypted = await session.value.next()
         expect(decrypted.ok && decrypted.value.snapshots.decrypt?.outputs['cipher.text']).toMatchObject({ symbols: [...expectedPlaintext] })
         expect(decrypted.ok && decrypted.value.inputs.direction).toMatchObject({ value: 'encrypt' })

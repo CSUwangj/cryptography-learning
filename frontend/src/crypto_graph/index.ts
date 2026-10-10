@@ -135,7 +135,7 @@ export type TraceStage = 'input' | 'round-key' | 'key-mix' | 'substitute' | 'per
 export type TraceOperation = {
   readonly sBox?: readonly number[]
   readonly permutation?: readonly number[]
-  readonly grid?: { readonly rows: readonly (readonly (string | null)[])[]; readonly writeOrder: readonly number[]; readonly readOrder: readonly number[] }
+  readonly grid?: { readonly rows: readonly (readonly (string | null)[])[]; readonly inputPositions: readonly (readonly (number | null)[])[]; readonly writeOrder: readonly number[]; readonly readOrder: readonly number[] }
 }
 
 export type TraceEvent = {
@@ -1551,7 +1551,10 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
                   const ciphertextPositions = grid.map((row) => { const positions = row.map((_) => offset++); return positions })
                   return Array.from({ length: grid[0]?.length ?? 0 }, (_, column) => grid.flatMap((row, rowIndex) => row[column] === undefined ? [] : [ciphertextPositions[rowIndex][column]])).flat()
                 })()
-              appendTrace({ path: id, level: 'detail', stage: 'transposition', operation: { grid: { rows: grid.map((row) => Array.from({ length: Math.ceil(source.symbols.length / rows) }, (_, index) => row[index] ?? null)), writeOrder: source.symbols.map((_, index) => index), readOrder } }, value: cloneValue(result.text) })
+              let inputOffset = 0
+              const inputPositions = grid.map((row, rowIndex) => Array.from({ length: Math.ceil(source.symbols.length / rows) }, (_, column) =>
+                row[column] === undefined ? null : direction === 'encrypt' ? column * rows + rowIndex : inputOffset++))
+              appendTrace({ path: id, level: 'detail', stage: 'transposition', operation: { grid: { inputPositions, rows: grid.map((row) => Array.from({ length: Math.ceil(source.symbols.length / rows) }, (_, index) => row[index] ?? null)), writeOrder: source.symbols.map((_, index) => index), readOrder } }, value: cloneValue(result.text) })
             } else if (compiledGraph.traceLevel === 'detail' && node.operation === 'aes.key-word@1' && /^word-\d+$/.test(id)) {
               const wordIndex = Number(/^word-(\d+)$/.exec(id)![1])
               appendTrace({ path: id, level: 'detail', round: Math.floor(wordIndex / 4), stage: 'input', word: wordIndex, value: cloneValue(result.value) })

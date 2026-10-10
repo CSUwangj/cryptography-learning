@@ -395,6 +395,7 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
   return <section aria-label={presentation.title} style={{ overflowX: 'auto' }}>
     <h3>{presentation.title}</h3>
     {presentation.instructions && <p>{presentation.instructions}</p>}
+    {presentation.diagnostics?.filter((item) => item.message !== presentation.instructions).map((item) => <p data-diagnostic-code={item.code} key={`${item.code}-${item.path}`}>{item.message}</p>)}
     {presentation.selectionStatus && <p aria-live="polite" role="status">{presentation.selectionStatus(selectedTarget)}</p>}
     {presentation.sections.filter((section) => section.rows.some((row) => row.state === 'incomplete'))
       .map((section) => <p key={`${section.kind}-${section.caption}`} role="status">{section.caption}</p>)}
