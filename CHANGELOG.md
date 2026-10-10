@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.1.0 — 2026-10-11
+
+The v1.1 learning release adds the served Lesson route and bilingual Lesson
+package across the public web, content, and infrastructure repositories.
+
+### Learning and content
+
+- Added generic, localized Learning presentation components and served Lesson
+  integration.
+- Added AES-128/192/256 encryption, decryption, key-expansion, comparison,
+  and avalanche Lessons with full-state semantic traces.
+- Added bilingual classical Lessons for alphabet foundations, substitution,
+  Caesar, affine, Vigenere, and columnar transposition.
+- Added deterministic Lab Registry composition and deployment handoff evidence.
+
+### Verification
+
+- Completed the v1.1 cross-tree acceptance work recorded in issues #69 and #80.
+- Content package evidence is recorded in the v1.1 Lesson Package Handoff and
+  the content changelog through v1.1.28.
+
 ## 1.0.0 — 2026-09-23
 
 The Cryptography Learning platform is now modernized, testable, and ready for
