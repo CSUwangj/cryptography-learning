@@ -45,9 +45,10 @@ Run the smallest checks that cover the change, and report any checks not run:
 
 Use `npm run lint` cautiously: the configured script includes `--fix` and modifies files.
 
-When reviewing an implementation diff, use the minimal handoff format in
-[`docs/agents/review-handoff.md`](docs/agents/review-handoff.md). This does not
-apply to grilling or specification sessions.
+Before executing a phase spec, handing work to another agent or CLI, or reviewing
+an implementation diff, read
+[`docs/agents/review-handoff.md`](docs/agents/review-handoff.md).
+Its review report format does not apply to grilling or specification sessions.
 
 ## Keep changes reviewable
 
