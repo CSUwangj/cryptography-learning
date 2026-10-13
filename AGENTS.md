@@ -169,5 +169,5 @@ The five canonical triage roles use the default label strings. See
 
 ### Domain docs
 
-This is a single-context repository: use `CONTEXT.md` and `docs/adr/` at the repository root.
+This is a single-context repository: use `GLOSSARY.md` and `docs/adr/` at the repository root.
 See `docs/agents/domain.md`.

@@ -12,8 +12,14 @@
   completes a Lab.
 - **Learning** — The top-level experience in which students study explanatory,
   visual cryptography content.
+- **Learning Navigation** — The student-facing hierarchy of Lesson categories
+  and Lessons, identified to readers by their localized names.
 - **Lesson** — One Learning item that composes cryptographic operations,
   explanations, and visualizations.
+- **Lesson ID** — The stable identity of a Lesson, independent of its localized
+  title.
+- **Lesson Title** — The localized, human-readable name of a Lesson. Different
+  translations name the same Lesson rather than creating separate identities.
 - **Step** — One ordered stage of a Lesson that may explain, request input,
   execute a CryptoGraph, visualize a trace, or provide local feedback.
 - **CryptoGraph** — A typed graph of cryptographic operations whose execution
@@ -30,6 +36,8 @@
   independent of any Lesson.
 - **Visualizer** — A compiled-in, versioned teaching view that transforms typed
   CryptoGraph values and semantic traces into an interactive presentation.
+- **Presentation Kind** — A structural family of teaching presentations, such as
+  an SPN cipher, shared by algorithms with the same presentation needs.
 - **Bit-Width Value** — A complete cryptographic value represented as `bit<size>`;
   teaching views preserve the operation's full state width instead of splitting
   the main presentation into implementation-level words.
@@ -48,6 +56,10 @@
 - **Bit Lineage** — The structural dependency relationships connecting a selected
   bit to its ancestors and descendants through cryptographic operations. Lineage
   does not assert that the selected bit individually caused an observed difference.
+- **Lineage Unit** — A group of bits selected together, such as a byte or word.
+  Highlighting a unit because it contains related bits does not make its remaining
+  bits related. Selecting the whole unit starts lineage from all of its bits.
+  _Avoid:_ Bit Grouping when the selection unit is meant
 - **Generic Block-Cipher Presentation** — The complete state-flow presentation for
   a block-cipher trace, including operation rows, values, and structural relationships.
   It is the base presentation for both encryption and decryption.
