@@ -96,9 +96,9 @@ const CompactAction = styled(Button)`
   }
 `
 
-const PracticeTrigger = styled(PracticeNavigation)`
+const PracticeTrigger = styled(PracticeNavigation)<{ $prototypeCompact?: boolean }>`
   && {
-    flex: 1 1 auto;
+    flex: ${({ $prototypeCompact }) => $prototypeCompact ? '0 0 auto' : '1 1 auto'};
     max-width: 42rem;
   }
 `
@@ -117,7 +117,8 @@ const NavigationActions = styled(Unselectable)`
   }
 `
 
-export const Shell: React.FC<PropsWithChildren> = ({ children }) => {
+// Temporary fixture slot for #95 P0-A5/A6; production callers retain the existing navigation.
+export const Shell: React.FC<PropsWithChildren<{ learningPrototype?: React.ReactNode }>> = ({ children, learningPrototype }) => {
   const { t, i18n } = useTranslation()
   // i18n.languages is list of fallback languages
   const items = i18n.languages
@@ -139,8 +140,8 @@ export const Shell: React.FC<PropsWithChildren> = ({ children }) => {
           <NavbarDivider />
           <NavigationActions>
             {/* <Button minimal large icon={IconNames.HELP} text={t('nav.tutorial')} onClick={() => history.push('/tutorial')} /> */}
-            <CompactAction data-learning minimal large icon={IconNames.SEARCH} text={t('nav.learning')} aria-label={t('nav.learning')} onClick={() => history.push('/learning')} />
-            <PracticeTrigger />
+            {learningPrototype ?? <CompactAction data-learning minimal large icon={IconNames.SEARCH} text={t('nav.learning')} aria-label={t('nav.learning')} onClick={() => history.push('/learning')} />}
+            <PracticeTrigger $prototypeCompact={Boolean(learningPrototype)} />
             <CompactAction minimal large icon={IconNames.ENVELOPE} text={t('nav.feedback')} aria-label={t('nav.feedback')} onClick={handleOpenFeedback} />
           </NavigationActions>
         </PrimaryNavigation>
