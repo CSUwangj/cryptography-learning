@@ -60,6 +60,13 @@
   Highlighting a unit because it contains related bits does not make its remaining
   bits related. Selecting the whole unit starts lineage from all of its bits.
   _Avoid:_ Bit Grouping when the selection unit is meant
+- **Lineage Selection** — The source bits deliberately chosen as the origin of
+  dependency inspection. In a v2 single-execution cipher/schedule overlay, this
+  origin is shared and survives covering or revealing its source view.
+- **Schedule Generation Order** — The order in which key-schedule states and round
+  keys are derived, independent of where they appear in a teaching view.
+- **Key Consumption Order** — The order in which a cipher uses round keys, which
+  may differ from their Schedule Generation Order without changing their identities.
 - **Generic Block-Cipher Presentation** — The complete state-flow presentation for
   a block-cipher trace, including operation rows, values, and structural relationships.
   It is the base presentation for both encryption and decryption.
@@ -71,8 +78,9 @@
   and their full-state lineage. It has no block-cipher frame or change background and
   does not participate in overlays.
 - **Key-Expansion Overlay** — A key-expansion view temporarily aligned over an
-  Encryption or Decryption Presentation. Decryption displays schedule rows in
-  cipher consumption order while retaining source iteration metadata.
+  Encryption or Decryption Presentation. In v2, decryption arranges schedule blocks
+  in Key Consumption Order while retaining their internal Schedule Generation Order
+  and original identities.
 - **Key-Change Avalanche Comparison** — An `avalanche@1` comparison in which the
   key binding is the single changed input while plaintext and other declared
   inputs remain shared. It uses the same semantic comparison model as
@@ -88,11 +96,12 @@
   align only by stable semantic path/id. Incomplete pairs keep explicit gaps;
   their ratio is unavailable. Key-change views require explicit Lesson
   declaration and never appear in the default plaintext-change view.
-- **View-Local Lineage** — Bit lineage is computed and highlighted only within
-  the currently active schedule or cipher view. Cross-view relationships are
+- **View-Local Lineage** — The Key-Change Avalanche Comparison's lineage scope,
+  limited to the currently active schedule or cipher view. Cross-view relationships are
   not drawn as lineage edges; baseline/changed value differences may still be
   marked in each view and summarized accessibly.
-- **View-Scoped Selection** — A selected bit belongs only to the active view.
+- **View-Scoped Selection** — The Key-Change Avalanche Comparison's selection scope,
+  in which a selected bit belongs only to the active view.
   Switching between schedule and cipher views clears selection; no cross-view
   selected-bit identity is retained.
 - **Mobile Practice View** — The narrow-viewport presentation of Practice in
