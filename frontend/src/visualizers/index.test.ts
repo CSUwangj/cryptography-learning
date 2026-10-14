@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
-import { aesCipherGraph, aesInverseCipherGraph, aesKeyExpansionGraph, alphabetPolicy, alphabetText, bits, executeWorkerRequest, hex, integer, teachingSpnGraph, type AlphabetTextValue, type TraceEvent, type TraceCheckpoint } from '../crypto_graph'
+import { aesCipherGraph, aesInverseCipherGraph, aesKeyExpansionGraph, alphabetPolicy, alphabetText, bits, executeWorkerRequest, hex, integer, teachingSpnGraph, type AlphabetTextValue, type TraceEvent, type TraceCheckpoint, type WorkerExecutionSnapshot } from '../crypto_graph'
 import { teachingSpnDemoDocuments } from '../../demos/teachingSpnLesson'
 import { aesKeyExpansionDemoDocuments } from '../../demos/aesKeyExpansionLesson'
 import { aesCipherDemoDocuments } from '../../demos/aes128CipherLesson'
@@ -432,6 +432,25 @@ describe('AES-128 encryption and decryption (#84)', () => {
     expect(screen.getByRole('row', { name: /^轮密钥加 0 0 0x0{32}$/ })).toBeVisible()
     expect(screen.getAllByText('轨迹缺口').length).toBeGreaterThan(0)
     expect(screen.queryByRole('row', { name: /输出/ })).toBeNull()
+  })
+
+  it('renders v2 default trace events in both supported locales', () => {
+    const state = bits(8, new Uint8Array([0x12]))
+    const output = bits(8, new Uint8Array([0xff]))
+    const snapshot: WorkerExecutionSnapshot = {
+      outputs: { 'mixed.value': output },
+      trace: [
+        { path: 'state.value', level: 'detail', primitive: 'core.source@1', parameters: {}, role: 'state', round: 0, unit: 8, value: state },
+        { path: 'mixed.value', level: 'detail', primitive: 'core.xor@1', parameters: {}, role: 'state', round: 0, unit: 8, value: output },
+      ],
+      traceStatus: { truncated: false, retained: 2, dropped: 0 },
+    }
+    expect(executionTracePresentation(snapshot, 'en-US', 'v2-en').sections[0].rows.map((row) => row.label)).toEqual([
+      'Traced value (state.value)', 'Output (mixed.value)',
+    ])
+    expect(executionTracePresentation(snapshot, 'zh-CN', 'v2-zh').sections[0].rows.map((row) => row.label)).toEqual([
+      '轨迹值 (state.value)', '输出 (mixed.value)',
+    ])
   })
 
   it('runs the AES-128 cipher demo fixture through the Browser Lesson runtime and renders both directions through the shared trace table', async () => {

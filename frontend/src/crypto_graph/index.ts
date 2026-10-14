@@ -106,6 +106,10 @@ export type AuthoredNode = {
   repeat?: { subgraph: string; count?: unknown }
   inputs?: Record<string, AuthoredInput>
   parameters?: Record<string, unknown>
+  role?: 'state' | 'round-key'
+  round?: number
+  iteration?: number
+  unit?: number
   origin?: SourceOrigin
 }
 
@@ -121,6 +125,7 @@ export type AuthoredGraph = {
   alphabetMappings?: readonly AlphabetMapping[]
   subgraphs?: Readonly<Record<string, AuthoredSubgraph>>
   traceLevel?: TraceLevel
+  schema?: 2
 }
 
 export type TraceCheckpoint = {
@@ -144,6 +149,11 @@ export type TraceEvent = {
   readonly round?: number
   readonly stage?: TraceStage
   readonly operation?: TraceOperation
+  readonly primitive?: string
+  readonly parameters?: Readonly<Record<string, unknown>>
+  readonly role?: 'state' | 'round-key'
+  readonly iteration?: number
+  readonly unit?: number
   /** Key-schedule word index for internal word-sized events; such events are metadata, not student-facing rows. */
   readonly word?: number
   readonly value?: CryptoValue
@@ -249,6 +259,7 @@ type Operation = {
 
 export type CompiledGraph = {
   readonly graph: AuthoredGraph
+  readonly schema?: 2
   execute: (inputs?: Record<string, CryptoValue>) => Result<ExecutionSnapshot>
 }
 
@@ -1334,10 +1345,15 @@ const expandGraph = (graph: AuthoredGraph, diagnostics: Diagnostic[]): AuthoredG
 
 export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
   const diagnostics: Diagnostic[] = []
+  const isV2 = graph.schema === 2
+  if (isV2 && graph.traceLevel !== undefined) diagnostics.push(diagnostic('lesson.v1-feature-in-v2', 'Trace levels are a v1-only feature.', 'traceLevel'))
   if (graph.traceLevel !== undefined && !['summary', 'round', 'detail'].includes(graph.traceLevel)) {
     diagnostics.push(diagnostic('trace.unsupported-level', 'Trace level is not supported.', 'traceLevel'))
   }
   const compiledGraph = structuredClone(expandGraph(graph, diagnostics))
+  if (isV2 && compiledGraph.nodes.filter((node) => node.operation === 'core.output@1').length !== 1) {
+    diagnostics.push(diagnostic('graph.single-output-required', 'V2 graphs must declare exactly one core.output@1 operation.', 'nodes'))
+  }
   const nodes = new Map<string, AuthoredNode>()
   const resolved = new Map<string, Operation>()
   const mappings = new Map<string, AlphabetMapping>()
@@ -1386,6 +1402,7 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
         diagnostics.push(diagnostic('unknown-input-port', 'Input references an unknown output port.', `${node.id}.inputs.${port.name}`, node))
         continue
       }
+      if (isV2) continue
       const outputTypeParameter = upstreamOperation?.manifest.outputTypeParameter
       const forwardedInput = upstreamOperation?.manifest.identity === 'core.xor@1'
         ? upstream?.inputs?.left
@@ -1434,12 +1451,45 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
       diagnostics.push(diagnostic('unknown-output-port', 'Graph output references an unknown port.', `outputs.${result.node}.${result.port}`))
     }
   }
+  if (isV2 && !diagnostics.length) {
+    const outputTypes = new Map<string, PortType>()
+    for (const id of order) {
+      const node = nodes.get(id)!
+      const operation = resolved.get(id)!
+      const inputTypes = new Map<string, PortType>()
+      const bindings = new Map<string, number>()
+      for (const port of operation.manifest.inputs) {
+        const input = node.inputs![port.name]
+        const type = outputTypes.get(`${input.node}.${input.port}`)
+        if (!type || !typeMatches(port.type, type, bindings)) {
+          diagnostics.push(diagnostic('incompatible-port-type', `Expected ${typeText(port.type)} input.`, `${node.id}.inputs.${port.name}`, node, { expected: typeText(port.type), actual: type ? typeText(type) : 'unknown' }))
+          continue
+        }
+        inputTypes.set(port.name, type)
+      }
+      for (const output of operation.manifest.outputs) {
+        const type = operation.manifest.outputTypeParameter && isPortType(node.parameters?.[operation.manifest.outputTypeParameter])
+          ? node.parameters[operation.manifest.outputTypeParameter] as PortType
+          : operation.manifest.identity === 'core.xor@1'
+            ? inputTypes.get('left')
+            : operation.manifest.identity === 'core.output@1'
+              ? inputTypes.get('value')
+              : !('size' in output.type) || typeof output.type.size === 'number' ? output.type : undefined
+        if (!type) {
+          diagnostics.push(diagnostic('graph.unresolved-type', 'V2 graph output type cannot be resolved.', `${node.id}.${output.name}`, node))
+          continue
+        }
+        outputTypes.set(`${id}.${output.name}`, type)
+      }
+    }
+  }
   if (diagnostics.length) return { ok: false, diagnostics }
 
   return {
     ok: true,
     value: {
       graph: compiledGraph,
+      ...(isV2 ? { schema: 2 as const } : {}),
       execute(executionInputs = {}, traceLimits?: TraceCollectionLimits) {
         const values = new Map<string, Record<string, CryptoValue>>()
         const trace: (TraceCheckpoint | TraceEvent)[] = []
@@ -1508,7 +1558,19 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
             const roundStage = /^(.*)\.(\d+)\/(key-mix|substitute|permute)$/.exec(id)
             const roundKey = /^(.*)\.(\d+)\/key$/.exec(id)
             const cipherStage = /^cipher-(\d+)-(add-round-key|sub-bytes|shift-rows|mix-columns|inv-shift-rows|inv-sub-bytes|inv-mix-columns)$/.exec(id)
-            if (compiledGraph.traceLevel === 'detail' && node.operation === 'core.source@1' && (id === 'plaintext' || id === 'state')) {
+            if (compiledGraph.schema === 2) {
+              appendTrace({
+                path: `${id}.value`,
+                level: 'detail',
+                primitive: node.operation,
+                parameters: structuredClone(node.parameters ?? {}),
+                ...(node.role ? { role: node.role } : {}),
+                ...(node.round === undefined ? {} : { round: node.round }),
+                ...(node.iteration === undefined ? {} : { iteration: node.iteration }),
+                ...(node.unit === undefined ? {} : { unit: node.unit }),
+                value: cloneValue(result.value),
+              })
+            } else if (compiledGraph.traceLevel === 'detail' && node.operation === 'core.source@1' && (id === 'plaintext' || id === 'state')) {
               appendTrace({ path: 'plaintext', level: 'detail', stage: 'input', value: cloneValue(result.value) })
             } else if (compiledGraph.traceLevel === 'detail' && node.operation === 'core.source@1' && id === 'ciphertext') {
               appendTrace({ path: 'ciphertext', level: 'detail', stage: 'input', value: cloneValue(result.value) })
@@ -1854,6 +1916,9 @@ export const executeWorkerRequest = (request: WorkerRequest, compiledGraphs?: Ma
     }
     if (request.kind === 'compare') {
       const { left, right } = request.payload
+      if (left.graph.schema === 2 || right.graph.schema === 2) {
+        return { requestId, kind: 'diagnostic', diagnostics: [diagnostic('comparison.v2-unsupported', 'Comparison is not supported for version: 2 graphs.', 'graph.schema')] }
+      }
       const leftLimits = resolveWorkerLimits(left.limits)
       if (!leftLimits.ok) return { requestId, kind: 'diagnostic', diagnostics: leftLimits.diagnostics }
       const rightLimits = resolveWorkerLimits(right.limits)

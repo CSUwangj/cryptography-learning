@@ -1,5 +1,5 @@
 import { executeWorkerRequest, maxWorkerLimits, type CryptoValue, type Diagnostic, type WorkerExecutionSnapshot } from '../crypto_graph'
-import { compileLesson, equalCryptoValues, type CompiledLesson, type LessonDocuments, type LessonValueReference, type VisualizerCatalog } from './compiler'
+import { compileLesson, equalCryptoValues, type CompiledLesson, type LessonDocuments, type LessonNotice, type LessonValueReference, type VisualizerCatalog } from './compiler'
 
 export type LessonDryRunStep = {
   readonly id: string
@@ -15,6 +15,7 @@ export type LessonDryRun = {
 export type LessonValidationReport = {
   readonly ok: boolean
   readonly diagnostics: readonly Diagnostic[]
+  readonly notices: readonly LessonNotice[]
   readonly dryRun?: LessonDryRun
 }
 
@@ -86,7 +87,9 @@ export const validateLessonDocuments = (
   catalog?: VisualizerCatalog,
 ): LessonValidationReport => {
   const compiled = compileLesson(documents, catalog)
-  if (!compiled.ok) return { ok: false, diagnostics: compiled.diagnostics }
+  if (!compiled.ok) return { ok: false, diagnostics: compiled.diagnostics, notices: [] }
   const result = dryRun(compiled.value)
-  return result.ok ? { ok: true, diagnostics: [], dryRun: result.value } : { ok: false, diagnostics: result.diagnostics }
+  return result.ok
+    ? { ok: true, diagnostics: [], notices: compiled.value.notices, dryRun: result.value }
+    : { ok: false, diagnostics: result.diagnostics, notices: compiled.value.notices }
 }

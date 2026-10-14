@@ -4,6 +4,7 @@ export {
   lessonDefaultLocale,
   type CompiledLesson,
   type LessonDocuments,
+  type LessonNotice,
   type LessonPresentation,
   type LessonValueReference,
   type Result,

@@ -1323,6 +1323,41 @@ describe('AES-192/256 encryption and decryption (#85)', () => {
     }
   })
 
+  it('rejects v2 graphs at the worker comparison boundary', () => {
+    const graph: AuthoredGraph = {
+      schema: 2,
+      nodes: [
+        { id: 'left', operation: 'core.source@1', parameters: { type: { family: 'bits', size: 8 } } },
+      ],
+      outputs: [{ node: 'left', port: 'value' }],
+    }
+    const response = executeWorkerRequest({
+      requestId: 'v2-comparison',
+      kind: 'compare',
+      payload: {
+        left: { graph, inputs: { 'left.value': bits(8, new Uint8Array([0])) } },
+        right: { graph, inputs: { 'left.value': bits(8, new Uint8Array([1])) } },
+      },
+    })
+    expect(response).toMatchObject({ kind: 'diagnostic', diagnostics: [{ code: 'comparison.v2-unsupported', path: 'graph.schema' }] })
+  })
+
+  it('requires exactly one v2 output operation', () => {
+    const sourceNode = { id: 'source', operation: 'core.source@1', parameters: { type: { family: 'bits' as const, size: 8 } } }
+    const output = (id: string) => ({ id, operation: 'core.output@1', inputs: { value: { node: 'source', port: 'value' } } })
+    const graph = (nodes: AuthoredGraph['nodes']): AuthoredGraph => ({
+      schema: 2,
+      nodes,
+      outputs: [{ node: 'source', port: 'value' }],
+    })
+    for (const nodes of [[sourceNode], [sourceNode, output('first'), output('second')]]) {
+      expect(compile(graph(nodes))).toMatchObject({
+        ok: false,
+        diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'graph.single-output-required', path: 'nodes' })]),
+      })
+    }
+  })
+
   it('keeps AES comparison gaps explicit when a trace is truncated (#86)', () => {
     const plaintext = hexToBytes('00112233445566778899aabbccddeeff')
     const roundKeys = roundKeyInputs(128, '000102030405060708090a0b0c0d0e0f')

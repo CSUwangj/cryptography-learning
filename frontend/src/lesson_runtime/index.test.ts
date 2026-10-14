@@ -61,6 +61,95 @@ describe('Lesson Runtime compiler (#29)', () => {
     if (!execution.ok) return
     expect(hex(execution.value.outputs['mixed.value'] as never)).toBe('0x0ff0')
     expect(compiled.value.steps.map((step) => step.id)).toEqual(['introduction', 'enter-input', 'calculate', 'identify-operation'])
+    expect(compiled.value.notices).toEqual([{ severity: 'warning', code: 'lesson.schema-v1-deprecated', path: 'version', message: expect.any(String) }])
+    expect(validateLessonDocuments(fixture()).notices).toEqual(compiled.value.notices)
+  })
+
+  it('executes a minimal v2 source/XOR/output graph with annotated trace events', () => {
+    const documents: LessonDocuments = {
+      lesson: `version: 2
+id: v2-xor
+default_locale: en-US
+inputs:
+  plaintext: {type: {family: bits, size: 16}, encoding: hex, default: "0x1234"}
+constants:
+  mask: {type: {family: bits, size: 16}, encoding: hex, value: "0x00ff"}
+graphs:
+  mix:
+    nodes:
+      - {id: state, operation: core.source@1, parameters: {type: {family: bits, size: 16}}, role: state, round: 0, unit: 8}
+      - {id: mask, operation: core.source@1, parameters: {type: {family: bits, size: 16}}, role: round-key, round: 0, unit: 8}
+      - {id: mixed, operation: core.xor@1, inputs: {left: {node: state, port: value}, right: {node: mask, port: value}}, role: state, round: 0, unit: 8}
+      - {id: restored, operation: core.xor@1, inputs: {left: {node: mixed, port: value}, right: {node: mask, port: value}}, role: state, round: 0, unit: 8}
+      - {id: result, operation: core.output@1, inputs: {value: {node: restored, port: value}}, role: state, round: 0, unit: 8}
+    outputs: [{node: result, port: value}]
+steps:
+  - id: run
+    execute:
+      graph: mix
+      bindings: {state.value: {input: plaintext}, mask.value: {constant: mask}}
+`,
+      locales: { 'en-US': 'title: V2 XOR\nsummary: Run a minimal graph.\ntexts: {}', 'zh-CN': 'title: V2 XOR\nsummary: 运行最小图。\ntexts: {}' },
+    }
+    const compiled = compileLesson(documents)
+    expect(compiled).toMatchObject({ ok: true, value: { notices: [] } })
+    expect(compileLesson({ ...documents, lesson: documents.lesson.replace('version: 2\n', '') })).toMatchObject({ ok: true, value: { notices: [] } })
+    if (!compiled.ok) return
+    const execution = compiled.value.graphs.mix.execute({
+      'state.value': compiled.value.inputs.plaintext.default,
+      'mask.value': compiled.value.constants.mask,
+    })
+    expect(execution.ok).toBe(true)
+    if (!execution.ok) return
+    expect(execution.value.trace.map((event) => ({
+      path: event.path,
+      primitive: 'primitive' in event ? event.primitive : undefined,
+      role: 'role' in event ? event.role : undefined,
+      round: 'round' in event ? event.round : undefined,
+      unit: 'unit' in event ? event.unit : undefined,
+    }))).toEqual([
+      { path: 'state.value', primitive: 'core.source@1', role: 'state', round: 0, unit: 8 },
+      { path: 'mask.value', primitive: 'core.source@1', role: 'round-key', round: 0, unit: 8 },
+      { path: 'mixed.value', primitive: 'core.xor@1', role: 'state', round: 0, unit: 8 },
+      { path: 'restored.value', primitive: 'core.xor@1', role: 'state', round: 0, unit: 8 },
+      { path: 'result.value', primitive: 'core.output@1', role: 'state', round: 0, unit: 8 },
+    ])
+    expect(execution.value.trace[0]).toMatchObject({
+      parameters: { type: { family: 'bits', size: 16 } },
+      value: { type: { family: 'bits', size: 16 }, bytes: expect.any(Uint8Array) },
+    })
+    expect(validateLessonDocuments(documents)).toMatchObject({ ok: true, notices: [], dryRun: { steps: [{ id: 'run' }] } })
+  })
+
+  it('rejects version-exclusive and internal v2 fields', () => {
+    const v1Annotations = compileLesson({ ...fixture(), lesson: fixture().lesson.replace('parameters:', 'role: state\n        parameters:') })
+    expect(v1Annotations).toMatchObject({ ok: false, diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'lesson.v2-feature-in-v1' })]) })
+
+    const v2Fields = compileLesson({
+      lesson: `version: 2
+id: invalid-v2
+default_locale: en-US
+inputs: {}
+constants: {}
+graphs:
+  graph:
+    schema: 2
+    traceLevel: detail
+    nodes:
+      - {id: state, operation: core.source@1, traceParameters: {}, parameters: {type: {family: bits, size: 8}, value: "0x00"}}
+    outputs: [{node: state, port: value}]
+steps: []
+`,
+      locales: { 'en-US': 'title: Invalid\nsummary: Invalid\ntexts: {}' },
+    })
+    expect(v2Fields).toMatchObject({
+      ok: false,
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({ code: 'lesson.unknown-field', path: 'graphs.graph.schema' }),
+        expect.objectContaining({ code: 'lesson.v1-feature-in-v2', path: 'graphs.graph.traceLevel' }),
+        expect.objectContaining({ code: 'lesson.unknown-field', path: 'graphs.graph.nodes.0.traceParameters' }),
+      ]),
+    })
   })
 
   it('compiles typed equality checks with localized feedback', () => {
@@ -289,7 +378,7 @@ steps:
     if (!compiled.ok) return
     expect(normalizedLesson(browser.value.lesson)).toEqual(normalizedLesson(compiled.value))
 
-    const malformed = { ...fixture(), lesson: fixture().lesson.replace('version: 1', 'version: 2') }
+    const malformed = { ...fixture(), lesson: fixture().lesson.replace('version: 1', 'version: 3') }
     const node = validateLessonDocuments(malformed)
     const browserMalformed = createBrowserLessonSession(malformed, 'zh-CN')
     expect(node.ok).toBe(false)
@@ -664,10 +753,10 @@ steps:
   })
 
   it('uses stable diagnostics with source locations and rejects forbidden YAML', () => {
-    const unsupported = compileLesson({ ...fixture(), lesson: fixture().lesson.replace('version: 1', 'version: 2') })
+    const unsupported = compileLesson({ ...fixture(), lesson: fixture().lesson.replace('version: 1', 'version: 3') })
     expect(unsupported).toMatchObject({
       ok: false,
-      diagnostics: [{ code: 'lesson.unsupported-version', path: 'version', span: { file: 'lesson.yaml', line: 1, column: 10 }, details: { version: 2 } }],
+      diagnostics: [{ code: 'lesson.unsupported-version', path: 'version', span: { file: 'lesson.yaml', line: 1, column: 10 }, details: { version: 3 } }],
     })
 
     for (const lesson of [

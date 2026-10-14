@@ -23,6 +23,13 @@ export type LessonDocuments = {
   readonly locales: Readonly<Record<string, string>>
 }
 
+export type LessonNotice = {
+  readonly severity: 'info' | 'warning'
+  readonly code: string
+  readonly message: string
+  readonly path?: string
+}
+
 export type VisualizerDescriptor = {
   readonly id: string
   readonly inputSlots: Readonly<Record<string, PortType>>
@@ -110,6 +117,7 @@ export type CompiledLesson = {
   readonly graphs: Readonly<Record<string, CompiledGraph>>
   readonly steps: readonly CompiledStep[]
   readonly locales: Readonly<Record<string, { readonly title: string; readonly summary: string; readonly texts: Readonly<Record<string, string>> }>>
+  readonly notices: readonly LessonNotice[]
   readonly limits?: WorkerLimits
 }
 
@@ -380,10 +388,17 @@ const validateGraphNode = (
   path: string,
   spans: ReadonlyMap<string, SourceOrigin>,
   diagnostics: Diagnostic[],
+  isV2: boolean,
 ): Record<string, unknown> | undefined => {
   const node = requireMap(raw, path, spans, diagnostics)
   if (!node) return undefined
-  checkFields(node, ['id', 'operation', 'repeat', 'inputs', 'parameters'], path, spans, diagnostics)
+  checkFields(node, ['id', 'operation', 'repeat', 'inputs', 'parameters', 'role', 'round', 'iteration', 'unit'], path, spans, diagnostics)
+  for (const key of ['role', 'round', 'iteration', 'unit']) if (!isV2 && key in node) diagnostics.push(diagnostic('lesson.v2-feature-in-v1', 'V2 node annotations require version: 2.', `${path}.${key}`, spans.get(`${path}.${key}`)))
+  if (isV2) {
+    if (node.role !== undefined && node.role !== 'state' && node.role !== 'round-key') diagnostics.push(diagnostic('lesson.invalid-input', 'Node role must be state or round-key.', `${path}.role`, spans.get(`${path}.role`)))
+    for (const key of ['round', 'iteration']) if (node[key] !== undefined && (!Number.isSafeInteger(node[key]) || (node[key] as number) < 0)) diagnostics.push(diagnostic('lesson.invalid-input', 'Node round and iteration must be non-negative integers.', `${path}.${key}`, spans.get(`${path}.${key}`)))
+    if (node.unit !== undefined && (!Number.isSafeInteger(node.unit) || (node.unit as number) <= 0)) diagnostics.push(diagnostic('lesson.invalid-input', 'Node unit must be a positive integer.', `${path}.unit`, spans.get(`${path}.unit`)))
+  }
   if (typeof node.id !== 'string' || !identifier.test(node.id)) diagnostics.push(diagnostic('lesson.invalid-input', 'Node ID is invalid.', `${path}.id`, spans.get(`${path}.id`)))
   if (node.inputs !== undefined) {
     const inputs = requireMap(node.inputs, `${path}.inputs`, spans, diagnostics)
@@ -468,6 +483,7 @@ const compileGraph = (
   path: string,
   spans: ReadonlyMap<string, SourceOrigin>,
   diagnostics: Diagnostic[],
+  isV2: boolean,
 ): GraphInfo | undefined => {
   const graph = requireMap(raw, path, spans, diagnostics)
   if (!graph) return undefined
@@ -479,7 +495,7 @@ const compileGraph = (
   const sourceTypes: Record<string, PortType> = {}
   for (const [index, rawNode] of graph.nodes.entries()) {
     const nodePath = `${path}.nodes.${index}`
-    const node = validateGraphNode(rawNode, nodePath, spans, diagnostics)
+    const node = validateGraphNode(rawNode, nodePath, spans, diagnostics, isV2)
     if (!node) continue
     if (typeof node.id !== 'string' || !identifier.test(node.id)) continue
     if (node.operation === 'core.source@1') {
@@ -529,7 +545,7 @@ const compileGraph = (
         }
       }
       if (!Array.isArray(subgraph.nodes)) diagnostics.push(diagnostic('lesson.invalid-input', 'Subgraph nodes must be a sequence.', `${subgraphPath}.nodes`, spans.get(`${subgraphPath}.nodes`)))
-      else for (const [index, rawNode] of subgraph.nodes.entries()) validateGraphNode(rawNode, `${subgraphPath}.nodes.${index}`, spans, diagnostics)
+      else for (const [index, rawNode] of subgraph.nodes.entries()) validateGraphNode(rawNode, `${subgraphPath}.nodes.${index}`, spans, diagnostics, isV2)
     }
   }
   const decodedGraph = {
@@ -542,7 +558,7 @@ const compileGraph = (
         : rawSubgraph]
     })),
   }
-  const result = compile(decodedGraph as unknown as AuthoredGraph)
+  const result = compile({ ...decodedGraph, ...(isV2 ? { schema: 2 as const } : {}) } as unknown as AuthoredGraph)
   if (!result.ok) {
     const nodeIndexes = new Map(graph.nodes.map((node, index) => [fields(node)?.id, index]))
     diagnostics.push(...result.diagnostics.map((item) => {
@@ -673,7 +689,9 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
   const root = requireMap(lesson.value, '', lesson.spans, diagnostics)
   if (!root) return { ok: false, diagnostics }
   checkFields(root, ['version', 'id', 'default_locale', 'inputs', 'constants', 'graphs', 'steps', 'limits'], '', lesson.spans, diagnostics)
-  if (root.version !== 1) diagnostics.push(diagnostic('lesson.unsupported-version', 'Unsupported Lesson version.', 'version', lesson.spans.get('version'), { version: typeof root.version === 'number' ? root.version : null }))
+  const isV1 = root.version === 1
+  const isV2 = root.version === undefined || root.version === 2
+  if (!isV1 && !isV2) diagnostics.push(diagnostic('lesson.unsupported-version', 'Unsupported Lesson version.', 'version', lesson.spans.get('version'), { version: typeof root.version === 'number' ? root.version : null }))
   if (typeof root.id !== 'string' || !identifier.test(root.id)) diagnostics.push(diagnostic('lesson.invalid-input', 'Lesson ID is invalid.', 'id', lesson.spans.get('id')))
   if (typeof root.default_locale !== 'string') diagnostics.push(diagnostic('lesson.invalid-input', 'Default locale is invalid.', 'default_locale', lesson.spans.get('default_locale')))
   const inputMap = requireMap(root.inputs, 'inputs', lesson.spans, diagnostics) ?? {}
@@ -710,7 +728,7 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
   for (const [id, raw] of Object.entries(graphMap)) {
     if (!identifier.test(id)) diagnostics.push(diagnostic('lesson.invalid-input', 'Graph ID is invalid.', `graphs.${id}`, lesson.spans.get(`graphs.${id}`)))
     else {
-      const compiled = compileGraph(id, raw, `graphs.${id}`, lesson.spans, diagnostics)
+      const compiled = compileGraph(id, raw, `graphs.${id}`, lesson.spans, diagnostics, isV2)
       if (compiled) graphInfo[id] = compiled
     }
   }
@@ -838,7 +856,11 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
         const variant = presentation.variant
         const direction = presentation.direction
         const validVariant = variant === 128 || variant === 192 || variant === 256
-        if (kind === 'block-cipher' && algorithm === 'AES' && validVariant && (direction === 'encrypt' || direction === 'decrypt')) {
+        if (isV2 && (kind === 'block-cipher' || kind === 'key-expansion')) {
+          diagnostics.push(diagnostic('lesson.v1-feature-in-v2', 'This presentation is only supported by version: 1.', `${path}.presentation.kind`, lesson.spans.get(`${path}.presentation.kind`)))
+        } else if (!isV2 && kind === 'spn-cipher') {
+          diagnostics.push(diagnostic('lesson.v2-feature-in-v1', 'This presentation requires version: 2.', `${path}.presentation.kind`, lesson.spans.get(`${path}.presentation.kind`)))
+        } else if (kind === 'block-cipher' && algorithm === 'AES' && validVariant && (direction === 'encrypt' || direction === 'decrypt')) {
           compiled.presentation = { kind, algorithm, variant, direction }
         } else if (kind === 'key-expansion' && algorithm === 'AES' && validVariant && direction === undefined) {
           compiled.presentation = { kind, algorithm, variant }
@@ -851,9 +873,19 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
       const visualizer = requireMap(step.visualizer, `${path}.visualizer`, lesson.spans, diagnostics)
       if (visualizer) {
         checkFields(visualizer, ['id', 'bindings', 'compare', 'options'], `${path}.visualizer`, lesson.spans, diagnostics)
+        const v2VisualizerCode = isV2 && (visualizer.id === 'teaching-spn@1' || visualizer.id === 'avalanche@1' || visualizer.id === 'classical-cipher@1')
+        const unsupportedV2Visualizer = isV2 && (visualizer.id === 'avalanche@1' || visualizer.id === 'classical-cipher@1')
+        if (isV2 && visualizer.compare !== undefined) diagnostics.push(diagnostic('lesson.v2-unsupported', 'Comparison steps are not supported by version: 2.', `${path}.visualizer.compare`, lesson.spans.get(`${path}.visualizer.compare`)))
+        if (v2VisualizerCode) diagnostics.push(diagnostic(
+          visualizer.id === 'teaching-spn@1' ? 'lesson.v1-feature-in-v2' : 'lesson.v2-unsupported',
+          visualizer.id === 'teaching-spn@1' ? 'This visualizer is only supported by version: 1.' : 'This visualizer is not supported by version: 2.',
+          `${path}.visualizer.id`,
+          lesson.spans.get(`${path}.visualizer.id`),
+        ))
         const descriptor = typeof visualizer.id === 'string' ? catalog?.get(visualizer.id) : undefined
-        if (!descriptor) diagnostics.push(diagnostic('lesson.invalid-input', 'Visualizer is not registered.', `${path}.visualizer.id`, lesson.spans.get(`${path}.visualizer.id`)))
-        else {
+        if (!descriptor) {
+          if (!unsupportedV2Visualizer && !v2VisualizerCode) diagnostics.push(diagnostic('lesson.invalid-input', 'Visualizer is not registered.', `${path}.visualizer.id`, lesson.spans.get(`${path}.visualizer.id`)))
+        } else {
           const bindings = visualizer.bindings === undefined ? {} : requireMap(visualizer.bindings, `${path}.visualizer.bindings`, lesson.spans, diagnostics) ?? {}
           const execution = compiled.execute ? graphInfo[compiled.execute.graph] : undefined
           for (const [slot, rawBinding] of Object.entries(bindings)) {
@@ -1046,6 +1078,7 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
   }
   if (typeof root.default_locale === 'string' && !locales[root.default_locale]) diagnostics.push(diagnostic('lesson.invalid-input', 'Default locale document is required.', 'default_locale', lesson.spans.get('default_locale')))
   if (diagnostics.length) return { ok: false, diagnostics }
+  const notices: LessonNotice[] = isV1 ? [{ severity: 'warning', code: 'lesson.schema-v1-deprecated', path: 'version', message: 'Lesson schema v1 is deprecated; see docs/MIGRATION-v2.md.' }] : []
   return {
     ok: true,
     value: {
@@ -1056,6 +1089,7 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
       graphs: Object.fromEntries(Object.entries(graphInfo).map(([id, info]) => [id, info.graph])),
       steps,
       locales,
+      notices,
       ...(limits ? { limits } : {}),
     },
   }
