@@ -50,6 +50,18 @@ an implementation diff, read
 [`docs/agents/review-handoff.md`](docs/agents/review-handoff.md).
 Its review report format does not apply to grilling or specification sessions.
 
+For an authorized single-ticket implementation/review loop, use
+[ticket-loop](.agents/skills/ticket-loop/SKILL.md) and
+[`scripts/review_handoff.py`](scripts/review_handoff.py) to pin the review
+snapshot and capture check results. Before delegation, require maintainer-selected
+implementation and review models/providers and execution routes; follow the
+skill's selection gate rather than implicit host defaults. Delegate within that
+ticket and resolve clear defects without another approval.
+Escalate requirement conflicts, scope expansion, permission blocks, or repeated
+findings without progress. A review pass and completed verification are separate
+gates. Stop at staged delivery; committing and starting another ticket remain
+maintainer decisions.
+
 ## Keep changes reviewable
 
 - Make the smallest change that solves the request. Do not fold in unrelated
