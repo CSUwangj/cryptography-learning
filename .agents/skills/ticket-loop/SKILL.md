@@ -1,164 +1,216 @@
 ---
 name: ticket-loop
-description: Coordinate one approved cryptography-learning ticket through implementation, independent review and fixes, ending with staged changes and verifiable evidence. Use when asked to execute or resume a single-ticket implementation/review loop.
+description: Execute or resume one approved ticket through TDD, pre-review, independent formal review and fixes, ending with staged changes and verifiable evidence.
 ---
 
 # Ticket loop
 
-Act as coordinator for one authorized ticket. Use separate implementation and
-review agents, sequentially, resuming them across fix rounds. Select their
-models explicitly with the maintainer before delegation. This workflow grants
-no new permission to change requirements, publish tracker updates, commit,
-push, merge, close issues, or start another ticket.
+Coordinate one authorized ticket. Read repository and applicable subtree
+`AGENTS.md`, [review-handoff.md](../../../docs/agents/review-handoff.md), and
+the approved issue/decisions using [issue-tracker.md](../../../docs/agents/issue-tracker.md).
+The handoff document owns snapshot commands and review reporting. This workflow
+does not authorize tracker writes, commits, pushes, merges or another ticket.
 
-Read repository `AGENTS.md`, applicable subtree guidance, and
-[review-handoff.md](../../../docs/agents/review-handoff.md). That document owns
-the handoff commands and review format. Follow
-[issue-tracker.md](../../../docs/agents/issue-tracker.md) to read the approved
-issue and its linked decisions.
+## Route the skills
+
+Resolve these installed skills once and record their actual `SKILL.md` paths in
+the execution note. Give each role only its applicable skills and references;
+read their instructions, using file reads when the host has no Skill tool.
+Search installed skills if a named skill is absent from discovery. If a required
+skill remains unavailable, stop before the affected stage and identify it;
+do not silently substitute another version or install new tooling.
+
+| Role | Instructions |
+| --- | --- |
+| Coordinator | This skill; run `code-review` for each review stage |
+| Implementer | `implement`; `tdd` for behavior changes and non-trivial logic |
+| Pre-review and formal review | `code-review`, with independent Standards and Spec contexts |
+| All roles | Repository [caveman](../caveman/SKILL.md) at **lite**; plugin `ponytail:ponytail` at **full** |
+
+Use the discovered plugin source for Ponytail, not the separate unnamespaced
+copy. Record the resolved source rather than hard-coding a machine's cache path.
+These are the maintainer-approved overrides within this loop:
+
+- `implement` is the implementation-stage reference, including when its host
+  permits only manual invocation. At its review step, return control to the
+  coordinator, who runs `code-review`; stage instead of executing its commit step.
+- The coordinator selects existing public test interfaces and records what each
+  proves and misses. This satisfies the TDD seam gate without another question.
+  Requirement conflicts, scope expansion and approval-required interface choices
+  still need the maintainer. Expected results come from sources, not current code.
+- `code-review` uses the packet's exact staged diff and explicit issue/decisions,
+  not its default committed-range discovery. Preserve both axes in the repository
+  report format. Smell heuristics are non-blocking unless an authorized contract
+  or concrete defect justifies a blocker; they do not authorize extra refactoring.
+- Caveman compresses communication, never requirements, negations, evidence or
+  necessary progress updates. Persisted records remain normal English prose.
+  Ponytail minimizes the complete solution, not acceptance scope or required checks.
+
+Pass these overrides with the skill paths to each delegated role; do not rely
+on a child or external runner inheriting the coordinator's context.
+
+Behavior-changing tickets use implementation/TDD, pre-review, then formal review.
+Pure documentation, comments or formatting use relevant checks and formal review,
+without pre-review or artificial red tests. Classify by effects: configuration,
+data and executable examples that change behavior take the behavior-changing path.
 
 ## Select models before delegation
 
-Require explicit maintainer selections for implementation and review before
-launching either role. Reuse selections already approved for this ticket or an
-explicitly approved reusable role mapping; do not ask again each repair round.
-If either selection is missing, ask once for the missing role assignments.
-Read-only preparation may continue while waiting; implementation may not.
-
-Record each role's provider, exact model selector, and execution route/platform
-in the execution note. Record reasoning effort when the platform exposes it;
-obtain the maintainer's choice of a level or its model default. The coordinator
-is the current session; record its identity only as exposed by the runtime,
-otherwise mark it unknown. A config file is a configured choice, not proof of
-the model actually serving a session.
-
-Use this format when collecting choices; these placeholders are not defaults:
+Require these two explicit maintainer selections before launching roles. Reuse
+selections approved for this ticket or a reusable mapping; ask only for missing
+choices. Read-only preparation may continue while waiting, implementation may not.
 
 ```text
 Implementation: provider=...; model=...; runner/platform=...; effort=...
-Review: provider=...; model=...; runner/platform=...; effort=...
+Formal review: provider=...; model=...; runner/platform=...; effort=...
 ```
 
-The same model may fill both roles with independent contexts. An explicit
-maintainer choice to inherit the current session is valid; implicit inheritance,
-automatic model selection and silent provider/model substitution are not.
-Pass the selected model through the platform's supported dispatch mechanism;
-writing a model name in an agent prompt does not select the serving model.
-Record the actual dispatch selection and any runtime identity the platform
-exposes, keeping unverified identity explicit.
+Record reasoning effort when exposed, including an explicit choice of model
+default. The approved mapping is:
 
-Role selections may name different providers or platforms. Check the available
-local tools/configuration before promising automatic cross-provider dispatch;
-this skill does not supply a gateway or assume that one platform can control
-another. If the requested route is unavailable, stop before that role and
-provide a concrete handoff for the maintainer's chosen external runner, or ask
-for an available alternative. Do not self-review as a substitute. Model/route
-changes require a new selection; prior approval remains valid otherwise.
+- Implementation and both pre-review axes use **Implementation**.
+- Both formal-review axes, escalation diagnosis and an authorized escalated
+  repair use **Formal review**.
+- The maintainer may separately override pre-review. This mapping is explicit
+  authorization, not implicit inheritance from host configuration.
+
+Pass the selected configuration to every dispatch, including axis agents.
+Writing a model name in a prompt does not select it. Record dispatch choices and
+runtime identity separately; if actual identity is unavailable, mark it unknown.
+The coordinator is the current session; a config file is not proof of its identity.
+The same model may serve different roles in independent contexts. Explicitly
+choosing the current session's model is valid; silently inheriting it is not.
+
+Check local tool support for the chosen provider/platform before promising
+dispatch. If unavailable, stop before that role and provide a concrete external
+handoff or ask for an available route. No gateway, silent substitute or self-review.
+Other model/route changes need a new selection; the escalation mapping above does not.
 
 ## Prepare the execution boundary
 
-1. Confirm the user authorized implementation of this ticket and its dependencies
-   and human checkpoints are satisfied. A request for a plan or review alone
-   does not authorize implementation. Use the approved issue as authority;
-   historical drafts and prototypes are subordinate context.
-2. Choose one checkout and base SHA. Prefer the current checkout when clean.
-   If unrelated work requires isolation, prepare the worktree before editing;
-   resolve permission failures through the host's approval mechanism. Keep
-   implementation, checks and review in that checkout through delivery. Do not
-   silently fall back to another checkout and later copy partially tested work
-   back. Preserve and classify existing unrelated changes.
-3. Write a short English execution note outside the checkout. For each acceptance
-   criterion, link its source and identify the public entry point, expected
-   result and check. For an error-prone restriction, name the constrained object
-   and scope, an allowed example, a rejected example, and the exact authoritative
-   source. Use the boundary format in review-handoff.md; examples must distinguish
-   plausible wrong interpretations, not just confirm the implementation.
-   Record reuse points, likely files, non-goals, accepted risks and check names.
-   File guidance may expand to
-   necessary callers/tests within the same requirement; explain such expansion.
-4. Resolve ordinary implementation choices yourself: fixture IDs, internal names,
-   localized wording following existing style, and minimal diagnostic details.
-   Ask the maintainer only for the decision branches required by AGENTS.md or
-   genuinely missing authorization. State the conflicting sources and the
-   smallest decision needed. Record approved requirement changes in the proper
-   authority before dependent work; obtain publication permission if absent.
+1. Confirm implementation is authorized and dependencies/human checkpoints are
+   satisfied. Planning or review alone does not authorize implementation.
+2. Choose one checkout and base SHA. Prefer the current checkout when clean;
+   otherwise prepare isolation before editing. Preserve and classify unrelated
+   work. Keep implementation, checks and review there through staged delivery;
+   do not copy partially verified work between checkouts after a permission failure.
+3. Write a short English execution note outside the checkout. Map each criterion
+   to its authoritative source, public entry point, expected result and check.
+   For an error-prone restriction, use the handoff document's constrained-object,
+   allowed-example and rejected-example format to distinguish wrong interpretations.
+   Record test interfaces/coverage limits, reuse points, likely files, non-goals,
+   accepted risks, selected skill paths/model mapping and planned checks.
+4. Resolve ordinary local choices directly. For an unresolved requirement, cite
+   the conflicting or missing sources and ask for the smallest decision. Persist
+   approved changes in the proper authority before dependent work; obtain tracker
+   publication permission if absent. An execution note is not a second specification.
 
-Proceed once the note covers the ticket and no blocking product decision
-remains. The note is an execution aid, not a second specification. Do not ask
-for another approval merely because planning has finished.
+Proceed when the note covers the ticket and no blocking decision remains.
+Do not ask for another approval just because preparation has finished.
 
 ## Implement and capture
 
-Send the implementer the checkout, base, issue, execution note and applicable
-guidance. Give this brief:
+Give the implementer the checkout, base, issue, note and its selected skill paths.
+For behavior changes, use one source-backed failing behavior test followed by
+the smallest implementation per cycle. A launch, import or environment failure
+is not a red behavior test. An already-passing case is existing coverage; record
+it honestly and target a missing behavior rather than fabricating a failure.
+Use existing test tools and agreed public interfaces, without speculative test
+architecture. Run documentation examples using the files actually shown.
 
-> Implement only this ticket using the named existing interfaces. Prove the
-> observable acceptance criteria and identified counterexamples. Documentation
-> examples must run using the files actually shown. Ordinary local choices are
-> yours; return requirement conflicts or scope expansion to the coordinator.
-> Stage the completed ticket files, record finding dispositions and evidence
-> limits in the notes, and use review_handoff.py to create and check the packet.
-> Run the planned checks through the capture command. Deliver the actual packet
-> path and stop editing so another agent can review this snapshot.
+Run focused checks during development. Stage the candidate ticket files and
+capture a packet with planned check names before pre-review; unfinished broader
+checks remain explicit. Stop editing while reviewers inspect that snapshot.
+Only the currently assigned implementer edits ticket files. The coordinator
+verifies the packet exists and `verify` passes before any review. Return missing
+files, unstaged fixes or stale evidence as delivery problems, not code findings.
 
-The coordinator verifies the packet exists and `verify` passes before launching
-review. Return missing files, unstaged fixes, or stale evidence directly to the
-implementer. An invalid handoff is a delivery problem, not a code finding.
-Escalate unresolved permission/environment problems rather than treating checks
-without completed results as passed. Only the implementer edits production
-files; do not run review concurrently with implementation.
+After pre-review repairs, run the required checks on the candidate for formal
+review. Do not repeat unchanged passing checks merely for another review stage.
+After any edit, create a new packet and rerun affected checks; justify unaffected
+prior evidence under the handoff rules. Never copy old passing attempts into it.
+Environment failures require honest limits and the normal permission flow.
 
 ## Review and converge
 
-Give a fresh reviewer the approved issue/decisions, repo guidance and packet;
-do not pre-supply the implementer's preferred conclusion. Give this brief:
+The coordinator runs `code-review` in two stages for behavior changes: pre-review,
+then formal review when no confirmed blockers remain. The stalled-repair path
+below may end pre-review early for escalation diagnosis. For each initial stage,
+launch separate Standards and Spec agents directly with that stage's configuration;
+no extra review-coordinator agent or recursive review loop. Run the axes in
+parallel when slots permit, otherwise sequentially in independent contexts.
+Keep implementation stopped throughout review. On repair rounds, resume the
+reviewers to check findings and affected behavior; broaden coverage when edits warrant it.
 
-> Verify the packet, then independently establish expected behavior from the
-> approved issue and linked decisions before inspecting the implementation.
-> Check the note's constrained objects and allowed/rejected examples against
-> those sources, including superseding decisions. Tests and earlier reviews do
-> not establish requirement authority. Then inspect the exact diff and connected code.
-> Assess acceptance coverage and credible regressions through public behavior.
-> Reproduce key cases; the implementation summary is an index, not evidence.
-> Keep the reviewed checkout, tests and requirements unchanged. Temporary probes
-> belong outside the checkout. Report in review-handoff.md's format with stable
-> finding IDs. Every blocker needs an authorized requirement or concrete defect,
-> a location, and evidence. Keep preferences and extra robustness non-blocking.
-> Report verification limits separately; verify the snapshot again at the end.
+Give reviewers the approved sources, exact packet, applicable guidance and this brief:
 
-Handle the report without asking the maintainer to relay it:
+> Review only your assigned axis; do not spawn further reviewers. Verify the
+> snapshot. Establish expected behavior from current authoritative
+> sources before reading the diff or prior conclusions. Check constrained objects
+> and allowed/rejected examples; tests and review agreement are not authority.
+> Inspect the exact diff and connected code; reproduce key public behavior.
+> Leave source, tests and requirements unchanged; temporary probes stay outside
+> the checkout. Report stage/axis, source-backed expected and observed behavior,
+> location and evidence, using the repository format. Verify the snapshot again
+> at the end. Report verification limits separately from the code verdict.
 
-- Before forwarding any blocker, the coordinator checks its cited authority,
-  scope and counterexample against the current decision. Record that assessment
-  under its finding ID in the existing notes. An unsupported interpretation goes
-  back to the reviewer for correction; a requirement conflict goes to the maintainer.
-- Confirmed clear defect: send the finding to the implementer without another
-  approval for the smallest fix and relevant regression proof. Create a new
-  packet after edits, then resume the
-  reviewer to recheck the finding and affected behavior. Preserve IDs.
-- Factual disagreement: inspect the cited code or run the smallest counterexample.
-  Return the evidence to the agents; do not change acceptance criteria to settle
-  the dispute. A new blocker needs the same evidence as the original findings.
-- Requirement conflict, new behavior or an approval-required mechanism: pause
-  that branch and request the maintainer's decision with source citations.
-- Optional suggestion: leave it non-blocking and unimplemented unless separately
-  authorized. Do not manufacture findings or require a quota to justify review.
+Formal review starts in contexts independent of implementation and pre-review,
+covering the whole ticket, not only surviving pre-review findings. A pre-review
+pass is not acceptance. The coordinator reconciles reports with stable finding
+IDs and preserves each axis; handle reports without making the maintainer relay them:
 
-Stop and report when the same finding returns after a repair without new evidence
-or progress; do not repeat the same repair/review attempt indefinitely. New
-evidence can justify continuing within the ticket. The reviewer may return pass
-while verification is incomplete; that is not completed delivery.
+- Validate each blocker's source, scope and counterexample before repair. Return
+  unsupported interpretations to the reviewer; record the assessment in the notes.
+- Send confirmed defects to the implementer for the smallest fix and regression
+  evidence. New packets and affected checks precede re-review.
+- Resolve factual disagreement with code/evidence, not model votes or seniority.
+  Requirement ambiguity/conflict goes to the maintainer before dependent edits.
+- Leave optional suggestions unimplemented without separate authorization.
+  Review stops when confirmed blockers are resolved; no finding quota or claim
+  of exhausting every possible defect.
+
+Pre-review may repeat while evidence shows progress; there is no fixed round cap.
+Use the existing finding notes to record changes and results, so renamed findings
+or repeated opinions cannot masquerade as progress.
+
+## When repairs stall
+
+Trigger escalation when the same confirmed blocker remains after two consecutive
+repair attempts without new evidence or improvement, or fixes repeatedly undo
+each other. First classify the cause against the current requirement sources:
+
+- **Requirement ambiguity or conflict:** pause that branch and ask the maintainer
+  with sources and distinguishing examples. A stronger model may diagnose the
+  ambiguity but cannot decide the missing product requirement or rewrite tests
+  to choose an interpretation.
+- **Unsupported finding:** withdraw/correct it with evidence; do not change code
+  just to make reviewers agree.
+- **Unavailable evidence/environment:** report the limitation and use the normal
+  permission flow. Do not reinterpret it as a product defect or successful check.
+- **Confirmed implementation failure:** use the selected Formal review model for
+  diagnosis. It may guide the original implementer or, if needed, take over repair
+  in a new implementation context under the approved escalation mapping.
+
+Record the diagnosis and any takeover. All fixes remain within approved scope.
+Once escalated repairs are verified, proceed to formal review without restarting
+the low-cost pre-review loop. Diagnosis alone is not a formal acceptance verdict.
+After takeover, assign formal review to other independent contexts, even when
+they use the same model; an editing context cannot approve its own work.
+If the same failure persists after this intervention without progress, stop and
+ask the maintainer. New scope or unresolved requirements always require a decision.
 
 ## Deliver
 
-Finish when the current packet passes `verify --require-passed`,
-acceptance evidence covers the ticket, including source-checked allowed/rejected
-examples and justified unaffected evidence,
-no blockers remain, and required human decisions are recorded. An explicitly
-accepted verification gap must be recorded under repository authority; otherwise
-report blocked/incomplete rather than implying completion.
+Default completion requires `verify --require-passed`, acceptance coverage
+(including justified unaffected earlier evidence),
+no remaining blockers, both formal-review axes completed, and required human
+decisions recorded. If the maintainer explicitly accepts a verification gap,
+record it under repository authority, verify the snapshot, and report that
+exception; do not label unavailable or unrun checks as passed. Without that
+exception, incomplete evidence means incomplete delivery despite a review pass.
 
-Deliver the staged file list, base, packet path, final finding dispositions,
-verification status and limitations, plus the repository's Change Manifest.
-Identify excluded changes and any preserved scratch checkout. The maintainer
-owns committing; leave a clear ticket-specific staging boundary and stop here.
+Deliver the staged files, base, current packet, finding dispositions, verification
+status/limits and required Change Manifest. Identify excluded work and preserved
+scratch checkouts. Keep role/round records in the existing notes; report actual
+usage only when exposed, otherwise unknown. Do not infer cost savings from model
+labels or create a separate metering system. Stop at staged delivery.

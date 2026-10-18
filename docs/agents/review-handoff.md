@@ -43,6 +43,12 @@ routes and any unverified runtime identity, remaining product decisions (or none
 finding IDs/dispositions, and checks not run with their reasons. The script
 embeds those notes; it does not judge their completeness or requirement authority.
 
+For `ticket-loop`, also record the resolved skill paths, test interfaces and
+coverage limits, review stage/axis and repair progress. Carry the selected model
+mapping into nested reviews and record any escalation diagnosis or repair
+takeover. Pre-review pass is not formal acceptance; a review context that edits
+the ticket cannot supply its independent formal verdict.
+
 For an error-prone restriction, use this compact entry in the existing
 acceptance-to-check mapping: `source/decision -> constrained object and scope ->
 allowed example -> rejected example -> check/result`. For example, the

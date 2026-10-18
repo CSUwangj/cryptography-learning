@@ -57,10 +57,17 @@ snapshot and capture check results. Before delegation, require maintainer-select
 implementation and review models/providers and execution routes; follow the
 skill's selection gate rather than implicit host defaults. Delegate within that
 ticket and resolve clear defects without another approval.
-Escalate requirement conflicts, scope expansion, permission blocks, or repeated
-findings without progress. A review pass and completed verification are separate
-gates. Stop at staged delivery; committing and starting another ticket remain
-maintainer decisions.
+Within this loop, the coordinator may choose existing public test interfaces
+and record their coverage and limits without another maintainer confirmation.
+Use the skill's explicit implementation/pre-review/formal-review model mapping.
+Before escalating stalled repairs, distinguish ambiguous requirements from
+implementation failures and unavailable evidence. Requirement conflicts, scope
+expansion and permission blocks go to the maintainer; confirmed implementation
+failures may use the selected review model for diagnosis and repair under the
+skill's escalation rule, followed by independent review. Escalate continued
+failure after that intervention to the maintainer. A review pass and completed
+verification are separate gates. Stop at staged delivery; committing and
+starting another ticket remain maintainer decisions.
 
 ## Keep changes reviewable
 
