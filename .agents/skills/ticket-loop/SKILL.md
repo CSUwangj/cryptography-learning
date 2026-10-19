@@ -56,19 +56,40 @@ data and executable examples that change behavior take the behavior-changing pat
 
 ## Select models before delegation
 
-Require these two explicit maintainer selections before launching roles. Reuse
-selections approved for this ticket or a reusable mapping; ask only for missing
-choices. Read-only preparation may continue while waiting, implementation may not.
+Resolve these two maintainer-selected configurations before launching roles. Reuse
+the approved mapping below or explicit ticket selections; ask only for missing
+choices or changes. Read-only preparation may continue while waiting;
+implementation may not.
+
+Provider choices are private execution configuration. Reuse explicit maintainer
+selections from the current session or a private handoff outside the checkout;
+ask if missing. Host configuration alone does not authorize a provider. Record
+the resolved configurations below only in private execution notes; redact provider
+details from repository files and published issue/PR records, including excerpts.
 
 ```text
 Implementation: provider=...; model=...; runner/platform=...; effort=...
 Formal review: provider=...; model=...; runner/platform=...; effort=...
 ```
 
-Record reasoning effort when exposed, including an explicit choice of model
-default. The approved mapping is:
+The maintainer-approved reusable model and route selection is:
 
-- Implementation and both pre-review axes use **Implementation**.
+| Configuration | Model | Effort | Execution route |
+| --- | --- | --- | --- |
+| Implementation | `gpt-5.6-terra` | high | Local Codex CLI for implementation and pre-review |
+| Formal review | `gpt-6-astra` | medium | Host subagents with explicit selectors and the privately selected provider |
+
+The coordinator uses Implementation's provider/model/effort in the actual
+maintainer-started main session; record that session's runner separately. A
+different main-session selection needs an explicit maintainer override or a
+handoff to the selected session. This skill cannot switch its own runtime model;
+do not create an Astra supervisor that polls a delegated Terra coordinator.
+
+Record reasoning effort when exposed, including an explicit choice of model
+default for a new selection. The role mapping is:
+
+- Coordination, implementation and both pre-review axes use **Implementation**
+  in separate contexts; pre-review and implementation never share a context.
 - Both formal-review axes, escalation diagnosis and an authorized escalated
   repair use **Formal review**.
 - The maintainer may separately override pre-review. This mapping is explicit
@@ -81,10 +102,26 @@ The coordinator is the current session; a config file is not proof of its identi
 The same model may serve different roles in independent contexts. Explicitly
 choosing the current session's model is valid; silently inheriting it is not.
 
-Check local tool support for the chosen provider/platform before promising
-dispatch. If unavailable, stop before that role and provide a concrete external
-handoff or ask for an available route. No gateway, silent substitute or self-review.
+Check both implementation and formal-review route support before implementation;
+a selectable main-session model does not prove subagent availability or provider
+selection. Treat platform permission review as a separate host capability, not
+the formal code reviewer. If a route is unavailable, stop before that role and
+provide a concrete external handoff or ask for an available route.
+No gateway, silent substitute or self-review.
 Other model/route changes need a new selection; the escalation mapping above does not.
+
+## Coordinate with existing tools
+
+Prefer completion notifications when the host supports them. For external CLI
+work, use existing process waits in 30–60 second windows, bounded by the host's
+limits. Avoid repeated one-second polls and unchanged log reads. Keep full logs
+on disk; read new status or relevant excerpts for a failure, requested update or
+completed handoff. Preserve meaningful progress updates without replaying logs.
+Reuse the selected implementation/review contexts for ordinary repair and
+recheck rounds.
+Use existing tools and `review_handoff.py`; do not add a general runner, scheduler
+or automatic retry/fallback layer. Provider disconnects and permission-service
+errors belong to the environment branch below, not the defect count.
 
 ## Prepare the execution boundary
 
@@ -118,12 +155,21 @@ it honestly and target a missing behavior rather than fabricating a failure.
 Use existing test tools and agreed public interfaces, without speculative test
 architecture. Run documentation examples using the files actually shown.
 
+The coordinator using Implementation (currently Terra) owns routine validation
+and evidence capture, running checks directly or assigning them to the implementer.
+This includes the ticket's focused/full tests, typecheck, install/build, guide
+examples and browser checks where applicable; it is not work reserved for Astra.
+Use the host's normal permission flow for blocked commands. Assignment cannot
+grant permissions or turn an unavailable check into a pass. Schedule dependency
+installation outside review and browser runs so it cannot mutate their environment.
+
 Run focused checks during development. Stage the candidate ticket files and
 capture a packet with planned check names before pre-review; unfinished broader
 checks remain explicit. Stop editing while reviewers inspect that snapshot.
 Only the currently assigned implementer edits ticket files. The coordinator
-verifies the packet exists and `verify` passes before any review. Return missing
-files, unstaged fixes or stale evidence as delivery problems, not code findings.
+confirms delivery is finished, the packet exists and `verify` passes before any
+review. Return missing files, unstaged fixes or stale evidence as delivery
+problems, not code findings.
 
 After pre-review repairs, run the required checks on the candidate for formal
 review. Do not repeat unchanged passing checks merely for another review stage.
@@ -134,7 +180,7 @@ Environment failures require honest limits and the normal permission flow.
 ## Review and converge
 
 The coordinator runs `code-review` in two stages for behavior changes: pre-review,
-then formal review when no confirmed blockers remain. The stalled-repair path
+then formal review when no confirmed blockers remain. The escalation path
 below may end pre-review early for escalation diagnosis. For each initial stage,
 launch separate Standards and Spec agents directly with that stage's configuration;
 no extra review-coordinator agent or recursive review loop. Run the axes in
@@ -154,9 +200,10 @@ Give reviewers the approved sources, exact packet, applicable guidance and this 
 > location and evidence, using the repository format. Verify the snapshot again
 > at the end. Report verification limits separately from the code verdict.
 
-Formal review starts in contexts independent of implementation and pre-review,
-covering the whole ticket, not only surviving pre-review findings. A pre-review
-pass is not acceptance. The coordinator reconciles reports with stable finding
+Formal review starts in contexts independent of coordination, implementation,
+pre-review and escalation diagnosis, covering the whole ticket, not only surviving
+pre-review findings. A pre-review pass is not acceptance. The coordinator
+reconciles reports with stable finding
 IDs and preserves each axis; handle reports without making the maintainer relay them:
 
 - Validate each blocker's source, scope and counterexample before repair. Return
@@ -171,13 +218,18 @@ IDs and preserves each axis; handle reports without making the maintainer relay 
 
 Pre-review may repeat while evidence shows progress; there is no fixed round cap.
 Use the existing finding notes to record changes and results, so renamed findings
-or repeated opinions cannot masquerade as progress.
+or repeated opinions cannot masquerade as progress. Link related counterexamples
+to the same source-backed rule and count its repair rounds across affected paths.
 
-## When repairs stall
+## When repairs stall or recur
 
 Trigger escalation when the same confirmed blocker remains after two consecutive
 repair attempts without new evidence or improvement, or fixes repeatedly undo
-each other. First classify the cause against the current requirement sources:
+each other. Also escalate when two repair rounds for the same authorized rule
+are followed by another valid counterexample to that rule, even if each round
+made partial progress. A new path or finding ID does not reset that count;
+unrelated defects do not count toward it. First classify the cause against the
+current requirement sources:
 
 - **Requirement ambiguity or conflict:** pause that branch and ask the maintainer
   with sources and distinguishing examples. A stronger model may diagnose the
@@ -188,8 +240,11 @@ each other. First classify the cause against the current requirement sources:
 - **Unavailable evidence/environment:** report the limitation and use the normal
   permission flow. Do not reinterpret it as a product defect or successful check.
 - **Confirmed implementation failure:** use the selected Formal review model for
-  diagnosis. It may guide the original implementer or, if needed, take over repair
-  in a new implementation context under the approved escalation mapping.
+  one focused diagnosis of the violated rule, connected affected paths and
+  source-backed allowed/rejected examples. Give that diagnosis to the original
+  implementer for repair and regression evidence. If needed, the selected review
+  model may take over repair in a new implementation context under the existing
+  escalation mapping; diagnosis does not expand requirements.
 
 Record the diagnosis and any takeover. All fixes remain within approved scope.
 Once escalated repairs are verified, proceed to formal review without restarting
