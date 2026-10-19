@@ -24,12 +24,18 @@ const diagnostic = (code: string, message: string, path: string): Diagnostic => 
 const dryRun = (lesson: CompiledLesson): { ok: true; value: LessonDryRun } | { ok: false; diagnostics: readonly Diagnostic[] } => {
   const snapshots = new Map<string, WorkerExecutionSnapshot>()
   const steps: LessonDryRunStep[] = []
+  const snapshotValue = (stepId: string, output: string): CryptoValue | undefined => {
+    const snapshot = snapshots.get(stepId)
+    const step = lesson.steps.find((candidate) => candidate.id === stepId)
+    const graph = step?.execute ? lesson.graphs[step.execute.graph] : undefined
+    return snapshot?.outputs[graph?.outputAliases?.[output] ?? output]
+  }
   const referenceValue = (reference: LessonValueReference): CryptoValue | undefined => {
     const value = 'input' in reference
       ? lesson.inputs[reference.input]?.default
       : 'constant' in reference
         ? lesson.constants[reference.constant]
-        : snapshots.get(reference.step)?.outputs[reference.output]
+        : snapshotValue(reference.step, reference.output)
     return value
   }
   for (const step of lesson.steps) {

@@ -43,8 +43,290 @@ const xorGraph = (): AuthoredGraph => ({
 })
 
 describe('CryptoGraph compile/execute seam (#26)', () => {
+  it('reports malformed, empty, and out-of-bounds projections without throwing', () => {
+    const projectionGraph = (projection: unknown): AuthoredGraph => ({
+      schema: 2,
+      nodes: [
+        source('source', bits(8, Uint8Array.of(0xab))),
+        { id: 'output', operation: 'core.output@1', inputs: { value: { node: 'source', port: 'value', bits: projection as never } } },
+      ],
+      outputs: [{ node: 'output', port: 'value' }],
+    })
+
+    for (const projection of [null, { start: 1, length: 2 }, [1], [1, 2, 3], [-1, 2], [0, 0], [7, 2]]) {
+      expect(() => compile(projectionGraph(projection))).not.toThrow()
+    }
+    for (const [projection, code] of [[null, 'graph.projection-invalid-format'], [[0, 0], 'graph.projection-empty-range'], [[7, 2], 'graph.projection-out-of-bounds']] as const) {
+      const result = compile(projectionGraph(projection))
+      expect(result.ok).toBe(false)
+      if (!result.ok) expect(result.diagnostics.some((diagnostic) => diagnostic.code === code)).toBe(true)
+    }
+  })
+
+  it('executes MSB-first projected values through non-byte-aligned concat with resolved widths and lineage', () => {
+    const compiled = compile({
+      schema: 2,
+      nodes: [
+        source('left', bits(5, Uint8Array.of(0b10101))),
+        source('right', bits(2, Uint8Array.of(0b10))),
+        {
+          id: 'joined',
+          operation: 'core.concat@1',
+          inputs: {
+            left: { node: 'left', port: 'value', bits: [1, 3] },
+            right: { node: 'right', port: 'value' },
+          },
+        },
+      ],
+      outputs: [{ node: 'joined', port: 'value' }],
+    })
+
+    expect(compiled.ok).toBe(true)
+    if (!compiled.ok) return
+    expect(compiled.value.outputTypes?.['joined.value']).toEqual({ family: 'bits', size: 5 })
+    expect(compiled.value.lineage).toEqual([
+      { source: 'left.value', sourceBit: 1, target: 'joined.value', targetBit: 0 },
+      { source: 'left.value', sourceBit: 2, target: 'joined.value', targetBit: 1 },
+      { source: 'left.value', sourceBit: 3, target: 'joined.value', targetBit: 2 },
+      { source: 'right.value', sourceBit: 0, target: 'joined.value', targetBit: 3 },
+      { source: 'right.value', sourceBit: 1, target: 'joined.value', targetBit: 4 },
+    ])
+    const execution = compiled.value.execute()
+    expect(execution.ok && hex(execution.value.outputs['joined.value'] as ReturnType<typeof bits>)).toBe('0x0a')
+  })
+
   it('publishes source output typing through its declared type parameter', () => {
     expect(operationManifests.find((manifest) => manifest.identity === 'core.source@1')?.outputTypeParameter).toBe('type')
+  })
+
+  it('reports unresolved v2 output widths instead of relying on operation identity', () => {
+    const result = compile({
+      schema: 2,
+      nodes: [{ id: 'source', operation: 'core.source@1', parameters: { type: { family: 'bits', size: 'N' } } }],
+      outputs: [{ node: 'source', port: 'value' }],
+    })
+    expect(result).toMatchObject({ ok: false, diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'graph.unresolved-type' })]) })
+  })
+
+  it('keeps v2-only inference and lineage fields absent from a v1 compile result', () => {
+    const compiled = compile(xorGraph())
+    expect(compiled.ok).toBe(true)
+    if (!compiled.ok) return
+    expect(compiled.value.outputTypes).toBeUndefined()
+    expect(compiled.value.lineage).toBeUndefined()
+  })
+
+  it('preserves external and previous projections, annotations, and trace refs across repeats', () => {
+    const graph: AuthoredGraph = {
+      schema: 2,
+      nodes: [
+        source('source', bits(8, Uint8Array.of(0xd6))),
+        {
+          id: 'repeat', repeat: { subgraph: 'project', count: 2 },
+          inputs: { value: { node: 'source', port: 'value', bits: [0, 6] } },
+        },
+      ],
+      outputs: [{ node: 'repeat', port: 'value' }],
+      subgraphs: {
+        project: {
+          inputs: [{ name: 'value', type: { family: 'bits', size: 6 } }],
+          outputs: [{ name: 'value', type: { family: 'bits', size: 3 } }],
+          nodes: [
+            { id: 'first', operation: 'core.output@1', inputs: { value: { node: '@input', port: 'value', bits: [1, 3] } }, role: 'state', unit: 3, traceParameters: { marker: 'repeat' } },
+            { id: 'value', operation: 'core.output@1', inputs: { value: { node: '@previous', port: 'value', bits: [0, 3] } }, role: 'round-key', round: 7, iteration: 4, unit: 3 },
+          ],
+        },
+      },
+    }
+    const compiled = compile(graph)
+    expect(compiled.ok).toBe(true)
+    if (!compiled.ok) return
+    expect(compiled.value.outputTypes?.['repeat.2/value.value']).toEqual({ family: 'bits', size: 3 })
+    const execution = compiled.value.execute()
+    expect(execution.ok).toBe(true)
+    if (!execution.ok) return
+    expect(hex(execution.value.outputs['repeat.2/value.value'] as ReturnType<typeof bits>)).toBe('0x6')
+    expect(execution.value.trace.map((event) => 'value' in event && event.value ? hex(event.value as ReturnType<typeof bits>) : undefined).filter((value): value is string => value !== undefined)).toEqual(['0xd6', '0x5', '0x6', '0x5', '0x6'])
+    expect(execution.value.trace.map((event) => [event.path, 'round' in event ? event.round : undefined, 'iteration' in event ? event.iteration : undefined, 'unit' in event ? event.unit : undefined])).toEqual([
+      ['source.value', undefined, undefined, undefined],
+      ['repeat.1/first.value', 1, undefined, 3],
+      ['repeat.1/value.value', 7, 4, 3],
+      ['repeat.2/first.value', 2, undefined, 3],
+      ['repeat.2/value.value', 7, 4, 3],
+    ])
+    expect(execution.value.trace[1]).toMatchObject({ parameters: { marker: 'repeat' } })
+  })
+
+  it('validates repeat projections against each immediate projected width', () => {
+    const repeated = (inputNode: '@input' | '@previous'): AuthoredGraph => ({
+      schema: 2,
+      nodes: [
+        source('source', bits(8, Uint8Array.of(0xd6))),
+        { id: 'repeat', repeat: { subgraph: 'project', count: 1 }, inputs: { value: { node: 'source', port: 'value', bits: [2, 2] } } },
+      ],
+      outputs: [{ node: 'repeat', port: 'value' }],
+      subgraphs: {
+        project: {
+          inputs: [{ name: 'value', type: { family: 'bits', size: 2 } }],
+          outputs: [{ name: 'value', type: { family: 'bits', size: 2 } }],
+          nodes: [{ id: 'value', operation: 'core.output@1', inputs: { value: { node: inputNode, port: 'value', bits: [1, 2] } } }],
+        },
+      },
+    })
+    for (const graph of [repeated('@input'), repeated('@previous')]) {
+      expect(compile(graph)).toMatchObject({
+        ok: false,
+        diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'graph.projection-out-of-bounds' })]),
+      })
+    }
+  })
+
+  it('rejects an outer repeat projection before composing an inner projection', () => {
+    for (const inputNode of ['@input', '@previous'] as const) {
+      const result = compile({
+        schema: 2,
+        nodes: [
+          source('source', bits(8, Uint8Array.of(0xd6))),
+          { id: 'repeat', repeat: { subgraph: 'project', count: 1 }, inputs: { value: { node: 'source', port: 'value', bits: inputNode === '@input' ? [6, 4] : [7, 2] } } },
+        ],
+        outputs: [{ node: 'repeat', port: 'value' }],
+        subgraphs: {
+          project: {
+            inputs: [{ name: 'value', type: { family: 'bits', size: inputNode === '@input' ? 4 : 2 } }],
+            outputs: [{ name: 'value', type: { family: 'bits', size: 1 } }],
+            nodes: [{ id: 'value', operation: 'core.output@1', inputs: { value: { node: inputNode, port: 'value', bits: [0, 1] } } }],
+          },
+        },
+      })
+      expect(result).toMatchObject({
+        ok: false,
+        diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'graph.projection-out-of-bounds' })]),
+      })
+    }
+  })
+
+  it('rejects repeat composition against the resolved upstream width', () => {
+    const result = compile({
+      schema: 2,
+      nodes: [
+        source('source', bits(8, Uint8Array.of(0xd6))),
+        { id: 'first', repeat: { subgraph: 'firstbody', count: 1 }, inputs: { value: { node: 'source', port: 'value', bits: [0, 2] } } },
+        { id: 'second', repeat: { subgraph: 'secondbody', count: 1 }, inputs: { value: { node: 'first', port: 'value', bits: [1, 3] } } },
+      ],
+      outputs: [{ node: 'second', port: 'value' }],
+      subgraphs: {
+        firstbody: {
+          inputs: [{ name: 'value', type: { family: 'bits', size: 2 } }],
+          outputs: [{ name: 'value', type: { family: 'bits', size: 8 } }],
+          nodes: [{ id: 'value', operation: 'core.output@1', inputs: { value: { node: '@input', port: 'value' } } }],
+        },
+        secondbody: {
+          inputs: [{ name: 'value', type: { family: 'bits', size: 3 } }],
+          outputs: [{ name: 'value', type: { family: 'bits', size: 1 } }],
+          nodes: [{ id: 'value', operation: 'core.output@1', inputs: { value: { node: '@input', port: 'value', bits: [0, 1] } } }],
+        },
+      },
+    })
+    expect(result).toMatchObject({
+      ok: false,
+      diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'graph.projection-out-of-bounds' })]),
+    })
+  })
+
+  it('preserves malformed projection metadata through repeat reference rewrites', () => {
+    for (const projection of [null, false, 0] as const) {
+      const localReference = compile({
+        schema: 2,
+        nodes: [{ id: 'repeat', repeat: { subgraph: 'project', count: 1 }, inputs: { value: { node: 'source', port: 'value' } } }],
+        outputs: [{ node: 'repeat', port: 'local' }],
+        subgraphs: {
+          project: {
+            inputs: [{ name: 'value', type: { family: 'bits', size: 4 } }],
+            outputs: [{ name: 'local', type: { family: 'bits', size: 4 } }],
+            nodes: [
+              { id: 'source', operation: 'core.source@1', parameters: { type: { family: 'bits', size: 4 }, value: bits(4, Uint8Array.of(0xa)) } },
+              { id: 'local', operation: 'core.output@1', inputs: { value: { node: 'source', port: 'value', bits: projection as never } } },
+            ],
+          },
+        },
+      })
+      expect(localReference).toMatchObject({ ok: false, diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'graph.projection-invalid-format' })]) })
+
+      const aliasReference = compile({
+        schema: 2,
+        nodes: [
+          { id: 'source', operation: 'core.source@1', parameters: { type: { family: 'bits', size: 4 }, value: bits(4, Uint8Array.of(0xa)) } },
+          { id: 'repeat', repeat: { subgraph: 'project', count: 1 }, inputs: { value: { node: 'source', port: 'value' } } },
+          { id: 'consumer', operation: 'core.output@1', inputs: { value: { node: 'repeat', port: 'value', bits: projection as never } } },
+        ],
+        outputs: [{ node: 'consumer', port: 'value' }],
+        subgraphs: {
+          project: {
+            inputs: [{ name: 'value', type: { family: 'bits', size: 4 } }],
+            outputs: [{ name: 'value', type: { family: 'bits', size: 4 } }],
+            nodes: [{ id: 'value', operation: 'core.output@1', inputs: { value: { node: '@input', port: 'value' } } }],
+          },
+        },
+      })
+      expect(aliasReference).toMatchObject({ ok: false, diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'graph.projection-invalid-format' })]) })
+    }
+  })
+
+
+  it('deduplicates identical lineage edges while retaining XOR input-port dependencies', () => {
+    const graph: AuthoredGraph = {
+      schema: 2,
+      nodes: [
+        source('source', bits(4, Uint8Array.of(0xa))),
+        { id: 'xor', operation: 'core.xor@1', inputs: { left: { node: 'source', port: 'value' }, right: { node: 'source', port: 'value' } } },
+      ],
+      outputs: [{ node: 'xor', port: 'value' }],
+    }
+    const compiled = compile(graph)
+    expect(compiled.ok).toBe(true)
+    if (!compiled.ok) return
+    expect(compiled.value.lineage).toHaveLength(4)
+    expect(compiled.value.lineage?.every((edge) => edge.source === 'source.value')).toBe(true)
+    expect(compile(graph)).toMatchObject({ ok: true, value: { lineage: compiled.value.lineage } })
+    const changed = compiled.value.execute({ 'source.value': bits(4, Uint8Array.of(0x5)) })
+    expect(changed.ok).toBe(true)
+    const recompilation = compile(graph)
+    expect(compiled.value.lineage).toEqual(recompilation.ok ? recompilation.value.lineage : undefined)
+  })
+
+  it('validates primitive lineage declarations without relabeling structural port errors', () => {
+    for (const mode of ['width', 'port', 'range']) {
+      const result = compile({
+        schema: 2,
+        nodes: [source('source', bits(4, Uint8Array.of(0xa))),
+          { id: 'invalid', operation: 'test.invalid-lineage@1', inputs: { value: { node: 'source', port: 'value' } }, parameters: { mode } }],
+        outputs: [{ node: 'invalid', port: 'value' }],
+      })
+      expect(result.ok).toBe(false)
+      if (!result.ok) expect(result.diagnostics.some((item) => item.code === 'graph.invalid-lineage')).toBe(true)
+    }
+    const structural = compile({
+      schema: 2,
+      nodes: [source('source', bits(4, Uint8Array.of(0xa))), { id: 'output', operation: 'core.output@1', inputs: { value: { node: 'source', port: 'missing' } } }],
+      outputs: [{ node: 'output', port: 'value' }],
+    })
+    expect(structural).toMatchObject({ ok: false, diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'unknown-input-port' })]) })
+    if (!structural.ok) expect(structural.diagnostics.some((item) => item.code === 'graph.invalid-lineage')).toBe(false)
+  })
+
+  it('keeps compiled lineage out of worker requests and execution snapshots', () => {
+    const graph: AuthoredGraph = {
+      schema: 2,
+      nodes: [source('source', bits(4, Uint8Array.of(0xa))), { id: 'output', operation: 'core.output@1', inputs: { value: { node: 'source', port: 'value' } } }],
+      outputs: [{ node: 'output', port: 'value' }],
+    }
+    const compiled = compile(graph)
+    expect(compiled.ok && compiled.value.lineage?.length).toBe(4)
+    const request = { requestId: 'transport-shape', kind: 'execute' as const, payload: { graph, inputs: { 'source.value': bits(4, Uint8Array.of(0xa)) } } }
+    expect(JSON.stringify(request)).not.toContain('lineage')
+    const response = executeWorkerRequest(request)
+    expect(response.kind).toBe('snapshot')
+    expect(JSON.stringify(response)).not.toContain('lineage')
   })
 
   it('executes fixed-width XOR and preserves leading zeroes in snapshot and trace', () => {

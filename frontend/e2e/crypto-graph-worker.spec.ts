@@ -23,6 +23,25 @@ test.describe('CryptoGraph Worker (#28)', () => {
     expect(results[1].text).toContain('输出')
   })
 
+  test('runs the named-table SPN through a real Worker/session and bilingual RenderHost', async ({ page }) => {
+    test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'imports the TypeScript source module served only by Vite')
+    await page.goto('/', { waitUntil: 'networkidle' })
+    const results = await page.evaluate(async () => {
+      const probe = await import('/e2e/v2-default-trace-browser.tsx')
+      const results = []
+      for (const locale of ['en-US', 'zh-CN'] as const) results.push(await probe.runNamedTableBrowserProbe(locale))
+      return results
+    })
+    for (const result of results) {
+      expect(result.output).toBe('0x4d12')
+      expect(result.trace).toEqual(['state.value', 'result.value'])
+      expect(result.table).toEqual({ constant: 'sbox' })
+      expect(result.text).toContain('0x4d12')
+    }
+    expect(results[0].text).toContain('Execution trace')
+    expect(results[1].text).toContain('执行轨迹')
+  })
+
   test('executes, cancels, compares, and marks truncated traces', async ({ page }) => {
     test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'imports the TypeScript source module served only by Vite')
     await page.goto('/')

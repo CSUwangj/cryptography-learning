@@ -95,9 +95,13 @@ export type OperationManifest = {
   outputTypeParameter?: string
 }
 
+type LineageSource = { readonly port: string; readonly bit: number }
+type LineageDeclaration = Readonly<Record<string, readonly (readonly LineageSource[])[]>>
+
 export type AuthoredInput = {
   node: string
   port: string
+  bits?: readonly [number, number]
 }
 
 export type AuthoredNode = {
@@ -106,6 +110,7 @@ export type AuthoredNode = {
   repeat?: { subgraph: string; count?: unknown }
   inputs?: Record<string, AuthoredInput>
   parameters?: Record<string, unknown>
+  traceParameters?: Record<string, unknown>
   role?: 'state' | 'round-key'
   round?: number
   iteration?: number
@@ -254,13 +259,25 @@ type Result<T> = { ok: true; value: T } | { ok: false; diagnostics: readonly Dia
 type Operation = {
   manifest: OperationManifest
   validateParameters?: (parameters: Record<string, unknown>, node: AuthoredNode) => Diagnostic[]
+  inferOutputTypes?: (inputTypes: Readonly<Record<string, PortType>>, parameters: Readonly<Record<string, unknown>>) => Result<Readonly<Record<string, PortType>>>
+  lineage?: (parameters: Readonly<Record<string, unknown>>, inputTypes: Readonly<Record<string, PortType>>) => LineageDeclaration
   execute: (inputs: Record<string, CryptoValue>, parameters: Record<string, unknown>, mappings: ReadonlyMap<string, AlphabetMapping>) => Record<string, CryptoValue>
 }
 
 export type CompiledGraph = {
   readonly graph: AuthoredGraph
   readonly schema?: 2
+  readonly outputTypes?: Readonly<Record<string, PortType>>
+  readonly lineage?: readonly LineageEdge[]
+  readonly outputAliases?: Readonly<Record<string, string>>
   execute: (inputs?: Record<string, CryptoValue>) => Result<ExecutionSnapshot>
+}
+
+export type LineageEdge = {
+  readonly source: string
+  readonly sourceBit: number
+  readonly target: string
+  readonly targetBit: number
 }
 
 const diagnostic = (
@@ -499,6 +516,36 @@ const relativeTracePath = (path: string, repeats: RepeatIdentities): string => {
 
 const bytesForBits = (size: number) => Math.ceil(size / 8)
 
+const bitPosition = (size: number, index: number): readonly [number, number] => {
+  const leading = size % 8 || 8
+  if (index < leading) return [0, leading - 1 - index]
+  const trailing = index - leading
+  return [1 + Math.floor(trailing / 8), 7 - (trailing % 8)]
+}
+
+const bitAt = (value: BitsValue, index: number): number => {
+  const [byte, shift] = bitPosition(value.type.size, index)
+  return (value.bytes[byte] >> shift) & 1
+}
+
+const setBit = (value: Uint8Array, size: number, index: number): void => {
+  const [byte, shift] = bitPosition(size, index)
+  value[byte] |= 1 << shift
+}
+
+const projectBits = (value: BitsValue, start: number, length: number): BitsValue => {
+  const projected = new Uint8Array(bytesForBits(length))
+  for (let index = 0; index < length; index += 1) if (bitAt(value, start + index)) setBit(projected, length, index)
+  return bits(length, projected)
+}
+
+const validProjection = (projection: unknown, size: number): boolean =>
+  Array.isArray(projection)
+  && projection.length === 2
+  && projection.every((part) => Number.isSafeInteger(part) && part >= 0)
+  && projection[1] > 0
+  && projection[0] + projection[1] <= size
+
 const validSizedValue = (value: CryptoValue): boolean => {
   if ('symbol' in value) return true
   if (isAlphabetTextValue(value) || isTextValue(value) || isIntegerValue(value) || isAlphabetPolicyValue(value) || isAlphabetDirectionValue(value)) return true
@@ -590,6 +637,7 @@ const source: Operation = {
     }
     return []
   },
+  lineage: (parameters) => ({ value: Array.from({ length: isPortType(parameters.type) && parameters.type.family === 'bits' ? parameters.type.size as number : 0 }, () => []) }),
   execute(_, parameters) {
     return { value: cloneValue(parameters.value as CryptoValue) }
   },
@@ -601,10 +649,46 @@ const xor: Operation = {
     inputs: [{ name: 'left', type: { family: 'bits', size: 'N' } }, { name: 'right', type: { family: 'bits', size: 'N' } }],
     outputs: [{ name: 'value', type: { family: 'bits', size: 'N' } }],
   },
+  lineage: (_, inputTypes) => {
+    const size = inputTypes.left?.family === 'bits' ? inputTypes.left.size as number : 0
+    return { value: Array.from({ length: size }, (_, bit) => [{ port: 'left', bit }, { port: 'right', bit }]) }
+  },
   execute(inputs) {
     const left = inputs.left as BitsValue
     const right = inputs.right as BitsValue
     return { value: bits(left.type.size, left.bytes.map((value, index) => value ^ right.bytes[index])) }
+  },
+}
+
+const concat: Operation = {
+  manifest: {
+    identity: 'core.concat@1',
+    inputs: [{ name: 'left', type: { family: 'bits', size: 'L' } }, { name: 'right', type: { family: 'bits', size: 'R' } }],
+    outputs: [{ name: 'value', type: { family: 'bits', size: 'N' } }],
+  },
+  inferOutputTypes(inputTypes) {
+    const left = inputTypes.left
+    const right = inputTypes.right
+    return left?.family === 'bits' && right?.family === 'bits'
+      ? { ok: true, value: { value: { family: 'bits', size: (left.size as number) + (right.size as number) } } }
+      : { ok: false, diagnostics: [diagnostic('graph.unresolved-type', 'V2 graph output type cannot be resolved.', 'inputs')] }
+  },
+  lineage: (_, inputTypes) => {
+    const left = inputTypes.left?.family === 'bits' ? inputTypes.left.size as number : 0
+    const right = inputTypes.right?.family === 'bits' ? inputTypes.right.size as number : 0
+    return { value: [
+      ...Array.from({ length: left }, (_, bit) => [{ port: 'left', bit }]),
+      ...Array.from({ length: right }, (_, bit) => [{ port: 'right', bit }]),
+    ] }
+  },
+  execute(inputs) {
+    const left = inputs.left as BitsValue
+    const right = inputs.right as BitsValue
+    const joined = new Uint8Array(bytesForBits(left.type.size + right.type.size))
+    const size = left.type.size + right.type.size
+    for (let index = 0; index < left.type.size; index += 1) if (bitAt(left, index)) setBit(joined, size, index)
+    for (let index = 0; index < right.type.size; index += 1) if (bitAt(right, index)) setBit(joined, size, left.type.size + index)
+    return { value: bits(left.type.size + right.type.size, joined) }
   },
 }
 
@@ -656,6 +740,10 @@ const permute: Operation = {
 
 const output: Operation = {
   manifest: { identity: 'core.output@1', inputs: [{ name: 'value', type: { family: 'bits', size: 'N' } }], outputs: [{ name: 'value', type: { family: 'bits', size: 'N' } }] },
+  lineage: (_, inputTypes) => {
+    const size = inputTypes.value?.family === 'bits' ? inputTypes.value.size as number : 0
+    return { value: Array.from({ length: size }, (_, bit) => [{ port: 'value', bit }]) }
+  },
   execute(inputs) {
     return { value: cloneValue(inputs.value) }
   },
@@ -1125,12 +1213,22 @@ const throwing: Operation = {
   },
 }
 
+const invalidLineage: Operation = {
+  manifest: { identity: 'test.invalid-lineage@1', inputs: [{ name: 'value', type: { family: 'bits', size: 4 } }], outputs: [{ name: 'value', type: { family: 'bits', size: 4 } }] },
+  lineage: (parameters) => parameters.mode === 'width'
+    ? { value: [] }
+    : parameters.mode === 'port'
+      ? { value: Array.from({ length: 4 }, () => [{ port: 'missing', bit: 0 }]) }
+      : { value: Array.from({ length: 4 }, () => [{ port: 'value', bit: 4 }]) },
+  execute(inputs) { return { value: cloneValue(inputs.value) } },
+}
+
 const operations = new Map<string, Operation>([
-  source, xor, substitute, permute, output,
+  source, xor, concat, substitute, permute, output,
   caesar, affine, substitution, vigenere, transposition,
   aesKeyWord, aesRotWord, aesSubWord, aesRconWord, aesWordXor, aesRoundKey,
   aesSubBytes, aesInvSubBytes, aesShiftRows, aesInvShiftRows, aesMixColumns, aesInvMixColumns,
-  throwing,
+  throwing, invalidLineage,
 ].map((operation) => [operation.manifest.identity, operation]))
 
 export const operationManifests: readonly OperationManifest[] = [...operations.values()]
@@ -1269,9 +1367,39 @@ export const aesInverseCipherGraph = (keySize: 128 | 192 | 256 = 128): AuthoredG
   return { nodes, outputs: [{ node: previous, port: 'value' }], traceLevel: 'detail' }
 }
 
-const expandGraph = (graph: AuthoredGraph, diagnostics: Diagnostic[]): AuthoredGraph => {
+type ProjectionCheck = {
+  readonly target: string
+  readonly input: string
+  readonly projection: unknown
+  readonly upstream: AuthoredInput
+}
+
+type ExpandedGraph = {
+  readonly graph: AuthoredGraph
+  readonly projectionChecks: readonly ProjectionCheck[]
+}
+
+const expandGraph = (graph: AuthoredGraph, diagnostics: Diagnostic[]): ExpandedGraph => {
   const nodes: AuthoredNode[] = []
   const aliases = new Map<string, Map<string, AuthoredInput>>()
+  const projectionChecks: ProjectionCheck[] = []
+  const composeProjection = (outer: AuthoredInput, inner: AuthoredInput): AuthoredInput => {
+    if (inner.bits === undefined) return outer
+    if (outer.bits === undefined) return { ...outer, bits: inner.bits }
+    if (!Array.isArray(outer.bits)
+      || outer.bits.length !== 2
+      || !outer.bits.every((part) => Number.isSafeInteger(part) && part >= 0)
+      || outer.bits[1] === 0) return outer
+    if (!validProjection(inner.bits, outer.bits[1])) {
+      const code = Array.isArray(inner.bits) && inner.bits.length === 2
+        && inner.bits.every((part) => Number.isSafeInteger(part) && part >= 0)
+        ? inner.bits[1] === 0 ? 'graph.projection-empty-range' : 'graph.projection-out-of-bounds'
+        : 'graph.projection-invalid-format'
+      diagnostics.push(diagnostic(code, 'Projection is invalid.', 'repeat.inputs', undefined))
+      return outer
+    }
+    return { ...outer, bits: [outer.bits[0] + inner.bits[0], inner.bits[1]] }
+  }
   for (const node of graph.nodes) {
     if (!node.repeat) {
       nodes.push(node)
@@ -1305,6 +1433,7 @@ const expandGraph = (graph: AuthoredGraph, diagnostics: Diagnostic[]): AuthoredG
       const prefix = `${node.id}.${index + 1}`
       for (const inner of subgraph.nodes) {
         const parameters = { ...(inner.parameters ?? {}) }
+        const traceParameters = inner.traceParameters && { ...inner.traceParameters }
         if (Array.isArray(parameters.roundKeys)) {
           parameters.value = parameters.roundKeys[index]
           delete parameters.roundKeys
@@ -1313,16 +1442,18 @@ const expandGraph = (graph: AuthoredGraph, diagnostics: Diagnostic[]): AuthoredG
           if (input.node === '@input') {
             const bound = node.inputs?.[input.port]
             if (!bound) diagnostics.push(diagnostic('graph.structural-mismatch', 'Subgraph input is not declared by repeated node.', `${node.id}.inputs.${input.port}`, node))
-            return bound ? [[name, bound]] : []
+            if (bound?.bits !== undefined) projectionChecks.push({ target: `${prefix}/${inner.id}`, input: name, projection: bound.bits, upstream: { ...bound, bits: undefined } })
+            return bound ? [[name, composeProjection(bound, input)]] : []
           }
           if (input.node === '@previous') {
             const bound = previous.get(input.port)
             if (!bound) diagnostics.push(diagnostic('graph.structural-mismatch', 'Previous round output is not declared by subgraph.', `${node.id}.repeat.${input.port}`, node))
-            return bound ? [[name, bound]] : []
+            if (bound?.bits !== undefined) projectionChecks.push({ target: `${prefix}/${inner.id}`, input: name, projection: bound.bits, upstream: { ...bound, bits: undefined } })
+            return bound ? [[name, composeProjection(bound, input)]] : []
           }
-          return [[name, { node: `${prefix}/${input.node}`, port: input.port }]]
+          return [[name, { node: `${prefix}/${input.node}`, port: input.port, ...(input.bits !== undefined ? { bits: input.bits } : {}) }]]
         }))
-        nodes.push({ ...inner, id: `${prefix}/${inner.id}`, inputs, parameters })
+        nodes.push({ ...inner, id: `${prefix}/${inner.id}`, inputs, parameters, ...(traceParameters ? { traceParameters } : {}), ...(inner.round === undefined ? { round: index + 1 } : {}) })
       }
       if (!subgraph.outputs.length) {
         diagnostics.push(diagnostic('graph.structural-mismatch', 'Repeated subgraph needs an output.', `${node.id}.repeat.subgraph`, node))
@@ -1332,8 +1463,11 @@ const expandGraph = (graph: AuthoredGraph, diagnostics: Diagnostic[]): AuthoredG
     }
     aliases.set(node.id, previous)
   }
-  const resolve = (input: AuthoredInput): AuthoredInput => aliases.get(input.node)?.get(input.port) ?? input
-  return {
+  const resolve = (input: AuthoredInput): AuthoredInput => {
+    const resolved = aliases.get(input.node)?.get(input.port)
+    return resolved ? { ...resolved, ...(input.bits !== undefined ? { bits: input.bits } : {}) } : input
+  }
+  const expanded = {
     ...graph,
     nodes: nodes.map((node) => ({
       ...node,
@@ -1341,16 +1475,23 @@ const expandGraph = (graph: AuthoredGraph, diagnostics: Diagnostic[]): AuthoredG
     })),
     outputs: graph.outputs.map(resolve),
   }
+  return {
+    graph: expanded,
+    projectionChecks: projectionChecks.map((check) => ({ ...check, upstream: resolve(check.upstream) })),
+  }
 }
 
 export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
   const diagnostics: Diagnostic[] = []
+  let resolvedOutputTypes: Readonly<Record<string, PortType>> = {}
+  let resolvedLineage: readonly LineageEdge[] = []
   const isV2 = graph.schema === 2
   if (isV2 && graph.traceLevel !== undefined) diagnostics.push(diagnostic('lesson.v1-feature-in-v2', 'Trace levels are a v1-only feature.', 'traceLevel'))
   if (graph.traceLevel !== undefined && !['summary', 'round', 'detail'].includes(graph.traceLevel)) {
     diagnostics.push(diagnostic('trace.unsupported-level', 'Trace level is not supported.', 'traceLevel'))
   }
-  const compiledGraph = structuredClone(expandGraph(graph, diagnostics))
+  const expanded = expandGraph(graph, diagnostics)
+  const compiledGraph = structuredClone(expanded.graph)
   const nodes = new Map<string, AuthoredNode>()
   const resolved = new Map<string, Operation>()
   const mappings = new Map<string, AlphabetMapping>()
@@ -1462,27 +1603,114 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
       const bindings = new Map<string, number>()
       for (const port of operation.manifest.inputs) {
         const input = node.inputs![port.name]
-        const type = outputTypes.get(`${input.node}.${input.port}`)
+        const upstreamType = outputTypes.get(`${input.node}.${input.port}`)
+        const projection: unknown = input.bits
+        const upstreamBits = upstreamType?.family === 'bits' ? upstreamType.size as number : undefined
+        if (projection !== undefined && upstreamBits === undefined) {
+          diagnostics.push(diagnostic('graph.projection-invalid-format', 'Projection requires a bits output.', `${node.id}.inputs.${port.name}`, node))
+          continue
+        }
+        if (projection !== undefined && !validProjection(projection, upstreamBits!)) {
+          if (!Array.isArray(projection) || projection.length !== 2
+            || !projection.every((part) => Number.isSafeInteger(part) && part >= 0)) {
+            diagnostics.push(diagnostic('graph.projection-invalid-format', 'Projection is invalid.', `${node.id}.inputs.${port.name}`, node))
+          } else if (projection[1] === 0) {
+            diagnostics.push(diagnostic('graph.projection-empty-range', 'Projection is invalid.', `${node.id}.inputs.${port.name}`, node))
+          } else {
+            diagnostics.push(diagnostic('graph.projection-out-of-bounds', 'Projection is invalid.', `${node.id}.inputs.${port.name}`, node))
+          }
+          continue
+        }
+        const type = projection === undefined ? upstreamType : { family: 'bits' as const, size: (projection as readonly [number, number])[1] }
         if (!type || !typeMatches(port.type, type, bindings)) {
           diagnostics.push(diagnostic('incompatible-port-type', `Expected ${typeText(port.type)} input.`, `${node.id}.inputs.${port.name}`, node, { expected: typeText(port.type), actual: type ? typeText(type) : 'unknown' }))
           continue
         }
         inputTypes.set(port.name, type)
       }
+      let inferred: Readonly<Record<string, PortType>> | undefined
+      if (operation.inferOutputTypes) {
+        const result = operation.inferOutputTypes(Object.fromEntries(inputTypes), node.parameters ?? {})
+        if (!result.ok) diagnostics.push(...result.diagnostics.map((item) => ({ ...item, path: `${node.id}.${item.path}` })))
+        else inferred = result.value
+      } else if (operation.manifest.outputTypeParameter) {
+        const type = node.parameters?.[operation.manifest.outputTypeParameter]
+        if (isPortType(type) && (!('size' in type) || typeof type.size === 'number')) {
+          inferred = Object.fromEntries(operation.manifest.outputs.map((output) => [output.name, type]))
+        } else {
+          diagnostics.push(diagnostic('graph.unresolved-type', 'V2 graph output type cannot be resolved.', `${node.id}.${operation.manifest.outputTypeParameter}`, node))
+        }
+      }
       for (const output of operation.manifest.outputs) {
-        const type = operation.manifest.outputTypeParameter && isPortType(node.parameters?.[operation.manifest.outputTypeParameter])
-          ? node.parameters[operation.manifest.outputTypeParameter] as PortType
-          : operation.manifest.identity === 'core.xor@1'
-            ? inputTypes.get('left')
-            : operation.manifest.identity === 'core.output@1'
-              ? inputTypes.get('value')
-              : !('size' in output.type) || typeof output.type.size === 'number' ? output.type : undefined
-        if (!type) {
+        const declared = inferred?.[output.name] ?? (() => {
+          if (!('size' in output.type)) return output.type
+          if (typeof output.type.size === 'number') return output.type
+          const size = bindings.get(output.type.size)
+          return size === undefined ? undefined : { ...output.type, size }
+        })()
+        if (!declared || ('size' in declared && typeof declared.size !== 'number')) {
           diagnostics.push(diagnostic('graph.unresolved-type', 'V2 graph output type cannot be resolved.', `${node.id}.${output.name}`, node))
           continue
         }
-        outputTypes.set(`${id}.${output.name}`, type)
+        outputTypes.set(`${id}.${output.name}`, declared)
       }
+    }
+    if (!diagnostics.length) {
+      for (const check of expanded.projectionChecks) {
+        const upstreamType = outputTypes.get(`${check.upstream.node}.${check.upstream.port}`)
+        const upstreamBits = upstreamType?.family === 'bits' ? upstreamType.size as number : undefined
+        if (upstreamBits === undefined || !validProjection(check.projection, upstreamBits)) {
+          const projection = check.projection
+          const code = !Array.isArray(projection)
+            || projection.length !== 2
+            || !projection.every((part) => Number.isSafeInteger(part) && part >= 0)
+            ? 'graph.projection-invalid-format'
+            : projection[1] === 0
+              ? 'graph.projection-empty-range'
+              : 'graph.projection-out-of-bounds'
+          diagnostics.push(diagnostic(code, 'Projection is invalid.', `${check.target}.inputs.${check.input}`))
+        }
+      }
+    }
+    if (!diagnostics.length) {
+      const lineage: LineageEdge[] = []
+      const lineageKeys = new Set<string>()
+      for (const id of order) {
+        const node = nodes.get(id)!
+        const operation = resolved.get(id)!
+        if (!operation.lineage) continue
+        const inputTypes = Object.fromEntries(operation.manifest.inputs.flatMap((port) => {
+          const input = node.inputs?.[port.name]
+          const type = input && outputTypes.get(`${input.node}.${input.port}`)
+          return input && type ? [[port.name, input.bits && type.family === 'bits' ? { family: 'bits' as const, size: input.bits[1] } : type]] : []
+        }))
+        const declaration = operation.lineage(node.parameters ?? {}, inputTypes)
+        for (const output of operation.manifest.outputs) {
+          const outputType = outputTypes.get(`${id}.${output.name}`)
+          const sources = declaration[output.name]
+          if (outputType?.family !== 'bits') continue
+          if (!sources || sources.length !== outputType.size) {
+            diagnostics.push(diagnostic('graph.invalid-lineage', 'Lineage declaration does not match the output width.', `${node.id}.${output.name}`, node))
+            continue
+          }
+          for (const [targetBit, entries] of sources.entries()) {
+            for (const entry of entries) {
+              const input = node.inputs?.[entry.port]
+              const inputType = inputTypes[entry.port]
+              if (!input || inputType?.family !== 'bits' || !Number.isSafeInteger(entry.bit) || entry.bit < 0 || entry.bit >= (inputType.size as number)) {
+                diagnostics.push(diagnostic('graph.invalid-lineage', 'Lineage declaration references an invalid input bit.', `${node.id}.${output.name}.${targetBit}`, node))
+                continue
+              }
+              const sourceBit = (input.bits?.[0] ?? 0) + entry.bit
+              const edge = { source: `${input.node}.${input.port}`, sourceBit, target: `${id}.${output.name}`, targetBit }
+              const key = `${edge.source}:${edge.sourceBit}:${edge.target}:${edge.targetBit}`
+              if (!lineageKeys.has(key)) { lineageKeys.add(key); lineage.push(edge) }
+            }
+          }
+        }
+      }
+      resolvedOutputTypes = Object.fromEntries(outputTypes)
+      resolvedLineage = lineage
     }
   }
   if (diagnostics.length) return { ok: false, diagnostics }
@@ -1492,6 +1720,7 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
     value: {
       graph: compiledGraph,
       ...(isV2 ? { schema: 2 as const } : {}),
+      ...(isV2 ? { outputTypes: resolvedOutputTypes, lineage: resolvedLineage } : {}),
       execute(executionInputs = {}, traceLimits?: TraceCollectionLimits) {
         const values = new Map<string, Record<string, CryptoValue>>()
         const trace: (TraceCheckpoint | TraceEvent)[] = []
@@ -1515,7 +1744,10 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
             const parameters = { ...(node.parameters ?? {}) }
             if (node.operation === 'core.source@1' && executionInputs[`${id}.value`]) parameters.value = executionInputs[`${id}.value`]
             const inputs: Record<string, CryptoValue> = {}
-            for (const [name, ref] of Object.entries(node.inputs ?? {})) inputs[name] = values.get(ref.node)![ref.port]
+            for (const [name, ref] of Object.entries(node.inputs ?? {})) {
+              const value = values.get(ref.node)![ref.port]
+              inputs[name] = ref.bits === undefined ? value : projectBits(value as BitsValue, ref.bits[0], ref.bits[1])
+            }
             if (node.operation === 'core.source@1') {
               const value = parameters.value as CryptoValue | undefined
               if (!value) return { ok: false, diagnostics: [diagnostic('missing-execution-input', 'Source needs an execution input.', `${id}.value`, node)] }
@@ -1565,7 +1797,7 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
                 path: `${id}.value`,
                 level: 'detail',
                 primitive: node.operation,
-                parameters: structuredClone(node.parameters ?? {}),
+                parameters: structuredClone(node.traceParameters ?? node.parameters ?? {}),
                 ...(node.role ? { role: node.role } : {}),
                 ...(node.round === undefined ? {} : { round: node.round }),
                 ...(node.iteration === undefined ? {} : { iteration: node.iteration }),

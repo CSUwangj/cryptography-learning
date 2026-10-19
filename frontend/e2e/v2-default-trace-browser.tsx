@@ -33,6 +33,30 @@ steps:
   },
 }
 
+const tableDocuments: LessonDocuments = {
+  lesson: `version: 2
+id: browser-v2-table
+default_locale: en-US
+inputs:
+  state: {type: {family: bits, size: 16}, encoding: hex, default: "0x1234"}
+constants:
+  sbox: {kind: table, entryBits: 4, value: [14, 4, 13, 1, 2, 15, 11, 8, 3, 10, 6, 12, 5, 9, 0, 7]}
+graphs:
+  substitute:
+    nodes:
+      - {id: state, operation: core.source@1, parameters: {type: {family: bits, size: 16}}, role: state, unit: 4}
+      - {id: result, operation: spn.substitute@1, inputs: {value: {node: state, port: value}}, parameters: {sBox: {constant: sbox}}, role: state, unit: 4}
+    outputs: [{node: result, port: value}]
+steps:
+  - id: run
+    execute: {graph: substitute, bindings: {state.value: {input: state}}}
+`,
+  locales: {
+    'en-US': 'title: Browser V2 Table\nsummary: Run a named table.\ntexts: {}',
+    'zh-CN': 'title: 浏览器 V2 表\nsummary: 运行命名表。\ntexts: {}',
+  },
+}
+
 export const warmDefaultTraceBrowserWorker = async (): Promise<void> => {
   const worker = new Worker(new URL('../src/crypto_graph/worker.ts', import.meta.url), { type: 'module' })
   try {
@@ -80,6 +104,25 @@ export const runDefaultTraceBrowserProbe = async (locale: 'en-US' | 'zh-CN'): Pr
     trace: execution.trace.map((event) => event.path),
     text: element.textContent ?? '',
   }
+  root.unmount()
+  element.remove()
+  created.value.dispose()
+  return probe
+}
+
+export const runNamedTableBrowserProbe = async (locale: 'en-US' | 'zh-CN'): Promise<{ output: string; trace: readonly string[]; table: unknown; text: string }> => {
+  const created = createBrowserLessonSession(tableDocuments, locale)
+  if (!created.ok) throw new Error(created.diagnostics[0]?.message)
+  const result = await created.value.enter()
+  if (!result.ok) throw new Error(result.diagnostics[0]?.message)
+  const execution = result.value.snapshots.run
+  if (!execution) throw new Error('The named-table execution snapshot is missing.')
+  const table = execution.trace.find((event) => event.path === 'result.value' && 'parameters' in event)?.parameters?.sBox
+  const element = document.createElement('div')
+  document.body.append(element)
+  const root = createRoot(element)
+  flushSync(() => root.render(<RenderHost execution={execution} executionIdentity={`browser-v2-table-${locale}`} locale={locale} dimensions={{ width: 640, height: 320 }} reducedMotion />))
+  const probe = { output: hex(execution.outputs['result.value'] as Parameters<typeof hex>[0]), trace: execution.trace.map((event) => event.path), table, text: element.textContent ?? '' }
   root.unmount()
   element.remove()
   created.value.dispose()

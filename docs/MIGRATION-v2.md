@@ -1,6 +1,6 @@
 # Lesson Schema v2 Migration Guide
 
-This guide describes the v2 behavior delivered by T04. V1 lessons remain
+This guide describes the v2 behavior delivered through T05. V1 lessons remain
 supported during the migration period.
 
 ## Version selection
@@ -15,7 +15,7 @@ not accepted in v2; v2 node annotations are not accepted in v1.
 
 ## Minimal v2 graph
 
-The first v2 slice supports source, XOR, and output operations. A graph may have
+The current v2 slice supports source, XOR, output, and `core.concat@1` operations. A graph may have
 multiple single-port output nodes and export multiple values. Nodes may carry
 teaching annotations which are retained in the execution trace:
 
@@ -50,6 +50,37 @@ summary: Execute a source/XOR/output graph.
 texts: {}
 ```
 
+## Projected composition
+
+The public compiler and existing Lesson Worker also support a non-byte-aligned
+value crossing a Step boundary. This runnable fragment projects bits 1..3 from
+`left`, concatenates them with `right`, and binds the resulting five-bit output
+into the next graph:
+
+```yaml
+inputs:
+  left: {type: {family: bits, size: 5}, encoding: hex, default: "0x15"}
+  right: {type: {family: bits, size: 2}, encoding: hex, default: "0x2"}
+graphs:
+  compose:
+    nodes:
+      - {id: left, operation: core.source@1, parameters: {type: {family: bits, size: 5}}}
+      - {id: right, operation: core.source@1, parameters: {type: {family: bits, size: 2}}}
+      - {id: joined, operation: core.concat@1, inputs: {left: {node: left, port: value, bits: [1, 3]}, right: {node: right, port: value}}}
+    outputs: [{node: joined, port: value}]
+  consume:
+    nodes:
+      - {id: value, operation: core.source@1, parameters: {type: {family: bits, size: 5}}}
+    outputs: [{node: value, port: value}]
+steps:
+  - id: compose
+    execute: {graph: compose, bindings: {left.value: {input: left}, right.value: {input: right}}}
+  - id: consume
+    execute: {graph: consume, bindings: {value.value: {step: compose, output: joined.value}}}
+```
+
+The composed output is the literal five-bit value `01010` (`0x0a`).
+
 Each v2 operation has exactly one output port. The existing worker/session
 executes the graph and the default trace renders one immutable event per
 operation node, including sources. Existing execution limits and dry-run
@@ -57,8 +88,18 @@ validation remain in force.
 
 ## Migration boundary
 
-Projection, concatenation, table parameters, structural lineage, selectable
-units, overlays, and comparison presentations belong to later tickets.
+Inputs may project exact MSB-first ranges with `bits: [start, length]`; ranges
+must be non-empty and in bounds. `core.concat@1` concatenates exact bit values,
+including non-byte-aligned values. Its output width is the sum of both inputs.
+
+Top-level table constants use `kind: table`, `entryBits`, and `value`. They are
+only operation parameters: execution receives their entries, while v2 trace
+parameters retain `{constant: name}` and tables cannot be Step bindings or
+runtime constants. The compiled main-thread graph exposes structural lineage;
+worker messages and snapshots do not carry it because the worker recompiles the
+authored graph.
+
+Selectable units, overlays, and comparison presentations belong to later tickets.
 Algorithm-specific renderer dispatch is excluded. Authors should keep v1
 declarations until the relevant v2 capability is available.
 

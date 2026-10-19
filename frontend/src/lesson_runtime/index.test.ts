@@ -48,6 +48,130 @@ class WorkerStub {
 }
 
 describe('Lesson Runtime compiler (#29)', () => {
+  it('exports projected concat values into a later Step and rejects table bindings', async () => {
+    const lesson = [
+      'version: 2', 'id: composed-values', 'default_locale: en-US',
+      'inputs:', '  left: {type: {family: bits, size: 5}, encoding: hex, default: "0x15"}', '  right: {type: {family: bits, size: 2}, encoding: hex, default: "0x2"}',
+      'constants:', '  table: {kind: table, entryBits: 4, value: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]}',
+      'graphs:',
+      '  compose:', '    nodes:',
+      '      - {id: left, operation: core.source@1, parameters: {type: {family: bits, size: 5}}}',
+      '      - {id: right, operation: core.source@1, parameters: {type: {family: bits, size: 2}}}',
+      '      - {id: joined, operation: core.concat@1, inputs: {left: {node: left, port: value, bits: [1, 3]}, right: {node: right, port: value}}}',
+      '    outputs: [{node: joined, port: value}]',
+      '  consume:', '    nodes:',
+      '      - {id: value, operation: core.source@1, parameters: {type: {family: bits, size: 5}}}',
+      '    outputs: [{node: value, port: value}]',
+      'steps:',
+      '  - id: first', '    execute: {graph: compose, bindings: {left.value: {input: left}, right.value: {input: right}}}',
+      '  - id: second', '    execute: {graph: consume, bindings: {value.value: {step: first, output: joined.value}}}', '',
+    ].join('\n')
+    const documents = { lesson, locales: { 'en-US': 'title: Compose\nsummary: Compose.\ntexts: {}', 'zh-CN': 'title: 组合\nsummary: 组合。\ntexts: {}' } }
+    expect(compileLesson(documents)).toMatchObject({ ok: true, value: { steps: [{ id: 'first' }, { id: 'second' }] } })
+    expect(compileLesson({ ...documents, lesson: lesson.replace('{input: right}', '{constant: table}') })).toMatchObject({
+      ok: false, diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'lesson.invalid-constant-use' })]),
+    })
+    const previousWorker = globalThis.Worker
+    globalThis.Worker = WorkerStub as unknown as typeof Worker
+    try {
+      const session = createBrowserLessonSession(documents, 'en-US')
+      expect(session.ok).toBe(true)
+      if (!session.ok) return
+      expect(await session.value.enter()).toMatchObject({ ok: true, value: { snapshots: { first: expect.anything() } } })
+      const second = await session.value.next()
+      expect(second).toMatchObject({ ok: true, value: { snapshots: { second: expect.anything() } } })
+      if (second.ok) expect(hex(second.value.snapshots.second.outputs['value.value'] as never)).toBe('0x0a')
+      session.value.dispose()
+    } finally {
+      globalThis.Worker = previousWorker
+    }
+  })
+
+  it('resolves a named SPN table only for execution while retaining its named trace parameter', async () => {
+    const documents: LessonDocuments = {
+      lesson: [
+        'version: 2', 'id: table-reference', 'default_locale: en-US', 'inputs:', '  state: {type: {family: bits, size: 16}, encoding: hex, default: "0x1234"}',
+        'constants:', '  sbox: {kind: table, entryBits: 4, value: [14, 4, 13, 1, 2, 15, 11, 8, 3, 10, 6, 12, 5, 9, 0, 7]}',
+        'graphs:', '  substitute:', '    nodes:',
+        '      - {id: state, operation: core.source@1, parameters: {type: {family: bits, size: 16}, value: "0x1234"}}',
+        '      - {id: result, operation: spn.substitute@1, inputs: {value: {node: state, port: value}}, parameters: {sBox: {constant: sbox}}}',
+        '    outputs: [{node: result, port: value}]', 'steps:',
+        '  - id: run', '    execute: {graph: substitute, bindings: {state.value: {input: state}}}', '',
+      ].join('\n'),
+      locales: { 'en-US': 'title: Table\nsummary: Table.\ntexts: {}', 'zh-CN': 'title: 表\nsummary: 表。\ntexts: {}' },
+    }
+    const compiled = compileLesson(documents)
+    expect(compiled.ok).toBe(true)
+    if (!compiled.ok) return
+    expect(compiled.value.constants).toEqual({})
+    const execution = compiled.value.graphs.substitute.execute()
+    expect(execution.ok && hex(execution.value.outputs['result.value'] as never)).toBe('0x4d12')
+    expect(execution.ok && execution.value.trace[1]).toMatchObject({ parameters: { sBox: { constant: 'sbox' } } })
+    const previousWorker = globalThis.Worker
+    globalThis.Worker = WorkerStub as unknown as typeof Worker
+    try {
+      const session = createBrowserLessonSession(documents, 'en-US')
+      expect(session.ok).toBe(true)
+      if (!session.ok) return
+      const entered = await session.value.enter()
+      expect(entered).toMatchObject({ ok: true, value: { snapshots: { run: expect.anything() } } })
+      if (entered.ok) {
+        expect(hex(entered.value.snapshots.run.outputs['result.value'] as never)).toBe('0x4d12')
+        expect(entered.value.snapshots.run.trace[1]).toMatchObject({ parameters: { sBox: { constant: 'sbox' } } })
+      }
+      session.value.dispose()
+    } finally {
+      globalThis.Worker = previousWorker
+    }
+  })
+
+  it('rejects table constants in equality checks instead of treating them as unavailable values', () => {
+    const documents: LessonDocuments = {
+      lesson: [
+        'version: 2', 'id: table-check', 'default_locale: en-US', 'inputs: {}',
+        'constants:', '  sbox: {kind: table, entryBits: 2, value: [0, 1, 2, 3]}',
+        'graphs:', '  value:', '    nodes:',
+        '      - {id: state, operation: core.source@1, parameters: {type: {family: bits, size: 2}, value: "0x0"}}',
+        '    outputs: [{node: state, port: value}]',
+        'steps:', '  - id: check',
+        '    check:', '      kind: equal', '      actual: {constant: sbox}', '      expected: {constant: sbox}', '      feedback: {match: ok, mismatch: bad}',
+        '',
+      ].join('\n'),
+      locales: { 'en-US': 'title: Table check\nsummary: Check.\ntexts: {ok: ok, bad: bad}', 'zh-CN': 'title: 表检查\nsummary: 检查。\ntexts: {ok: 好, bad: 坏}' },
+    }
+    expect(compileLesson(documents)).toMatchObject({
+      ok: false,
+      diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'lesson.invalid-constant-use' })]),
+    })
+  })
+
+  it('does not expand nested table references inside an operation parameter', () => {
+    const documents: LessonDocuments = {
+      lesson: `version: 2
+id: nested-table
+default_locale: en-US
+inputs:
+  state: {type: {family: bits, size: 16}, encoding: hex, default: "0x1234"}
+constants:
+  sbox: {kind: table, entryBits: 4, value: [14, 4, 13, 1, 2, 15, 11, 8, 3, 10, 6, 12, 5, 9, 0, 7]}
+graphs:
+  substitute:
+    nodes:
+      - {id: probe, operation: test.throw@1, parameters: {wrapped: {nested: {constant: sbox}}}}
+    outputs: []
+steps:
+  - id: run
+    prose: intro
+`,
+      locales: { 'en-US': 'title: Nested\nsummary: Nested.\ntexts: {intro: Intro.}', 'zh-CN': 'title: 嵌套\nsummary: 嵌套。\ntexts: {intro: 介绍。}' },
+    }
+    const compiled = compileLesson(documents)
+    expect(compiled.ok).toBe(true)
+    if (!compiled.ok) return
+    expect(compiled.value.graphs.substitute.graph.nodes[0].parameters?.wrapped).toEqual({ nested: { constant: 'sbox' } })
+    expect(compiled.value.graphs.substitute.graph.nodes[0].traceParameters?.wrapped).toEqual({ nested: { constant: 'sbox' } })
+  })
+
   it('compiles bilingual XOR fixture and executes supplied inputs', () => {
     const compiled = compileLesson(fixture())
     expect(compiled.ok).toBe(true)
@@ -63,6 +187,182 @@ describe('Lesson Runtime compiler (#29)', () => {
     expect(compiled.value.steps.map((step) => step.id)).toEqual(['introduction', 'enter-input', 'calculate', 'identify-operation'])
     expect(compiled.value.notices).toEqual([{ severity: 'warning', code: 'lesson.schema-v1-deprecated', path: 'version', message: expect.any(String) }])
     expect(validateLessonDocuments(fixture()).notices).toEqual(compiled.value.notices)
+  })
+
+  it('rejects v2-only projections, parameter constants, tables, and trace metadata in v1 Lessons', () => {
+    const projected = compileLesson({
+      ...fixture(),
+      lesson: fixture().lesson.replace('left: {node: left, port: value}', 'left: {node: left, port: value, bits: [0, 4]}'),
+    })
+    expect(projected).toMatchObject({
+      ok: false,
+      diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'lesson.v2-feature-in-v1' })]),
+    })
+
+    const base = (graph: string, constants = '  mask: {type: {family: bits, size: 8}, encoding: hex, value: "0x01"}') => ({
+      lesson: `version: 1
+id: v1-boundary
+default_locale: en-US
+inputs: {}
+constants:
+${constants}
+graphs:
+${graph}
+steps:
+  - id: intro
+    prose: intro
+`,
+      locales: { 'en-US': 'title: Boundary\nsummary: Boundary.\ntexts: {intro: Intro.}', 'zh-CN': 'title: 边界\nsummary: 边界。\ntexts: {intro: 介绍。}' },
+    })
+    const parameter = compileLesson(base(`  probe:
+    nodes:
+      - {id: source, operation: core.source@1, parameters: {type: {family: bits, size: 8}}}
+      - {id: substitute, operation: spn.substitute@1, inputs: {value: {node: source, port: value}}, parameters: {sBox: {constant: mask}}}
+    outputs: [{node: substitute, port: value}]
+`))
+    expect(parameter).toMatchObject({
+      ok: false,
+      diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'lesson.v2-feature-in-v1' })]),
+    })
+
+    const table = compileLesson(base(
+      '  probe:\n    nodes:\n      - {id: probe, operation: core.source@1, parameters: {type: {family: bits, size: 8}}}\n    outputs: [{node: probe, port: value}]',
+      '  table: {kind: table, entryBits: 2, value: [0, 1, 2, 3]}',
+    ))
+    expect(table).toMatchObject({
+      ok: false,
+      diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'lesson.v2-feature-in-v1' })]),
+    })
+
+    const repeated = compileLesson(base(`  graph:
+    nodes:
+      - {id: source, operation: core.source@1, parameters: {type: {family: bits, size: 8}}}
+      - {id: rounds, repeat: {subgraph: round, count: 2}, inputs: {value: {node: source, port: value}}}
+    outputs: []
+    subgraphs:
+      round:
+        inputs: [{name: value, type: {family: bits, size: 8}}]
+        outputs: [{name: value, type: {family: bits, size: 8}}]
+        nodes:
+          - {id: probe, operation: spn.substitute@1, inputs: {value: {node: '@input', port: value}}, parameters: {sBox: {constant: mask}}}
+          - {id: value, operation: core.output@1, inputs: {value: {node: '@input', port: value}}}
+`))
+    expect(repeated).toMatchObject({
+      ok: false,
+      diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'lesson.v2-feature-in-v1' })]),
+    })
+
+    const compiled = compileLesson(fixture())
+    expect(compiled).toMatchObject({ ok: true })
+    if (compiled.ok) expect(compiled.value.graphs.xor.graph.nodes[0]).not.toHaveProperty('traceParameters')
+  })
+
+  it('resolves top-level CryptoValue parameter references before source validation', () => {
+    const documents: LessonDocuments = {
+      lesson: `version: 2
+id: source-reference
+default_locale: en-US
+inputs:
+  state: {type: {family: bits, size: 4}, encoding: hex, default: "0xa"}
+constants:
+  mask: {type: {family: bits, size: 4}, encoding: hex, value: "0x5"}
+graphs:
+  source:
+    nodes:
+      - {id: value, operation: core.source@1, parameters: {type: {family: bits, size: 4}, value: {constant: mask}}}
+    outputs: [{node: value, port: value}]
+steps:
+  - id: run
+    execute: {graph: source, bindings: {value.value: {input: state}}}
+`,
+      locales: { 'en-US': 'title: Source reference\nsummary: Source reference.\ntexts: {}', 'zh-CN': 'title: 来源引用\nsummary: 来源引用。\ntexts: {}' },
+    }
+    const compiled = compileLesson(documents)
+    expect(compiled).toMatchObject({ ok: true })
+    if (!compiled.ok) return
+    expect(compiled.value.graphs.source.graph.nodes[0].parameters?.value).toMatchObject({ type: { family: 'bits', size: 4 } })
+    expect([...(compiled.value.graphs.source.graph.nodes[0].parameters?.value as { bytes: Uint8Array }).bytes]).toEqual([5])
+    const execution = compiled.value.graphs.source.execute({ 'value.value': compiled.value.inputs.state.default })
+    expect(execution.ok).toBe(true)
+    if (execution.ok) expect(execution.value.trace[0]).toMatchObject({ parameters: { value: { type: { family: 'bits', size: 4 } } } })
+    expect(compileLesson({ ...documents, lesson: documents.lesson.replace('{constant: mask}', '{constant: missing}') })).toMatchObject({
+      ok: false,
+      diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'lesson.unknown-constant' })]),
+    })
+    const mismatch = compileLesson({ ...documents, lesson: documents.lesson.replace('size: 4}, encoding: hex, value: "0x5"', 'size: 8}, encoding: hex, value: "0x05"') })
+    expect(mismatch).toMatchObject({
+      ok: false,
+      diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'invalid-parameter' })]),
+    })
+  })
+
+  it('rejects graph output projections while consuming resolved repeated exports across Steps', async () => {
+    for (const version of ['version: 1', 'version: 2']) {
+      const outputProjection = compileLesson({
+        ...fixture(),
+        lesson: fixture().lesson.replace('version: 1', version).replace('{node: mixed, port: value}', '{node: mixed, port: value, bits: [0, 2]}'),
+      })
+      expect(outputProjection).toMatchObject({
+        ok: false,
+        diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'lesson.unknown-field' })]),
+      })
+    }
+
+    const documents: LessonDocuments = {
+      lesson: `version: 2
+id: repeated-export
+default_locale: en-US
+inputs:
+  state: {type: {family: bits, size: 8}, encoding: hex, default: "0xd6"}
+constants: {}
+graphs:
+  first:
+    nodes:
+      - {id: source, operation: core.source@1, parameters: {type: {family: bits, size: 8}}}
+      - {id: repeated, repeat: {subgraph: project, count: 1}, inputs: {value: {node: source, port: value, bits: [2, 2]}}}
+    outputs: [{node: repeated, port: value}]
+    subgraphs:
+      project:
+        inputs: [{name: value, type: {family: bits, size: 2}}]
+        outputs: [{name: value, type: {family: bits, size: 2}}]
+        nodes:
+          - {id: value, operation: core.output@1, inputs: {value: {node: '@input', port: value}}}
+  second:
+    nodes:
+      - {id: value, operation: core.source@1, parameters: {type: {family: bits, size: 2}}}
+    outputs: [{node: value, port: value}]
+steps:
+  - id: first
+    execute: {graph: first, bindings: {source.value: {input: state}}}
+  - id: second
+    execute: {graph: second, bindings: {value.value: {step: first, output: repeated.value}}}
+`,
+      locales: { 'en-US': 'title: Repeat export\nsummary: Repeat export.\ntexts: {}', 'zh-CN': 'title: 重复导出\nsummary: 重复导出。\ntexts: {}' },
+    }
+    const compiled = compileLesson(documents)
+    expect(compiled).toMatchObject({ ok: true, value: { graphs: { first: { outputAliases: { 'repeated.value': 'repeated.1/value.value' } } } } })
+    expect(validateLessonDocuments(documents)).toMatchObject({ ok: true, dryRun: { steps: [{ id: 'first' }, { id: 'second' }] } })
+    const staleWidth = compileLesson({
+      ...documents,
+      lesson: documents.lesson
+        .replace('outputs: [{name: value, type: {family: bits, size: 2}}]', 'outputs: [{name: value, type: {family: bits, size: 4}}]')
+        .replace('parameters: {type: {family: bits, size: 2}}}', 'parameters: {type: {family: bits, size: 4}}}'),
+    })
+    expect(staleWidth).toMatchObject({ ok: false, diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'lesson.invalid-input' })]) })
+    const previousWorker = globalThis.Worker
+    globalThis.Worker = WorkerStub as unknown as typeof Worker
+    try {
+      const session = createBrowserLessonSession(documents, 'en-US')
+      expect(session.ok).toBe(true)
+      if (!session.ok) return
+      expect(await session.value.enter()).toMatchObject({ ok: true, value: { snapshots: { first: expect.anything() } } })
+      const second = await session.value.next()
+      expect(second).toMatchObject({ ok: true, value: { snapshots: { second: expect.anything() } } })
+      if (second.ok) expect(hex(second.value.snapshots.second.outputs['value.value'] as never)).toBe('0x1')
+      session.value.dispose()
+    } finally {
+      globalThis.Worker = previousWorker
+    }
   })
 
   it('executes a minimal v2 source/XOR/output graph with annotated trace events', () => {

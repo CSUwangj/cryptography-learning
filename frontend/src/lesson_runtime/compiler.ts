@@ -374,12 +374,20 @@ const validateReference = (
   path: string,
   spans: ReadonlyMap<string, SourceOrigin>,
   diagnostics: Diagnostic[],
+  isV2: boolean,
+  allowProjection: boolean,
 ): void => {
   const reference = requireMap(value, path, spans, diagnostics)
   if (!reference) return
-  checkFields(reference, ['node', 'port'], path, spans, diagnostics)
+  checkFields(reference, allowProjection ? ['node', 'port', 'bits'] : ['node', 'port'], path, spans, diagnostics)
   if (typeof reference.node !== 'string' || typeof reference.port !== 'string') {
     diagnostics.push(diagnostic('lesson.invalid-input', 'Graph reference requires node and port IDs.', path, spans.get(path)))
+  }
+  if (allowProjection && !isV2 && reference.bits !== undefined) {
+    diagnostics.push(diagnostic('lesson.v2-feature-in-v1', 'Input projections require version: 2.', `${path}.bits`, spans.get(`${path}.bits`)))
+  }
+  if (allowProjection && reference.bits !== undefined && (!Array.isArray(reference.bits) || reference.bits.length !== 2)) {
+    diagnostics.push(diagnostic('graph.projection-invalid-format', 'Projection needs exactly two values.', `${path}.bits`, spans.get(`${path}.bits`)))
   }
 }
 
@@ -402,7 +410,7 @@ const validateGraphNode = (
   if (typeof node.id !== 'string' || !identifier.test(node.id)) diagnostics.push(diagnostic('lesson.invalid-input', 'Node ID is invalid.', `${path}.id`, spans.get(`${path}.id`)))
   if (node.inputs !== undefined) {
     const inputs = requireMap(node.inputs, `${path}.inputs`, spans, diagnostics)
-    for (const [name, reference] of Object.entries(inputs ?? {})) validateReference(reference, `${path}.inputs.${name}`, spans, diagnostics)
+    for (const [name, reference] of Object.entries(inputs ?? {})) validateReference(reference, `${path}.inputs.${name}`, spans, diagnostics, isV2, true)
   }
   if (node.repeat !== undefined) {
     const repeat = requireMap(node.repeat, `${path}.repeat`, spans, diagnostics)
@@ -426,6 +434,14 @@ const validateGraphNode = (
         || node.operation === 'aes.word-xor@1' || node.operation === 'aes.round-key@1' ? []
       : undefined
     if (parameters && allowed) checkFields(parameters, allowed, `${path}.parameters`, spans, diagnostics)
+    if (parameters && !isV2) {
+      for (const [name, value] of Object.entries(parameters)) {
+        const reference = fields(value)
+        if (reference && Object.keys(reference).length === 1 && typeof reference.constant === 'string') {
+          diagnostics.push(diagnostic('lesson.v2-feature-in-v1', 'Parameter constant references require version: 2.', `${path}.parameters.${name}`, spans.get(`${path}.parameters.${name}`)))
+        }
+      }
+    }
   }
   return node
 }
@@ -436,6 +452,22 @@ type GraphInfo = {
   readonly outputTypes: Readonly<Record<string, PortType>>
   readonly traceBitWidths: readonly number[]
   readonly traceLevel?: 'summary' | 'round' | 'detail'
+}
+
+type TableConstant = { readonly entryBits: number; readonly value: readonly number[] }
+
+const parameterReferences = (value: unknown, tables: Readonly<Record<string, TableConstant>>, constants: Readonly<Record<string, CryptoValue>>, path: string, spans: ReadonlyMap<string, SourceOrigin>, diagnostics: Diagnostic[], preserveTables = false): unknown => {
+  const map = fields(value)
+  if (!map || Object.keys(map).length !== 1 || typeof map.constant !== 'string') return value
+  if (typeof map.constant === 'string') {
+    const table = tables[map.constant]
+    if (table) return preserveTables ? { constant: map.constant } : [...table.value]
+    const constant = constants[map.constant]
+    if (constant) return constant
+    diagnostics.push(diagnostic('lesson.unknown-constant', 'Parameter references an unknown constant.', path, spans.get(path)))
+    return value
+  }
+  return value
 }
 
 const decodeSourceValues = (
@@ -451,7 +483,9 @@ const decodeSourceValues = (
   const type = typeAt(parameters.type, `${nodePath}.parameters.type`, spans, diagnostics)
   if (!type) return rawNode
   const decoded = { ...parameters }
-  if (parameters.value !== undefined) {
+  const valueReference = fields(parameters.value)
+  const directReference = valueReference && Object.keys(valueReference).length === 1 && typeof valueReference.constant === 'string'
+  if (parameters.value !== undefined && !directReference) {
     const encoding = type.family === 'alphabet-text' || type.family === 'text' ? 'text'
       : type.family === 'integer' ? 'integer'
         : type.family === 'alphabet-policy' ? 'policy'
@@ -484,6 +518,8 @@ const compileGraph = (
   spans: ReadonlyMap<string, SourceOrigin>,
   diagnostics: Diagnostic[],
   isV2: boolean,
+  tables: Readonly<Record<string, TableConstant>>,
+  constants: Readonly<Record<string, CryptoValue>>,
 ): GraphInfo | undefined => {
   const graph = requireMap(raw, path, spans, diagnostics)
   if (!graph) return undefined
@@ -493,6 +529,12 @@ const compileGraph = (
     return undefined
   }
   const sourceTypes: Record<string, PortType> = {}
+  const authoredOutputs = graph.outputs.map((output) => {
+    const reference = fields(output)
+    return reference && typeof reference.node === 'string' && typeof reference.port === 'string'
+      ? { node: reference.node, port: reference.port }
+      : undefined
+  })
   for (const [index, rawNode] of graph.nodes.entries()) {
     const nodePath = `${path}.nodes.${index}`
     const node = validateGraphNode(rawNode, nodePath, spans, diagnostics, isV2)
@@ -505,7 +547,7 @@ const compileGraph = (
     }
     ;(node as { origin?: SourceOrigin }).origin = spans.get(nodePath)
   }
-  for (const [index, rawOutput] of graph.outputs.entries()) validateReference(rawOutput, `${path}.outputs.${index}`, spans, diagnostics)
+  for (const [index, rawOutput] of graph.outputs.entries()) validateReference(rawOutput, `${path}.outputs.${index}`, spans, diagnostics, isV2, false)
   if (graph.alphabetMappings !== undefined) {
     let invalidMapping = false
     if (!Array.isArray(graph.alphabetMappings)) {
@@ -548,13 +590,24 @@ const compileGraph = (
       else for (const [index, rawNode] of subgraph.nodes.entries()) validateGraphNode(rawNode, `${subgraphPath}.nodes.${index}`, spans, diagnostics, isV2)
     }
   }
+  const resolveNodes = (nodes: unknown[], nodePath: string) => decodeSourceValues(nodes, nodePath, spans, diagnostics).map((rawNode, index) => {
+    const node = fields(rawNode)
+    if (!node?.parameters) return rawNode
+    const parameters = fields(node.parameters) ?? {}
+    if (!isV2) return { ...node, parameters }
+    return {
+      ...node,
+      traceParameters: Object.fromEntries(Object.entries(parameters).map(([name, value]) => [name, parameterReferences(value, tables, constants, `${nodePath}.nodes.${index}.parameters.${name}`, spans, diagnostics, true)])),
+      parameters: Object.fromEntries(Object.entries(parameters).map(([name, value]) => [name, parameterReferences(value, tables, constants, `${nodePath}.nodes.${index}.parameters.${name}`, spans, diagnostics)])),
+    }
+  })
   const decodedGraph = {
     ...graph,
-    nodes: decodeSourceValues(graph.nodes, path, spans, diagnostics),
+    nodes: resolveNodes(graph.nodes, path),
     subgraphs: Object.fromEntries(Object.entries(fields(graph.subgraphs) ?? {}).map(([name, rawSubgraph]) => {
       const subgraph = fields(rawSubgraph)
       return [name, subgraph
-        ? { ...subgraph, nodes: Array.isArray(subgraph.nodes) ? decodeSourceValues(subgraph.nodes, `${path}.subgraphs.${name}`, spans, diagnostics) : subgraph.nodes }
+        ? { ...subgraph, nodes: Array.isArray(subgraph.nodes) ? resolveNodes(subgraph.nodes, `${path}.subgraphs.${name}`) : subgraph.nodes }
         : rawSubgraph]
     })),
   }
@@ -576,6 +629,8 @@ const compileGraph = (
     return entry && typeof entry.id === 'string' ? [[entry.id, entry] as const] : []
   }))
   const portType = (nodeId: string, port: string, visited = new Set<string>()): PortType | undefined => {
+    const resolved = result.value.outputTypes?.[`${nodeId}.${port}`]
+    if (resolved) return resolved
     const key = `${nodeId}.${port}`
     if (visited.has(key)) return undefined
     const node = nodes.get(nodeId)
@@ -604,17 +659,24 @@ const compileGraph = (
       || typeof (declared as { size?: unknown }).size !== 'string') return declared
     return forwarded(Object.keys(inputs ?? {})[0])
   }
-  const outputTypes = Object.fromEntries((graph.outputs as unknown[]).flatMap((output) => {
-    const reference = fields(output)
-    const type = reference && typeof reference.node === 'string' && typeof reference.port === 'string'
-      ? portType(reference.node, reference.port)
+  const outputTypes = Object.fromEntries(authoredOutputs.flatMap((reference, index) => {
+    const resolvedOutput = result.value.graph.outputs[index]
+    const typeReference = isV2 && resolvedOutput ? resolvedOutput : reference
+    const type = typeReference && typeof typeReference.node === 'string' && typeof typeReference.port === 'string'
+      ? portType(typeReference.node, typeReference.port)
       : undefined
     return reference && typeof reference.node === 'string' && typeof reference.port === 'string' && type
       ? [[`${reference.node}.${reference.port}`, type]]
       : []
   }))
+  const outputAliases = Object.fromEntries(authoredOutputs.flatMap((reference, index) => {
+      const resolvedOutput = result.value.graph.outputs[index]
+      return isV2 && reference && resolvedOutput && typeof reference.node === 'string' && typeof reference.port === 'string'
+        ? [[`${reference.node}.${reference.port}`, `${resolvedOutput.node}.${resolvedOutput.port}`]]
+        : []
+    }))
   return {
-    graph: result.value,
+    graph: { ...result.value, ...(isV2 ? { outputAliases } : {}) },
     sourceTypes,
     outputTypes,
     traceBitWidths: [
@@ -700,6 +762,7 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
   if (!Array.isArray(root.steps) || root.steps.length === 0) diagnostics.push(diagnostic('lesson.invalid-input', 'Lesson needs at least one Step.', 'steps', lesson.spans.get('steps')))
   const inputs: Record<string, { type: PortType; encoding: string; default: CryptoValue }> = {}
   const constants: Record<string, CryptoValue> = {}
+  const tables: Record<string, TableConstant> = {}
   for (const [id, raw] of Object.entries(inputMap)) {
     const path = `inputs.${id}`
     const input = requireMap(raw, path, lesson.spans, diagnostics)
@@ -719,16 +782,27 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
       if (!identifier.test(id)) diagnostics.push(diagnostic('lesson.invalid-input', 'Constant ID is invalid.', path, lesson.spans.get(path)))
       continue
     }
-    checkFields(constant, ['type', 'encoding', 'value'], path, lesson.spans, diagnostics)
-    const type = typeAt(constant.type, `${path}.type`, lesson.spans, diagnostics)
-    const decoded = type && decodeValue(constant.value, type, constant.encoding, `${path}.value`, lesson.spans, diagnostics)
-    if (decoded) constants[id] = decoded
+    if (constant.kind === 'table') {
+      if (!isV2) diagnostics.push(diagnostic('lesson.v2-feature-in-v1', 'Table constants require version: 2.', path, lesson.spans.get(path)))
+      checkFields(constant, ['kind', 'entryBits', 'value'], path, lesson.spans, diagnostics)
+      const entryBits = constant.entryBits
+      const value = constant.value
+      if (!Number.isSafeInteger(entryBits) || (entryBits as number) < 1 || (entryBits as number) > 16) diagnostics.push(diagnostic('table.entry-bits-out-of-range', 'Table entryBits must be from 1 through 16.', `${path}.entryBits`, lesson.spans.get(`${path}.entryBits`)))
+      else if (!Array.isArray(value) || value.length !== 2 ** (entryBits as number)) diagnostics.push(diagnostic('table.length-mismatch', 'Table length does not match entryBits.', `${path}.value`, lesson.spans.get(`${path}.value`)))
+      else if (!value.every((entry) => Number.isSafeInteger(entry) && (entry as number) >= 0 && (entry as number) < 2 ** (entryBits as number))) diagnostics.push(diagnostic('table.entry-out-of-range', 'Table entry is out of range.', `${path}.value`, lesson.spans.get(`${path}.value`)))
+      else tables[id] = { entryBits: entryBits as number, value: value as number[] }
+    } else {
+      checkFields(constant, ['type', 'encoding', 'value'], path, lesson.spans, diagnostics)
+      const type = typeAt(constant.type, `${path}.type`, lesson.spans, diagnostics)
+      const decoded = type && decodeValue(constant.value, type, constant.encoding, `${path}.value`, lesson.spans, diagnostics)
+      if (decoded) constants[id] = decoded
+    }
   }
   const graphInfo: Record<string, GraphInfo> = {}
   for (const [id, raw] of Object.entries(graphMap)) {
     if (!identifier.test(id)) diagnostics.push(diagnostic('lesson.invalid-input', 'Graph ID is invalid.', `graphs.${id}`, lesson.spans.get(`graphs.${id}`)))
     else {
-      const compiled = compileGraph(id, raw, `graphs.${id}`, lesson.spans, diagnostics, isV2)
+      const compiled = compileGraph(id, raw, `graphs.${id}`, lesson.spans, diagnostics, isV2, tables, constants)
       if (compiled) graphInfo[id] = compiled
     }
   }
@@ -831,7 +905,9 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
             const source = 'input' in binding ? inputs[binding.input]?.type
               : 'constant' in binding ? constants[binding.constant]?.type
               : executionSteps.get(binding.step)?.outputTypes[binding.output]
-            if (!source) {
+            if ('constant' in binding && !constants[binding.constant] && tables[binding.constant]) {
+              diagnostics.push(diagnostic('lesson.invalid-constant-use', 'Table constants are only valid as operation parameters.', bindingPath, lesson.spans.get(bindingPath)))
+            } else if (!source) {
               diagnostics.push(diagnostic('lesson.invalid-step-reference', 'Binding references an unavailable value.', bindingPath, lesson.spans.get(bindingPath)))
             } else if (source && !equalTypes(expected, source)) {
               diagnostics.push(diagnostic('lesson.invalid-input', 'Binding value type does not match graph source.', bindingPath, lesson.spans.get(bindingPath)))
@@ -893,10 +969,12 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
             const trace = fields(rawBinding)
             if (descriptor.inputSlots[slot]) {
               const binding = bindingAt(rawBinding, bindingPath, lesson.spans, diagnostics)
-              const source = binding && ('input' in binding ? inputs[binding.input]?.type
+              const tableUse = binding && 'constant' in binding && tables[binding.constant]
+              if (tableUse) diagnostics.push(diagnostic('lesson.invalid-constant-use', 'Table constants are only valid as operation parameters.', bindingPath, lesson.spans.get(bindingPath)))
+              const source = tableUse ? undefined : binding && ('input' in binding ? inputs[binding.input]?.type
                 : 'constant' in binding ? constants[binding.constant]?.type
-                : (binding.step === step.id ? execution : executionSteps.get(binding.step))?.outputTypes[binding.output])
-              if (!source || !equalTypes(descriptor.inputSlots[slot], source)) diagnostics.push(diagnostic('lesson.invalid-step-reference', 'Visualizer value binding is invalid.', bindingPath, lesson.spans.get(bindingPath)))
+                : (binding.step === step.id ? execution : executionSteps.get(binding.step))?.outputTypes?.[binding.output])
+              if (!tableUse && (!source || !equalTypes(descriptor.inputSlots[slot], source))) diagnostics.push(diagnostic('lesson.invalid-step-reference', 'Visualizer value binding is invalid.', bindingPath, lesson.spans.get(bindingPath)))
             } else {
               const traced = trace && typeof trace.step === 'string' && typeof trace.trace === 'string'
                 ? (trace.step === step.id ? execution : executionSteps.get(trace.step))
@@ -999,16 +1077,20 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
         const expected = bindingAt(check.expected, `${checkPath}.expected`, lesson.spans, diagnostics)
         const feedback = requireMap(check.feedback, `${checkPath}.feedback`, lesson.spans, diagnostics)
         if (feedback) checkFields(feedback, ['match', 'mismatch'], `${checkPath}.feedback`, lesson.spans, diagnostics)
+        const actualTable = actual && 'constant' in actual && tables[actual.constant]
+        const expectedTable = expected && 'constant' in expected && tables[expected.constant]
+        if (actualTable) diagnostics.push(diagnostic('lesson.invalid-constant-use', 'Table constants are only valid as operation parameters.', `${checkPath}.actual`, lesson.spans.get(`${checkPath}.actual`)))
+        if (expectedTable) diagnostics.push(diagnostic('lesson.invalid-constant-use', 'Table constants are only valid as operation parameters.', `${checkPath}.expected`, lesson.spans.get(`${checkPath}.expected`)))
         const referenceType = (reference: LessonValueReference | undefined): PortType | undefined =>
           !reference ? undefined
             : 'input' in reference ? inputs[reference.input]?.type
               : 'constant' in reference ? constants[reference.constant]?.type
                 : executionSteps.get(reference.step)?.outputTypes[reference.output]
-        const actualType = referenceType(actual)
-        const expectedType = referenceType(expected)
-        if (!actualType || !expectedType) {
+        const actualType = actualTable ? undefined : referenceType(actual)
+        const expectedType = expectedTable ? undefined : referenceType(expected)
+        if ((!actualType || !expectedType) && !actualTable && !expectedTable) {
           diagnostics.push(diagnostic('lesson.invalid-step-reference', 'Check references an unavailable value.', checkPath, lesson.spans.get(checkPath)))
-        } else if (!equalTypes(actualType, expectedType)) {
+        } else if (actualType && expectedType && !equalTypes(actualType, expectedType)) {
           diagnostics.push(diagnostic('lesson.invalid-input', 'Check values must have identical types.', checkPath, lesson.spans.get(checkPath)))
         }
         if (typeof feedback?.match !== 'string' || typeof feedback.mismatch !== 'string') {

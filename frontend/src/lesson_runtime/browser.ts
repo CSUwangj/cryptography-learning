@@ -217,7 +217,13 @@ export class BrowserLessonSession {
       ? this.inputs[reference.input]
       : 'constant' in reference
         ? this.lesson.constants[reference.constant]
-        : this.snapshots.get(reference.step)?.outputs[reference.output]
+        : (() => {
+            const snapshot = this.snapshots.get(reference.step)
+            const graph = this.lesson.steps.find((step) => step.id === reference.step)?.execute
+              ? this.lesson.graphs[this.lesson.steps.find((step) => step.id === reference.step)!.execute!.graph]
+              : undefined
+            return snapshot?.outputs[graph?.outputAliases?.[reference.output] ?? reference.output]
+          })()
     return value && typeof value !== 'string' ? value : undefined
   }
 
@@ -348,7 +354,12 @@ export class BrowserLessonSession {
         ? this.inputs[binding.input]
         : 'constant' in binding
           ? this.lesson.constants[binding.constant]
-          : this.snapshots.get(binding.step)?.outputs[binding.output]
+        : (() => {
+            const snapshot = this.snapshots.get(binding.step)
+            const prior = this.lesson.steps.find((step) => step.id === binding.step)?.execute
+            const priorGraph = prior ? this.lesson.graphs[prior.graph] : undefined
+            return snapshot?.outputs[priorGraph?.outputAliases?.[binding.output] ?? binding.output]
+          })()
       if (!value || typeof value === 'string') {
         const inputDiagnostic = 'input' in binding ? this.inputDiagnostics[binding.input] : undefined
         this.executionDiagnostics.set(step.id, inputDiagnostic ?? localized(
