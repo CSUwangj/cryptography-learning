@@ -1342,19 +1342,61 @@ describe('AES-192/256 encryption and decryption (#85)', () => {
     expect(response).toMatchObject({ kind: 'diagnostic', diagnostics: [{ code: 'comparison.v2-unsupported', path: 'graph.schema' }] })
   })
 
-  it('requires exactly one v2 output operation', () => {
+  it('allows multiple single-port v2 output operations and preserves v1 output exports', () => {
     const sourceNode = { id: 'source', operation: 'core.source@1', parameters: { type: { family: 'bits' as const, size: 8 } } }
     const output = (id: string) => ({ id, operation: 'core.output@1', inputs: { value: { node: 'source', port: 'value' } } })
-    const graph = (nodes: AuthoredGraph['nodes']): AuthoredGraph => ({
-      schema: 2,
-      nodes,
-      outputs: [{ node: 'source', port: 'value' }],
+    const graph = (schema?: 2): AuthoredGraph => ({
+      ...(schema ? { schema } : {}),
+      nodes: [sourceNode, output('first'), output('second')],
+      outputs: [{ node: 'first', port: 'value' }, { node: 'second', port: 'value' }],
     })
-    for (const nodes of [[sourceNode], [sourceNode, output('first'), output('second')]]) {
-      expect(compile(graph(nodes))).toMatchObject({
-        ok: false,
-        diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'graph.single-output-required', path: 'nodes' })]),
+
+    for (const candidate of [graph(2), graph()]) {
+      const response = executeWorkerRequest({
+        requestId: candidate.schema === 2 ? 'v2-multiple-exports' : 'v1-multiple-exports',
+        kind: 'execute',
+        payload: { graph: candidate, inputs: { 'source.value': bits(8, Uint8Array.of(0xa5)) } },
       })
+      expect(response).toMatchObject({ kind: 'snapshot' })
+      if (response.kind !== 'snapshot') continue
+      expect(Object.fromEntries(Object.entries(response.snapshot.outputs).map(([name, value]) => [name, hex(value as ReturnType<typeof bits>)])))
+        .toEqual({ 'first.value': '0xa5', 'second.value': '0xa5' })
+      if (candidate.schema === 2) {
+        expect(response.snapshot.trace.map((event) => 'primitive' in event ? [event.path, event.primitive, hex(event.value as ReturnType<typeof bits>)] : event))
+          .toEqual([['source.value', 'core.source@1', '0xa5'], ['first.value', 'core.output@1', '0xa5'], ['second.value', 'core.output@1', '0xa5']])
+      } else {
+        expect(response.snapshot.trace).toEqual([
+          { path: 'source.value', stage: 'output', summary: 'source.value' },
+          { path: 'first.value', stage: 'output', summary: 'first.value' },
+          { path: 'second.value', stage: 'output', summary: 'second.value' },
+        ])
+      }
+    }
+  })
+
+  it('rejects a multi-port v2 operation while preserving v1 compilation', () => {
+    const manifest = operationManifests.find((candidate) => candidate.identity === 'core.output@1')
+    if (!manifest || !manifest.outputs[0]) throw new Error('The core output manifest is required for this regression.')
+    const originalOutputs = manifest.outputs
+    manifest.outputs = [...originalOutputs, { name: 'extra', type: originalOutputs[0].type }]
+    try {
+      const graph: AuthoredGraph = {
+        schema: 2,
+        nodes: [
+          source('source', bits(8, Uint8Array.of(0xa5))),
+          { id: 'result', operation: 'core.output@1', inputs: { value: { node: 'source', port: 'value' } } },
+        ],
+        outputs: [{ node: 'result', port: 'value' }],
+      }
+      expect(compile(graph)).toMatchObject({
+        ok: false,
+        diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'graph.single-output-required', path: 'result.operation' })]),
+      })
+
+      const { schema: _, ...v1Graph } = graph
+      expect(compile(v1Graph)).toMatchObject({ ok: true })
+    } finally {
+      manifest.outputs = originalOutputs
     }
   })
 

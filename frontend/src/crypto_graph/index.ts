@@ -1351,9 +1351,6 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
     diagnostics.push(diagnostic('trace.unsupported-level', 'Trace level is not supported.', 'traceLevel'))
   }
   const compiledGraph = structuredClone(expandGraph(graph, diagnostics))
-  if (isV2 && compiledGraph.nodes.filter((node) => node.operation === 'core.output@1').length !== 1) {
-    diagnostics.push(diagnostic('graph.single-output-required', 'V2 graphs must declare exactly one core.output@1 operation.', 'nodes'))
-  }
   const nodes = new Map<string, AuthoredNode>()
   const resolved = new Map<string, Operation>()
   const mappings = new Map<string, AlphabetMapping>()
@@ -1369,7 +1366,12 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
     nodes.set(node.id, node)
     const operation = node.operation ? operations.get(node.operation) : undefined
     if (!operation) diagnostics.push(diagnostic('unknown-operation', 'Operation is not registered.', `${node.id}.operation`, node, { operation: node.operation ?? null }))
-    else resolved.set(node.id, operation)
+    else {
+      resolved.set(node.id, operation)
+      if (isV2 && operation.manifest.outputs.length !== 1) {
+        diagnostics.push(diagnostic('graph.single-output-required', 'V2 operations must declare exactly one output port.', `${node.id}.operation`, node))
+      }
+    }
   }
 
   for (const node of compiledGraph.nodes) {

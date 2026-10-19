@@ -15,8 +15,9 @@ not accepted in v2; v2 node annotations are not accepted in v1.
 
 ## Minimal v2 graph
 
-The first v2 slice supports a single source/XOR/output execution graph. Nodes
-may carry teaching annotations which are retained in the execution trace:
+The first v2 slice supports source, XOR, and output operations. A graph may have
+multiple single-port output nodes and export multiple values. Nodes may carry
+teaching annotations which are retained in the execution trace:
 
 ```yaml
 version: 2
@@ -49,17 +50,17 @@ summary: Execute a source/XOR/output graph.
 texts: {}
 ```
 
-V2 graphs have one output operation. The existing worker/session executes the
-graph and the default trace renders one immutable event per operation node,
-including sources. Existing execution limits and dry-run validation remain in
-force.
+Each v2 operation has exactly one output port. The existing worker/session
+executes the graph and the default trace renders one immutable event per
+operation node, including sources. Existing execution limits and dry-run
+validation remain in force.
 
 ## Migration boundary
 
 Projection, concatenation, table parameters, structural lineage, selectable
-units, overlays, comparison presentations, and algorithm-specific v2 renderers
-belong to later tickets. Authors should keep v1 declarations until the relevant
-v2 capability is available.
+units, overlays, and comparison presentations belong to later tickets.
+Algorithm-specific renderer dispatch is excluded. Authors should keep v1
+declarations until the relevant v2 capability is available.
 
 To validate a Lesson, run the existing validation command or call
 `validateLessonDocuments`. Fix authored YAML diagnostics, then rerun the same
