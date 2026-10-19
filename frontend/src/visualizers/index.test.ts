@@ -446,11 +446,33 @@ describe('AES-128 encryption and decryption (#84)', () => {
       traceStatus: { truncated: false, retained: 2, dropped: 0 },
     }
     expect(executionTracePresentation(snapshot, 'en-US', 'v2-en').sections[0].rows.map((row) => row.label)).toEqual([
-      'Traced value (state.value)', 'Output (mixed.value)',
+      'Source 0', 'XOR 0',
     ])
     expect(executionTracePresentation(snapshot, 'zh-CN', 'v2-zh').sections[0].rows.map((row) => row.label)).toEqual([
-      '轨迹值 (state.value)', '输出 (mixed.value)',
+      '输入 0', '异或 0',
     ])
+    expect(executionTracePresentation(snapshot, 'en-US', 'v2-en', { 'core.xor@1': 'Custom XOR' }).sections[0].rows.map((row) => row.label)).toEqual([
+      'Source 0', 'Custom XOR 0',
+    ])
+  })
+
+  it('resolves v2 presentation label IDs through the active Lesson locale', () => {
+    const response = executeWorkerRequest({ requestId: 'v2-labels', kind: 'execute', payload: { graph: {
+      schema: 2,
+      nodes: [
+        { id: 'source', operation: 'core.source@1', parameters: { type: { family: 'bits', size: 4 }, value: bits(4, Uint8Array.of(0x1)) } },
+        { id: 'substitute', operation: 'core.substitute-nibbles@1', inputs: { value: { node: 'source', port: 'value' } }, parameters: { sBox: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] } },
+      ],
+      outputs: [{ node: 'substitute', port: 'value' }],
+    } } })
+    expect(response.kind).toBe('snapshot')
+    if (response.kind !== 'snapshot') return
+    const presentation = { kind: 'spn-cipher' as const, labels: { 'core.substitute-nibbles@1': 'substitute-label' } }
+    const props = { dimensions: { width: 320, height: 200 }, execution: response.snapshot, executionIdentity: 'v2-labels', locale: 'en-US', reducedMotion: true, presentation, lessonTexts: { 'substitute-label': 'Nibble substitution' } }
+    const english = render(React.createElement(RenderHost, props))
+    expect(english.getByRole('row', { name: /Nibble substitution/ })).toBeVisible()
+    english.rerender(React.createElement(RenderHost, { ...props, locale: 'zh-CN', lessonTexts: { 'substitute-label': '半字节替换' } }))
+    expect(screen.getByRole('row', { name: /半字节替换/ })).toBeVisible()
   })
 
   it('runs the AES-128 cipher demo fixture through the Browser Lesson runtime and renders both directions through the shared trace table', async () => {

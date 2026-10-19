@@ -259,7 +259,7 @@ type Result<T> = { ok: true; value: T } | { ok: false; diagnostics: readonly Dia
 type Operation = {
   manifest: OperationManifest
   validateParameters?: (parameters: Record<string, unknown>, node: AuthoredNode) => Diagnostic[]
-  inferOutputTypes?: (inputTypes: Readonly<Record<string, PortType>>, parameters: Readonly<Record<string, unknown>>) => Result<Readonly<Record<string, PortType>>>
+  inferOutputTypes?: (inputTypes: Readonly<Record<string, PortType>>, parameters: Readonly<Record<string, unknown>>, node?: AuthoredNode) => Result<Readonly<Record<string, PortType>>>
   lineage?: (parameters: Readonly<Record<string, unknown>>, inputTypes: Readonly<Record<string, PortType>>) => LineageDeclaration
   execute: (inputs: Record<string, CryptoValue>, parameters: Record<string, unknown>, mappings: ReadonlyMap<string, AlphabetMapping>) => Record<string, CryptoValue>
 }
@@ -695,8 +695,106 @@ const concat: Operation = {
 const validPermutation = (values: unknown, size: number): values is readonly number[] =>
   Array.isArray(values)
   && values.length === size
-  && values.every((value) => Number.isInteger(value) && value >= 0 && value < size)
+  && values.every((value) => Number.isSafeInteger(value) && value >= 0 && value < size)
   && new Set(values).size === size
+
+const readBits = (value: BitsValue, start: number, size: number): number => {
+  let result = 0
+  for (let index = 0; index < size; index += 1) result = (result << 1) | bitAt(value, start + index)
+  return result
+}
+
+const writeBits = (bytes: Uint8Array, size: number, start: number, value: number, width: number): void => {
+  for (let index = 0; index < width; index += 1) if ((value & (1 << (width - index - 1))) !== 0) setBit(bytes, size, start + index)
+}
+
+const rangeParameter = (parameters: Readonly<Record<string, unknown>>, size: number, node: AuthoredNode): Result<{ start: number; count: number }> => {
+  const start = parameters.start === undefined ? 0 : parameters.start
+  const count = parameters.count === undefined ? size - (typeof start === 'number' ? start : 0) : parameters.count
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(count) || (start as number) < 0 || (count as number) < 0 || (start as number) + (count as number) > size) {
+    return { ok: false, diagnostics: [diagnostic('operation.substitute-nibbles-range-out-of-bounds', 'Substitution range is outside the input width.', 'parameters', node)] }
+  }
+  return { ok: true, value: { start: start as number, count: count as number } }
+}
+
+const substituteNibbles: Operation = {
+  manifest: {
+    identity: 'core.substitute-nibbles@1',
+    inputs: [{ name: 'value', type: { family: 'bits', size: 'N' } }],
+    outputs: [{ name: 'value', type: { family: 'bits', size: 'N' } }],
+  },
+  validateParameters(parameters, node) {
+    return validPermutation(parameters.sBox, 16)
+      ? []
+      : [diagnostic('operation.invalid-s-box', 'S-box must be a permutation of 0 through 15.', `${node.id}.parameters.sBox`, node)]
+  },
+  inferOutputTypes(inputTypes, parameters, node) {
+    const type = inputTypes.value
+    if (type?.family !== 'bits' || typeof type.size !== 'number' || type.size % 4 !== 0) {
+      return { ok: false, diagnostics: [diagnostic('operation.invalid-nibble-width', 'Nibble substitution requires a bits width divisible by 4.', 'inputs.value')] }
+    }
+    const range = rangeParameter(parameters, type.size / 4, node ?? { id: 'substitute-nibbles' })
+    return range.ok ? { ok: true, value: { value: type } } : range
+  },
+  lineage(parameters, inputTypes) {
+    const size = inputTypes.value?.family === 'bits' ? inputTypes.value.size as number : 0
+    const range = rangeParameter(parameters, size / 4, { id: 'substitute-nibbles' })
+    const start = range.ok ? range.value.start : 0
+    const count = range.ok ? range.value.count : 0
+    return { value: Array.from({ length: size }, (_, bit) => {
+      const nibble = Math.floor(bit / 4)
+      return nibble >= start && nibble < start + count
+        ? Array.from({ length: 4 }, (_, sourceBit) => ({ port: 'value', bit: nibble * 4 + sourceBit }))
+        : [{ port: 'value', bit }]
+    }) }
+  },
+  execute(inputs, parameters) {
+    const input = inputs.value as BitsValue
+    const sBox = parameters.sBox as readonly number[]
+    const start = parameters.start === undefined ? 0 : parameters.start as number
+    const count = parameters.count === undefined ? input.type.size / 4 - start : parameters.count as number
+    const output = new Uint8Array(bytesForBits(input.type.size))
+    for (let nibble = 0; nibble < input.type.size / 4; nibble += 1) {
+      const value = readBits(input, nibble * 4, 4)
+      writeBits(output, input.type.size, nibble * 4, nibble >= start && nibble < start + count ? sBox[value] : value, 4)
+    }
+    return { value: bits(input.type.size, output) }
+  },
+}
+
+const permuteGather: Operation = {
+  manifest: {
+    identity: 'spn.permute-gather@1',
+    inputs: [{ name: 'value', type: { family: 'bits', size: 'N' } }],
+    outputs: [{ name: 'value', type: { family: 'bits', size: 'N' } }],
+  },
+  inferOutputTypes(inputTypes, parameters) {
+    const type = inputTypes.value
+    if (type?.family !== 'bits' || typeof type.size !== 'number' || type.size % 4 !== 0) {
+      return { ok: false, diagnostics: [diagnostic('operation.invalid-nibble-width', 'Nibble permutation requires a bits width divisible by 4.', 'inputs.value')] }
+    }
+    return validPermutation(parameters.permutation, type.size / 4)
+      ? { ok: true, value: { value: type } }
+      : { ok: false, diagnostics: [diagnostic('operation.invalid-permutation', 'Permutation must cover each input nibble exactly once.', 'parameters.permutation')] }
+  },
+  lineage(parameters, inputTypes) {
+    const size = inputTypes.value?.family === 'bits' ? inputTypes.value.size as number : 0
+    const permutation = parameters.permutation as readonly number[]
+    return { value: Array.from({ length: size }, (_, bit) => {
+      const nibble = Math.floor(bit / 4)
+      return [{ port: 'value', bit: (permutation[nibble] ?? 0) * 4 + bit % 4 }]
+    }) }
+  },
+  execute(inputs, parameters) {
+    const input = inputs.value as BitsValue
+    const permutation = parameters.permutation as readonly number[]
+    const output = new Uint8Array(bytesForBits(input.type.size))
+    for (let nibble = 0; nibble < permutation.length; nibble += 1) {
+      writeBits(output, input.type.size, nibble * 4, readBits(input, permutation[nibble] * 4, 4), 4)
+    }
+    return { value: bits(input.type.size, output) }
+  },
+}
 
 const substitute: Operation = {
   manifest: {
@@ -708,6 +806,13 @@ const substitute: Operation = {
     return validPermutation(parameters.sBox, 16)
       ? []
       : [diagnostic('spn.invalid-s-box', 'S-box must be a permutation of 0 through 15.', `${node.id}.parameters.sBox`, node)]
+  },
+  lineage(_, inputTypes) {
+    const size = inputTypes.value?.family === 'bits' ? inputTypes.value.size as number : 16
+    return { value: Array.from({ length: size }, (_, bit) => {
+      const nibble = Math.floor(bit / 4)
+      return Array.from({ length: 4 }, (_, sourceBit) => ({ port: 'value', bit: nibble * 4 + sourceBit }))
+    }) }
   },
   execute(inputs, parameters) {
     const sBox = parameters.sBox as readonly number[]
@@ -728,6 +833,18 @@ const permute: Operation = {
     return validPermutation(parameters.permutation, 4)
       ? []
       : [diagnostic('spn.invalid-permutation', 'Permutation must be a permutation of 0 through 3.', `${node.id}.parameters.permutation`, node)]
+  },
+  lineage(parameters, inputTypes) {
+    const size = inputTypes.value?.family === 'bits' ? inputTypes.value.size as number : 16
+    const permutation = parameters.permutation as readonly number[]
+    const inverse = permutation.reduce<number[]>((result, source, destination) => {
+      result[source] = destination
+      return result
+    }, [])
+    return { value: Array.from({ length: size }, (_, bit) => {
+      const nibble = Math.floor(bit / 4)
+      return [{ port: 'value', bit: (inverse[nibble] ?? 0) * 4 + bit % 4 }]
+    }) }
   },
   execute(inputs, parameters) {
     const input = inputs.value as BitsValue
@@ -1224,7 +1341,7 @@ const invalidLineage: Operation = {
 }
 
 const operations = new Map<string, Operation>([
-  source, xor, concat, substitute, permute, output,
+  source, xor, concat, substitute, permute, substituteNibbles, permuteGather, output,
   caesar, affine, substitution, vigenere, transposition,
   aesKeyWord, aesRotWord, aesSubWord, aesRconWord, aesWordXor, aesRoundKey,
   aesSubBytes, aesInvSubBytes, aesShiftRows, aesInvShiftRows, aesMixColumns, aesInvMixColumns,
@@ -1630,7 +1747,7 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
       }
       let inferred: Readonly<Record<string, PortType>> | undefined
       if (operation.inferOutputTypes) {
-        const result = operation.inferOutputTypes(Object.fromEntries(inputTypes), node.parameters ?? {})
+        const result = operation.inferOutputTypes(Object.fromEntries(inputTypes), node.parameters ?? {}, node)
         if (!result.ok) diagnostics.push(...result.diagnostics.map((item) => ({ ...item, path: `${node.id}.${item.path}` })))
         else inferred = result.value
       } else if (operation.manifest.outputTypeParameter) {

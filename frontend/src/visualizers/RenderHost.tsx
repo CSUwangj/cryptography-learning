@@ -13,6 +13,8 @@ export type RenderHostProps = {
   readonly invocation?: { readonly id: string }
   /** Explicit presentation metadata; never inferred from key length or graph identity. */
   readonly presentation?: LessonPresentation
+  /** Text values for locale-specific presentation label IDs authored by the Lesson. */
+  readonly lessonTexts?: Readonly<Record<string, string>>
   /** All step snapshots in the lesson; passed so block-cipher can locate the expansion step. */
   readonly allSnapshots?: Readonly<Record<string, WorkerExecutionSnapshot>>
   /** bindings map from the Step that produced `execution`, for deriving the schedule step. */
@@ -90,27 +92,31 @@ export const RenderHost: React.FC<RenderHostProps> = (props) => {
       'step' in reference && reference.output.startsWith('round-key-'))
     : undefined
   const keyScheduleExecution = roundKeySource && props.allSnapshots?.[roundKeySource.step]
+  const presentation = props.presentation?.labels && props.lessonTexts
+    ? { ...props.presentation, labels: Object.fromEntries(Object.entries(props.presentation.labels).map(([identity, textId]) => [identity, props.lessonTexts![textId] ?? textId])) }
+    : props.presentation
   return <IsolatedRenderer comparison={props.comparison} execution={props.execution} key={props.executionIdentity} locale={props.locale}>
-      {props.presentation?.kind === 'block-cipher' && props.execution
+      {presentation?.kind === 'block-cipher' && props.execution
         ? <BlockCipherRenderer
             execution={props.execution}
             executionIdentity={props.executionIdentity}
             locale={props.locale}
-            presentation={props.presentation}
+            presentation={presentation}
             keyScheduleExecution={keyScheduleExecution}
           />
-        : props.presentation?.kind === 'key-expansion' && props.execution
+        : presentation?.kind === 'key-expansion' && props.execution
           ? <KeyExpansionRenderer
               execution={props.execution}
               executionIdentity={props.executionIdentity}
               locale={props.locale}
-              presentation={props.presentation}
+              presentation={presentation}
             />
         : !props.invocation && props.execution
         ? <ExecutionTraceRenderer
             execution={props.execution}
             executionIdentity={props.executionIdentity}
             locale={props.locale}
+            primitiveLabels={presentation?.labels}
           />
         : props.invocation?.id === 'avalanche@1' && props.comparison
         ? <AvalancheRenderer

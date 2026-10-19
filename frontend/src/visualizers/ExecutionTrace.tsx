@@ -2,6 +2,7 @@ import React, { useMemo } from 'react'
 import { hex, type CryptoValue, type TraceCheckpoint, type TraceEvent, type TraceStage, type WorkerExecutionSnapshot } from 'crypto_graph'
 import { learningColors, LearningPresentationView, type LearningDiagnostic, type LearningPresentation, type LearningRow } from '../ui/learning'
 import { PermutationVisual } from './OperationVisuals'
+import { primitiveResources } from '../app/i18n'
 
 type Locale = 'en-US' | 'zh-CN'
 
@@ -9,6 +10,7 @@ export type ExecutionTraceRendererProps = {
   readonly execution: WorkerExecutionSnapshot
   readonly locale: string
   readonly executionIdentity: string
+  readonly primitiveLabels?: Readonly<Record<string, string>>
 }
 
 const copy = {
@@ -97,7 +99,6 @@ const copy = {
 } as const satisfies Record<Locale, { readonly stages: Record<TraceStage, string> } & Record<string, unknown>>
 
 const textFor = (locale: string) => copy[locale as Locale] ?? copy['en-US']
-
 const valueText = (value: CryptoValue | undefined): string => {
   if (!value) return '—'
   if ('symbol' in value) return value.symbol
@@ -107,11 +108,24 @@ const valueText = (value: CryptoValue | undefined): string => {
   return hex(value)
 }
 
-const stageLabel = (event: TraceEvent | TraceCheckpoint, text: ReturnType<typeof textFor>, outputs: WorkerExecutionSnapshot['outputs']): string => {
+const stageLabel = (
+  event: TraceEvent | TraceCheckpoint,
+  text: ReturnType<typeof textFor>,
+  outputs: WorkerExecutionSnapshot['outputs'],
+  locale: string,
+  primitiveLabels: Readonly<Record<string, string>> | undefined,
+): string => {
   if (event.path === 'plaintext') return text.plaintextInput
   if (event.path === 'ciphertext') return text.ciphertextInput
   if (event.path === 'output') return text.output
-  if ('summary' in event || !event.stage) return `${event.path in outputs ? text.output : text.checkpoint} (${event.path})`
+  if ('summary' in event) return `${event.path in outputs ? text.output : text.checkpoint} (${event.path})`
+  if (!event.stage && event.primitive) {
+    const labels = primitiveResources[locale as Locale] ?? primitiveResources['en-US']
+    const label = primitiveLabels?.[event.primitive] ?? labels[event.primitive as keyof typeof labels]
+      ?? (locale === 'zh-CN' ? '未命名操作' : 'Unnamed operation')
+    return event.round === undefined ? label : `${label} ${event.round}`
+  }
+  if (!event.stage) return `${event.path in outputs ? text.output : text.checkpoint} (${event.path})`
   const round = event.round
   return round === undefined ? text.stages[event.stage] : `${text.stages[event.stage]} ${round}`
 }
@@ -148,7 +162,7 @@ const operationDetail = (event: TraceEvent | TraceCheckpoint, text: ReturnType<t
  * Internal key-schedule words stay trace metadata; their presence without presentation metadata
  * is reported instead of rendered as a word log.
  */
-export const executionTracePresentation = (execution: WorkerExecutionSnapshot, locale: string, executionIdentity: string): LearningPresentation => {
+export const executionTracePresentation = (execution: WorkerExecutionSnapshot, locale: string, executionIdentity: string, primitiveLabels?: Readonly<Record<string, string>>): LearningPresentation => {
   const text = textFor(locale)
   const events = execution.trace.filter((event) => !('word' in event && event.word !== undefined))
   const modeMissingDiagnostic: LearningDiagnostic | undefined = events.length < execution.trace.length
@@ -159,7 +173,7 @@ export const executionTracePresentation = (execution: WorkerExecutionSnapshot, l
     const value = 'summary' in event ? execution.outputs[event.path] : event.value
     return {
       id: event.path,
-      label: stageLabel(event, text, execution.outputs),
+      label: stageLabel(event, text, execution.outputs, locale, primitiveLabels),
       ...(!('summary' in event) && !event.value ? { state: 'incomplete' as const } : {}),
       cells: [
         { value: 'round' in event && event.round !== undefined ? event.round : '—' },
@@ -202,7 +216,7 @@ export const executionTracePresentation = (execution: WorkerExecutionSnapshot, l
   }
 }
 
-export const ExecutionTraceRenderer: React.FC<ExecutionTraceRendererProps> = ({ execution, locale, executionIdentity }) => {
-  const presentation = useMemo(() => executionTracePresentation(execution, locale, executionIdentity), [execution, locale, executionIdentity])
+export const ExecutionTraceRenderer: React.FC<ExecutionTraceRendererProps> = ({ execution, locale, executionIdentity, primitiveLabels }) => {
+  const presentation = useMemo(() => executionTracePresentation(execution, locale, executionIdentity, primitiveLabels), [execution, locale, executionIdentity, primitiveLabels])
   return <LearningPresentationView presentation={presentation} />
 }

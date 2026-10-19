@@ -8,6 +8,7 @@ import { bits, executeWorkerRequest, hex } from '../crypto_graph'
 import { aesKeyExpansionGraphNodesYaml } from '../../demos/aesKeyExpansionLesson'
 import { aesCipherDemoDocuments } from '../../demos/aes128CipherLesson'
 import { teachingSpnDemoDocuments } from '../../demos/teachingSpnLesson'
+import { teachingSpnV2DemoDocuments } from '../../demos/teachingSpnV2Lesson'
 import {
   compileLesson,
   createBrowserLessonSession,
@@ -48,6 +49,46 @@ class WorkerStub {
 }
 
 describe('Lesson Runtime compiler (#29)', () => {
+  it('executes the authored v2 Teaching SPN fixture with bilingual label overrides', async () => {
+    const compiled = compileLesson(teachingSpnV2DemoDocuments)
+    expect(compiled).toMatchObject({ ok: true, value: { notices: [], steps: [{ presentation: {
+      kind: 'spn-cipher',
+      labels: { 'core.substitute-nibbles@1': 'substitute-label', 'spn.permute-gather@1': 'permute-label' },
+    } }] } })
+    if (!compiled.ok) return
+    const previousWorker = globalThis.Worker
+    globalThis.Worker = WorkerStub as unknown as typeof Worker
+    try {
+      const session = createBrowserLessonSession(teachingSpnV2DemoDocuments, 'en-US')
+      expect(session.ok).toBe(true)
+      if (!session.ok) return
+      const entered = await session.value.enter()
+      expect(entered.ok).toBe(true)
+      if (entered.ok) {
+        const snapshot = entered.value.snapshots.execute
+        expect(hex(snapshot.outputs['result.value'] as never)).toBe('0xc491')
+        expect(snapshot.trace.map((event) => [event.path, 'primitive' in event ? event.primitive : undefined, 'round' in event ? event.round : undefined])).toEqual([
+          ['state.value', 'core.source@1', 0],
+          ['key.value', 'core.source@1', 1],
+          ['key-mix.value', 'core.xor@1', 1],
+          ['substitute.value', 'core.substitute-nibbles@1', 1],
+          ['permute.value', 'spn.permute-gather@1', 1],
+          ['result.value', 'core.output@1', 1],
+        ])
+        expect(snapshot.trace.map((event) => ['value' in event && event.value ? hex(event.value as never) : undefined])).toEqual([
+          ['0x1234'], ['0x0f0f'], ['0x1d3b'], ['0x491c'], ['0xc491'], ['0xc491'],
+        ])
+      }
+      session.value.dispose()
+    } finally {
+      globalThis.Worker = previousWorker
+    }
+    expect(compileLesson({
+      ...teachingSpnV2DemoDocuments,
+      locales: { ...teachingSpnV2DemoDocuments.locales, 'en-US': teachingSpnV2DemoDocuments.locales['en-US'].replace('  permute-label:', '  other-label:') },
+    })).toMatchObject({ ok: false, diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'lesson.missing-text' })]) })
+  })
+
   it('exports projected concat values into a later Step and rejects table bindings', async () => {
     const lesson = [
       'version: 2', 'id: composed-values', 'default_locale: en-US',

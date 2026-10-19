@@ -309,6 +309,7 @@ const LessonView: React.FC = () => {
         executionIdentity={state.executionIdentities[step.id] ?? step.id}
         invocation={step.visualizer}
         presentation={step.presentation}
+        lessonTexts={locale.texts}
         locale={state.locale}
         reducedMotion={reducedMotion}
         classicalCipher={cipher && {

@@ -95,6 +95,119 @@ describe('CryptoGraph compile/execute seam (#26)', () => {
     expect(execution.ok && hex(execution.value.outputs['joined.value'] as ReturnType<typeof bits>)).toBe('0x0a')
   })
 
+  it('executes ranged nibble substitution with pass-through bits and exact lineage', () => {
+    const compiled = compile({
+      schema: 2,
+      nodes: [
+        source('source', bits(16, Uint8Array.of(0x12, 0x34))),
+        {
+          id: 'substitute',
+          operation: 'core.substitute-nibbles@1',
+          inputs: { value: { node: 'source', port: 'value' } },
+          parameters: { sBox: [0xe, 0x4, 0xd, 0x1, 0x2, 0xf, 0xb, 0x8, 0x3, 0xa, 0x6, 0xc, 0x5, 0x9, 0x0, 0x7], start: 1, count: 1 },
+        },
+      ],
+      outputs: [{ node: 'substitute', port: 'value' }],
+    })
+    expect(compiled.ok).toBe(true)
+    if (!compiled.ok) return
+    const execution = compiled.value.execute()
+    expect(execution.ok && hex(execution.value.outputs['substitute.value'] as ReturnType<typeof bits>)).toBe('0x1d34')
+    expect(compiled.value.lineage?.filter((edge) => edge.targetBit === 5)).toEqual([
+      { source: 'source.value', sourceBit: 4, target: 'substitute.value', targetBit: 5 },
+      { source: 'source.value', sourceBit: 5, target: 'substitute.value', targetBit: 5 },
+      { source: 'source.value', sourceBit: 6, targetBit: 5, target: 'substitute.value' },
+      { source: 'source.value', sourceBit: 7, targetBit: 5, target: 'substitute.value' },
+    ])
+    expect(compiled.value.lineage?.filter((edge) => edge.targetBit === 0)).toEqual([
+      { source: 'source.value', sourceBit: 0, target: 'substitute.value', targetBit: 0 },
+    ])
+  })
+
+  it('executes gather nibble permutation and maps output bit 5 to input bit 1', () => {
+    const compiled = compile({
+      schema: 2,
+      nodes: [
+        source('source', bits(16, Uint8Array.of(0x12, 0x34))),
+        {
+          id: 'permute',
+          operation: 'spn.permute-gather@1',
+          inputs: { value: { node: 'source', port: 'value' } },
+          parameters: { permutation: [3, 0, 1, 2] },
+        },
+      ],
+      outputs: [{ node: 'permute', port: 'value' }],
+    })
+    expect(compiled.ok).toBe(true)
+    if (!compiled.ok) return
+    const execution = compiled.value.execute()
+    expect(execution.ok && hex(execution.value.outputs['permute.value'] as ReturnType<typeof bits>)).toBe('0x4123')
+    expect(compiled.value.lineage).toEqual(expect.arrayContaining([
+      { source: 'source.value', sourceBit: 1, target: 'permute.value', targetBit: 5 },
+    ]))
+  })
+
+  it('preserves structural lineage for legacy SPN substitution and scatter permutation', () => {
+    const compiled = compile({
+      schema: 2,
+      nodes: [
+        source('source', bits(16, Uint8Array.of(0x12, 0x34))),
+        {
+          id: 'substitute',
+          operation: 'spn.substitute@1',
+          inputs: { value: { node: 'source', port: 'value' } },
+          parameters: { sBox: Array.from({ length: 16 }, (_, index) => index) },
+        },
+        {
+          id: 'permute',
+          operation: 'spn.permute@1',
+          inputs: { value: { node: 'substitute', port: 'value' } },
+          parameters: { permutation: [3, 0, 1, 2] },
+        },
+      ],
+      outputs: [{ node: 'permute', port: 'value' }],
+    })
+    expect(compiled.ok).toBe(true)
+    if (!compiled.ok) return
+    expect(compiled.value.lineage?.filter((edge) => edge.target === 'substitute.value' && edge.targetBit === 5)).toEqual([
+      { source: 'source.value', sourceBit: 4, target: 'substitute.value', targetBit: 5 },
+      { source: 'source.value', sourceBit: 5, target: 'substitute.value', targetBit: 5 },
+      { source: 'source.value', sourceBit: 6, targetBit: 5, target: 'substitute.value' },
+      { source: 'source.value', sourceBit: 7, targetBit: 5, target: 'substitute.value' },
+    ])
+    expect(compiled.value.lineage).toEqual(expect.arrayContaining([
+      { source: 'substitute.value', sourceBit: 9, target: 'permute.value', targetBit: 5 },
+    ]))
+  })
+
+  it('reports nibble width, range, and gather permutation diagnostics', () => {
+    const graph = (operation: string, parameters: Record<string, unknown>): AuthoredGraph => ({
+      schema: 2,
+      nodes: [
+        source('source', bits(10, Uint8Array.of(0x01, 0x02))),
+        { id: 'operation', operation, inputs: { value: { node: 'source', port: 'value' } }, parameters },
+      ],
+      outputs: [{ node: 'operation', port: 'value' }],
+    })
+    expect(compile(graph('core.substitute-nibbles@1', { sBox: Array.from({ length: 16 }, (_, index) => index) }))).toMatchObject({
+      ok: false,
+      diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'operation.invalid-nibble-width' })]),
+    })
+    expect(compile({
+      schema: 2,
+      nodes: [source('source', bits(16, Uint8Array.of(0x01, 0x02))), { id: 'operation', operation: 'core.substitute-nibbles@1', inputs: { value: { node: 'source', port: 'value' } }, parameters: { sBox: Array.from({ length: 16 }, (_, index) => index), start: 3, count: 2 } }],
+      outputs: [{ node: 'operation', port: 'value' }],
+    })).toMatchObject({ ok: false, diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'operation.substitute-nibbles-range-out-of-bounds', path: 'operation.parameters' })]) })
+    expect(compile({
+      schema: 2,
+      nodes: [source('source', bits(16, Uint8Array.of(0x01, 0x02))), { id: 'operation', operation: 'spn.permute-gather@1', inputs: { value: { node: 'source', port: 'value' } }, parameters: { permutation: [0, 0, 1, 2] } }],
+      outputs: [{ node: 'operation', port: 'value' }],
+    })).toMatchObject({
+      ok: false,
+      diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'operation.invalid-permutation' })]),
+    })
+  })
+
   it('publishes source output typing through its declared type parameter', () => {
     expect(operationManifests.find((manifest) => manifest.identity === 'core.source@1')?.outputTypeParameter).toBe('type')
   })

@@ -243,6 +243,33 @@ describe('Learning presentation primitives', () => {
     expect(screen.getByRole('rowheader', { name: 'Trace gap' })).toBeVisible()
   })
 
+  it('keeps single-bit lineage narrow and expands only on explicit nibble selection', () => {
+    const nibbleLineage: LearningPresentation = {
+      title: 'Nibble lineage',
+      sections: [{
+        kind: 'trace',
+        caption: 'Nibble lineage',
+        headers: [],
+        rows: [{
+          id: 'trace',
+          label: 'Trace',
+          cells: [],
+          relationships: Array.from({ length: 8 }, (_, bit) => ({ from: `input-${bit}`, to: `output-${bit}` })),
+        }],
+      }],
+    }
+
+    expect([...relatedBitIds(nibbleLineage, 'input-5')].sort()).toEqual(['input-5', 'output-5'])
+
+    const explicitNibbleSeeds = [4, 5, 6, 7].map((bit) => `input-${bit}`)
+    const explicitNibbleLineage = new Set(explicitNibbleSeeds.flatMap((seed) => [...relatedBitIds(nibbleLineage, seed)]))
+    expect([...explicitNibbleLineage].sort()).toEqual([
+      'input-4', 'input-5', 'input-6', 'input-7', 'output-4', 'output-5', 'output-6', 'output-7',
+    ])
+    expect(explicitNibbleLineage.has('input-3')).toBe(false)
+    expect(explicitNibbleLineage.has('output-3')).toBe(false)
+  })
+
   it('renders readable sections without selectable targets', () => {
     render(<LearningPresentationView presentation={{
       title: 'Raw trace',

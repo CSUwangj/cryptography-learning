@@ -2,6 +2,13 @@ import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
 import Backend from 'i18next-http-backend'
 import LanguageDetector from 'i18next-browser-languagedetector'
+import enUSPrimitives from './locales/en-US/primitives.json'
+import zhCNPrimitives from './locales/zh-CN/primitives.json'
+
+export const primitiveResources = {
+  'en-US': enUSPrimitives,
+  'zh-CN': zhCNPrimitives,
+} as const
 
 i18n
   .use(Backend)
@@ -122,7 +129,8 @@ i18n
             'en-US': 'English',
             'zh-CN': 'Chinese(Simplified)',
           }
-        }
+        },
+        primitives: primitiveResources['en-US'],
       },
       'zh-CN': {
         translations: {
@@ -233,7 +241,8 @@ i18n
             'en-US': '英文',
             'zh-CN': '简体中文'
           }
-        }
+        },
+        primitives: primitiveResources['zh-CN'],
       }
     },
     fallbackLng: [ 'zh-CN', 'en-US' ],

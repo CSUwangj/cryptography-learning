@@ -85,11 +85,20 @@ export type LessonPresentation =
     readonly algorithm: 'AES'
     readonly variant: 128 | 192 | 256
     readonly direction: 'encrypt' | 'decrypt'
+    readonly labels?: Readonly<Record<string, string>>
   }
   | {
     readonly kind: 'key-expansion'
     readonly algorithm: 'AES'
     readonly variant: 128 | 192 | 256
+    readonly labels?: Readonly<Record<string, string>>
+  }
+  | {
+    readonly kind: 'spn-cipher'
+    readonly algorithm?: string
+    readonly variant?: number
+    readonly direction?: 'encrypt' | 'decrypt'
+    readonly labels?: Readonly<Record<string, string>>
   }
 
 export type CompiledStep = {
@@ -423,7 +432,8 @@ const validateGraphNode = (
     const parameters = requireMap(node.parameters, `${path}.parameters`, spans, diagnostics)
     const allowed = node.operation === 'core.source@1' ? ['type', 'value', 'roundKeys']
       : node.operation === 'spn.substitute@1' ? ['sBox']
-      : node.operation === 'spn.permute@1' ? ['permutation']
+      : node.operation === 'spn.permute@1' || node.operation === 'spn.permute-gather@1' ? ['permutation']
+      : node.operation === 'core.substitute-nibbles@1' ? ['sBox', 'start', 'count']
       : node.operation === 'aes.key-word@1' ? ['index']
       : node.operation === 'aes.rcon-word@1' ? ['round']
       : node.operation === 'core.xor@1' || node.operation === 'core.output@1'
@@ -926,20 +936,34 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
     if (step.presentation !== undefined) {
       const presentation = requireMap(step.presentation, `${path}.presentation`, lesson.spans, diagnostics)
       if (presentation) {
-        checkFields(presentation, ['kind', 'algorithm', 'variant', 'direction'], `${path}.presentation`, lesson.spans, diagnostics)
+        checkFields(presentation, ['kind', 'algorithm', 'variant', 'direction', 'labels'], `${path}.presentation`, lesson.spans, diagnostics)
         const kind = presentation.kind
         const algorithm = presentation.algorithm
         const variant = presentation.variant
         const direction = presentation.direction
+        const labels = presentation.labels === undefined ? undefined : requireMap(presentation.labels, `${path}.presentation.labels`, lesson.spans, diagnostics)
+        if (labels) for (const [identity, textId] of Object.entries(labels)) {
+          if (typeof textId !== 'string' || !identity) diagnostics.push(diagnostic('lesson.invalid-input', 'Presentation labels must map operation identities to text IDs.', `${path}.presentation.labels.${identity}`, lesson.spans.get(`${path}.presentation.labels.${identity}`)))
+          else textIds.add(textId)
+        }
+        if (!isV2 && presentation.labels !== undefined) diagnostics.push(diagnostic('lesson.v2-feature-in-v1', 'Presentation labels require version: 2.', `${path}.presentation.labels`, lesson.spans.get(`${path}.presentation.labels`)))
         const validVariant = variant === 128 || variant === 192 || variant === 256
         if (isV2 && (kind === 'block-cipher' || kind === 'key-expansion')) {
           diagnostics.push(diagnostic('lesson.v1-feature-in-v2', 'This presentation is only supported by version: 1.', `${path}.presentation.kind`, lesson.spans.get(`${path}.presentation.kind`)))
         } else if (!isV2 && kind === 'spn-cipher') {
           diagnostics.push(diagnostic('lesson.v2-feature-in-v1', 'This presentation requires version: 2.', `${path}.presentation.kind`, lesson.spans.get(`${path}.presentation.kind`)))
         } else if (kind === 'block-cipher' && algorithm === 'AES' && validVariant && (direction === 'encrypt' || direction === 'decrypt')) {
-          compiled.presentation = { kind, algorithm, variant, direction }
+          compiled.presentation = { kind, algorithm, variant, direction, ...(labels ? { labels: labels as Record<string, string> } : {}) }
         } else if (kind === 'key-expansion' && algorithm === 'AES' && validVariant && direction === undefined) {
-          compiled.presentation = { kind, algorithm, variant }
+          compiled.presentation = { kind, algorithm, variant, ...(labels ? { labels: labels as Record<string, string> } : {}) }
+        } else if (isV2 && kind === 'spn-cipher') {
+          compiled.presentation = {
+            kind,
+            ...(typeof algorithm === 'string' ? { algorithm } : {}),
+            ...(typeof variant === 'number' ? { variant } : {}),
+            ...(direction === 'encrypt' || direction === 'decrypt' ? { direction } : {}),
+            ...(labels ? { labels: labels as Record<string, string> } : {}),
+          }
         } else {
           diagnostics.push(diagnostic('lesson.invalid-input', 'Presentation metadata is invalid.', `${path}.presentation`, lesson.spans.get(`${path}.presentation`)))
         }
