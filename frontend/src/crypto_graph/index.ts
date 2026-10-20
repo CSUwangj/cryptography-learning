@@ -695,7 +695,7 @@ const concat: Operation = {
 const validPermutation = (values: unknown, size: number): values is readonly number[] =>
   Array.isArray(values)
   && values.length === size
-  && values.every((value) => Number.isSafeInteger(value) && value >= 0 && value < size)
+  && Array.from({ length: size }, (_, index) => Object.prototype.hasOwnProperty.call(values, index) && Number.isSafeInteger(values[index]) && values[index] >= 0 && values[index] < size).every(Boolean)
   && new Set(values).size === size
 
 const readBits = (value: BitsValue, start: number, size: number): number => {
@@ -793,6 +793,206 @@ const permuteGather: Operation = {
       writeBits(output, input.type.size, nibble * 4, readBits(input, permutation[nibble] * 4, 4), 4)
     }
     return { value: bits(input.type.size, output) }
+  },
+}
+
+const substituteBytes: Operation = {
+  manifest: {
+    identity: 'core.substitute-bytes@1',
+    inputs: [{ name: 'value', type: { family: 'bits', size: 'N' } }],
+    outputs: [{ name: 'value', type: { family: 'bits', size: 'N' } }],
+  },
+  validateParameters(parameters, node) {
+    const sBox = parameters.sBox
+    return Array.isArray(sBox) && sBox.length === 256
+      && Array.from({ length: 256 }, (_, index) => Object.prototype.hasOwnProperty.call(sBox, index) && Number.isSafeInteger(sBox[index]) && sBox[index] >= 0 && sBox[index] <= 255).every(Boolean)
+      ? []
+      : [diagnostic('operation.invalid-s-box', 'S-box must contain 256 byte values.', `${node.id}.parameters.sBox`, node)]
+  },
+  inferOutputTypes(inputTypes, parameters, node) {
+    const type = inputTypes.value
+    if (type?.family !== 'bits' || typeof type.size !== 'number' || type.size % 8 !== 0) {
+      return { ok: false, diagnostics: [diagnostic('operation.invalid-byte-width', 'Byte substitution requires a bits width divisible by 8.', 'inputs.value')] }
+    }
+    const start = parameters.start === undefined ? 0 : parameters.start
+    const count = parameters.count === undefined ? type.size / 8 - (typeof start === 'number' ? start : 0) : parameters.count
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(count) || (start as number) < 0 || (count as number) < 0 || (start as number) + (count as number) > type.size / 8) {
+      return { ok: false, diagnostics: [diagnostic('operation.substitute-bytes-range-out-of-bounds', 'Substitution range is outside the input width.', `${node?.id ?? 'substitute-bytes'}.parameters`, node)] }
+    }
+    return { ok: true, value: { value: type } }
+  },
+  lineage(parameters, inputTypes) {
+    const size = inputTypes.value?.family === 'bits' ? inputTypes.value.size as number : 0
+    const range = rangeParameter(parameters, size / 8, { id: 'substitute-bytes' })
+    const start = range.ok ? range.value.start : 0
+    const count = range.ok ? range.value.count : 0
+    return { value: Array.from({ length: size }, (_, bit) => {
+      const byte = Math.floor(bit / 8)
+      return byte >= start && byte < start + count
+        ? Array.from({ length: 8 }, (_, sourceBit) => ({ port: 'value', bit: byte * 8 + sourceBit }))
+        : [{ port: 'value', bit }]
+    }) }
+  },
+  execute(inputs, parameters) {
+    const input = inputs.value as BitsValue
+    const sBox = parameters.sBox as readonly number[]
+    const start = parameters.start === undefined ? 0 : parameters.start as number
+    const count = parameters.count === undefined ? input.type.size / 8 - start : parameters.count as number
+    const output = input.bytes.slice()
+    for (let byte = start; byte < start + count; byte += 1) output[byte] = sBox[output[byte]]
+    return { value: bits(input.type.size, output) }
+  },
+}
+
+const permuteBytes: Operation = {
+  manifest: {
+    identity: 'core.permute-bytes@1',
+    inputs: [{ name: 'value', type: { family: 'bits', size: 'N' } }],
+    outputs: [{ name: 'value', type: { family: 'bits', size: 'N' } }],
+  },
+  inferOutputTypes(inputTypes, parameters) {
+    const type = inputTypes.value
+    if (type?.family !== 'bits' || typeof type.size !== 'number' || type.size % 8 !== 0) {
+      return { ok: false, diagnostics: [diagnostic('operation.invalid-byte-width', 'Byte permutation requires a bits width divisible by 8.', 'inputs.value')] }
+    }
+    return validPermutation(parameters.permutation, type.size / 8)
+      ? { ok: true, value: { value: type } }
+      : { ok: false, diagnostics: [diagnostic('operation.invalid-permutation', 'Permutation must cover each input byte exactly once.', 'parameters.permutation')] }
+  },
+  lineage(parameters, inputTypes) {
+    const size = inputTypes.value?.family === 'bits' ? inputTypes.value.size as number : 0
+    const permutation = parameters.permutation as readonly number[]
+    return { value: Array.from({ length: size }, (_, bit) => {
+      const byte = Math.floor(bit / 8)
+      return [{ port: 'value', bit: (permutation[byte] ?? 0) * 8 + bit % 8 }]
+    }) }
+  },
+  execute(inputs, parameters) {
+    const input = inputs.value as BitsValue
+    const permutation = parameters.permutation as readonly number[]
+    return { value: bits(input.type.size, Uint8Array.from(permutation.map((index) => input.bytes[index]))) }
+  },
+}
+
+const rotateWord: Operation = {
+  manifest: {
+    identity: 'core.rotate-word@1',
+    inputs: [{ name: 'value', type: { family: 'bits', size: 'N' } }],
+    outputs: [{ name: 'value', type: { family: 'bits', size: 'N' } }],
+  },
+  inferOutputTypes(inputTypes, parameters, node) {
+    const type = inputTypes.value
+    const target = parameters.target
+    const amount = parameters.amount
+    if (type?.family !== 'bits' || typeof type.size !== 'number' || type.size % 32 !== 0
+      || !Number.isSafeInteger(target) || !Number.isSafeInteger(amount) || (target as number) < 0
+      || (amount as number) < 1 || (amount as number) > 31 || (target as number) >= type.size / 32) {
+      return { ok: false, diagnostics: [diagnostic('operation.rotate-word-out-of-bounds', 'Word rotation parameters are outside the input width.', `${node?.id ?? 'rotate-word'}.parameters`, node)] }
+    }
+    return { ok: true, value: { value: type } }
+  },
+  lineage(parameters, inputTypes) {
+    const size = inputTypes.value?.family === 'bits' ? inputTypes.value.size as number : 0
+    const target = Number(parameters.target)
+    const amount = Number(parameters.amount)
+    return { value: Array.from({ length: size }, (_, bit) => {
+      const word = Math.floor(bit / 32)
+      return [{ port: 'value', bit: word === target ? word * 32 + ((bit - word * 32 + amount) % 32) : bit }]
+    }) }
+  },
+  execute(inputs, parameters) {
+    const input = inputs.value as BitsValue
+    const output = input.bytes.slice()
+    const target = parameters.target as number
+    const amount = parameters.amount as number
+    const start = target * 32
+    output.fill(0, start / 8, start / 8 + 4)
+    for (let bit = 0; bit < 32; bit += 1) writeBits(output, input.type.size, start + bit, readBits(input, start + ((bit + amount) % 32), 1), 1)
+    return { value: bits(input.type.size, output) }
+  },
+}
+
+const xorConstant: Operation = {
+  manifest: {
+    identity: 'core.xor-constant@1',
+    inputs: [{ name: 'value', type: { family: 'bits', size: 'N' } }],
+    outputs: [{ name: 'value', type: { family: 'bits', size: 'N' } }],
+  },
+  inferOutputTypes(inputTypes, parameters, node) {
+    const type = inputTypes.value
+    const target = parameters.target
+    const constant = parameters.constant
+    if (type?.family !== 'bits' || typeof type.size !== 'number' || type.size % 32 !== 0
+      || !Number.isSafeInteger(target) || (target as number) < 0 || (target as number) >= type.size / 32
+      || !Number.isSafeInteger(constant) || (constant as number) < 0 || (constant as number) > 0xffffffff) {
+      return { ok: false, diagnostics: [diagnostic('operation.xor-constant-out-of-bounds', 'Word constant parameters are outside the input width.', `${node?.id ?? 'xor-constant'}.parameters`, node)] }
+    }
+    return { ok: true, value: { value: type } }
+  },
+  lineage(_, inputTypes) {
+    const size = inputTypes.value?.family === 'bits' ? inputTypes.value.size as number : 0
+    return { value: Array.from({ length: size }, (_, bit) => [{ port: 'value', bit }]) }
+  },
+  execute(inputs, parameters) {
+    const input = inputs.value as BitsValue
+    const output = input.bytes.slice()
+    const target = parameters.target as number
+    const constant = parameters.constant as number
+    const start = target * 32
+    for (let bit = 0; bit < 32; bit += 1) {
+      const value = readBits(input, start + bit, 1) ^ ((constant >>> (31 - bit)) & 1)
+      const [byte, shift] = bitPosition(input.type.size, start + bit)
+      if (value) output[byte] |= 1 << shift
+      else output[byte] &= ~(1 << shift)
+    }
+    return { value: bits(input.type.size, output) }
+  },
+}
+
+const aesXorWords: Operation = {
+  manifest: {
+    identity: 'aes.xor-words@1',
+    inputs: [{ name: 'state', type: { family: 'bits', size: 'N' } }, { name: 'temp', type: { family: 'bits', size: 32 } }],
+    outputs: [{ name: 'value', type: { family: 'bits', size: 'N' } }],
+  },
+  inferOutputTypes(inputTypes, parameters, node) {
+    const type = inputTypes.state
+    const start = parameters.start
+    const count = parameters.count
+    if (type?.family !== 'bits' || typeof type.size !== 'number' || type.size % 32 !== 0
+      || inputTypes.temp?.family !== 'bits' || inputTypes.temp.size !== 32
+      || !Number.isSafeInteger(start) || !Number.isSafeInteger(count) || (start as number) < 0 || (count as number) < 0
+      || (start as number) + (count as number) > type.size / 32) {
+      return { ok: false, diagnostics: [diagnostic('operation.xor-words-out-of-bounds', 'Chained XOR range is outside the input width.', `${node?.id ?? 'xor-words'}.parameters`, node)] }
+    }
+    return { ok: true, value: { value: type } }
+  },
+  lineage(parameters, inputTypes) {
+    const size = inputTypes.state?.family === 'bits' ? inputTypes.state.size as number : 0
+    const start = Number(parameters.start)
+    const count = Number(parameters.count)
+    return { value: Array.from({ length: size }, (_, bit) => {
+      const word = Math.floor(bit / 32)
+      if (word < start || word >= start + count) return [{ port: 'state', bit }]
+      return [
+        ...Array.from({ length: word - start + 1 }, (_, index) => ({ port: 'state', bit: (start + index) * 32 + bit % 32 })),
+        { port: 'temp', bit: bit % 32 },
+      ]
+    }) }
+  },
+  execute(inputs, parameters) {
+    const state = inputs.state as BitsValue
+    const temp = inputs.temp as BitsValue
+    const output = state.bytes.slice()
+    const start = parameters.start as number
+    const count = parameters.count as number
+    let previous = temp
+    for (let word = start; word < start + count; word += 1) {
+      const current = bits(32, Uint8Array.from(Array.from({ length: 4 }, (_, byte) => state.bytes[word * 4 + byte] ^ previous.bytes[byte])))
+      output.set(current.bytes, word * 4)
+      previous = current
+    }
+    return { value: bits(state.type.size, output) }
   },
 }
 
@@ -1144,6 +1344,7 @@ const aesRotWord: Operation = {
     inputs: [{ name: 'value', type: { family: 'bits', size: 32 } }],
     outputs: [{ name: 'value', type: { family: 'bits', size: 32 } }],
   },
+  lineage: () => ({ value: Array.from({ length: 32 }, (_, bit) => [{ port: 'value', bit: (bit + 8) % 32 }]) }),
   execute(inputs) {
     const value = (inputs.value as BitsValue).bytes
     return { value: bits(32, Uint8Array.of(value[1], value[2], value[3], value[0])) }
@@ -1156,6 +1357,7 @@ const aesSubWord: Operation = {
     inputs: [{ name: 'value', type: { family: 'bits', size: 32 } }],
     outputs: [{ name: 'value', type: { family: 'bits', size: 32 } }],
   },
+  lineage: () => ({ value: Array.from({ length: 32 }, (_, bit) => Array.from({ length: 8 }, (_, sourceBit) => ({ port: 'value', bit: Math.floor(bit / 8) * 8 + sourceBit }))) }),
   execute(inputs) {
     const value = inputs.value as BitsValue
     return { value: bits(32, value.bytes.map((byte) => aesSBox[byte])) }
@@ -1168,6 +1370,7 @@ const aesRconWord: Operation = {
     inputs: [],
     outputs: [{ name: 'value', type: { family: 'bits', size: 32 } }],
   },
+  lineage: () => ({ value: Array.from({ length: 32 }, () => []) }),
   validateParameters(parameters, node) {
     return Number.isSafeInteger(parameters.round) && (parameters.round as number) >= 1 && (parameters.round as number) <= aesRcon.length
       ? []
@@ -1187,11 +1390,20 @@ const aesWordXor: Operation = {
     inputs: [{ name: 'left', type: { family: 'bits', size: 32 } }, { name: 'right', type: { family: 'bits', size: 32 } }],
     outputs: [{ name: 'value', type: { family: 'bits', size: 32 } }],
   },
+  lineage: () => ({ value: Array.from({ length: 32 }, (_, bit) => [{ port: 'left', bit }, { port: 'right', bit }]) }),
   execute(inputs) {
     const left = inputs.left as BitsValue
     const right = inputs.right as BitsValue
     return { value: bits(32, left.bytes.map((byte, index) => byte ^ right.bytes[index])) }
   },
+}
+
+const byteSubstitutionLineage = (inputTypes: Readonly<Record<string, PortType>>): LineageDeclaration => {
+  const size = inputTypes.value?.family === 'bits' ? inputTypes.value.size as number : 0
+  return { value: Array.from({ length: size }, (_, bit) => {
+    const byte = Math.floor(bit / 8)
+    return Array.from({ length: 8 }, (_, sourceBit) => ({ port: 'value', bit: byte * 8 + sourceBit }))
+  }) }
 }
 
 // Inverse of the FIPS-197 S-box, reused by InvSubBytes.
@@ -1207,6 +1419,7 @@ const aesSubBytes: Operation = {
     inputs: [{ name: 'value', type: { family: 'bits', size: 128 } }],
     outputs: [{ name: 'value', type: { family: 'bits', size: 128 } }],
   },
+  lineage: (_, inputTypes) => byteSubstitutionLineage(inputTypes),
   execute(inputs) {
     const value = inputs.value as BitsValue
     return { value: bits(128, value.bytes.map((byte) => aesSBox[byte])) }
@@ -1219,6 +1432,7 @@ const aesInvSubBytes: Operation = {
     inputs: [{ name: 'value', type: { family: 'bits', size: 128 } }],
     outputs: [{ name: 'value', type: { family: 'bits', size: 128 } }],
   },
+  lineage: (_, inputTypes) => byteSubstitutionLineage(inputTypes),
   execute(inputs) {
     const value = inputs.value as BitsValue
     return { value: bits(128, value.bytes.map((byte) => aesInvSBox[byte])) }
@@ -1232,6 +1446,11 @@ const aesShiftRows: Operation = {
     identity: 'aes.shift-rows@1',
     inputs: [{ name: 'value', type: { family: 'bits', size: 128 } }],
     outputs: [{ name: 'value', type: { family: 'bits', size: 128 } }],
+  },
+  lineage: (_, inputTypes) => {
+    const size = inputTypes.value?.family === 'bits' ? inputTypes.value.size as number : 128
+    const permutation = [0, 5, 10, 15, 4, 9, 14, 3, 8, 13, 2, 7, 12, 1, 6, 11]
+    return { value: Array.from({ length: size }, (_, bit) => [{ port: 'value', bit: permutation[Math.floor(bit / 8)] * 8 + bit % 8 }]) }
   },
   execute(inputs) {
     const value = (inputs.value as BitsValue).bytes
@@ -1248,6 +1467,11 @@ const aesInvShiftRows: Operation = {
     identity: 'aes.inv-shift-rows@1',
     inputs: [{ name: 'value', type: { family: 'bits', size: 128 } }],
     outputs: [{ name: 'value', type: { family: 'bits', size: 128 } }],
+  },
+  lineage: (_, inputTypes) => {
+    const size = inputTypes.value?.family === 'bits' ? inputTypes.value.size as number : 128
+    const permutation = [0, 13, 10, 7, 4, 1, 14, 11, 8, 5, 2, 15, 12, 9, 6, 3]
+    return { value: Array.from({ length: size }, (_, bit) => [{ port: 'value', bit: permutation[Math.floor(bit / 8)] * 8 + bit % 8 }]) }
   },
   execute(inputs) {
     const value = (inputs.value as BitsValue).bytes
@@ -1284,6 +1508,13 @@ const aesMixColumns: Operation = {
     inputs: [{ name: 'value', type: { family: 'bits', size: 128 } }],
     outputs: [{ name: 'value', type: { family: 'bits', size: 128 } }],
   },
+  lineage: (_, inputTypes) => {
+    const size = inputTypes.value?.family === 'bits' ? inputTypes.value.size as number : 128
+    return { value: Array.from({ length: size }, (_, bit) => {
+      const column = Math.floor(Math.floor(bit / 8) / 4)
+      return Array.from({ length: 32 }, (_, sourceBit) => ({ port: 'value', bit: column * 32 + sourceBit }))
+    }) }
+  },
   execute(inputs) {
     const value = (inputs.value as BitsValue).bytes
     const output = new Uint8Array(16)
@@ -1297,6 +1528,13 @@ const aesInvMixColumns: Operation = {
     identity: 'aes.inv-mix-columns@1',
     inputs: [{ name: 'value', type: { family: 'bits', size: 128 } }],
     outputs: [{ name: 'value', type: { family: 'bits', size: 128 } }],
+  },
+  lineage: (_, inputTypes) => {
+    const size = inputTypes.value?.family === 'bits' ? inputTypes.value.size as number : 128
+    return { value: Array.from({ length: size }, (_, bit) => {
+      const column = Math.floor(Math.floor(bit / 8) / 4)
+      return Array.from({ length: 32 }, (_, sourceBit) => ({ port: 'value', bit: column * 32 + sourceBit }))
+    }) }
   },
   execute(inputs) {
     const value = (inputs.value as BitsValue).bytes
@@ -1317,6 +1555,7 @@ const aesRoundKey: Operation = {
     ],
     outputs: [{ name: 'value', type: { family: 'bits', size: 128 } }],
   },
+  lineage: (_, inputTypes) => ({ value: Array.from({ length: 128 }, (_, bit) => [{ port: `w${Math.floor(bit / 32)}`, bit: bit % 32 }]) }),
   execute(inputs) {
     const words = (['w0', 'w1', 'w2', 'w3'] as const).flatMap((name) => [...(inputs[name] as BitsValue).bytes])
     return { value: bits(128, Uint8Array.from(words)) }
@@ -1341,7 +1580,7 @@ const invalidLineage: Operation = {
 }
 
 const operations = new Map<string, Operation>([
-  source, xor, concat, substitute, permute, substituteNibbles, permuteGather, output,
+  source, xor, concat, substitute, permute, substituteNibbles, permuteGather, substituteBytes, permuteBytes, rotateWord, xorConstant, aesXorWords, output,
   caesar, affine, substitution, vigenere, transposition,
   aesKeyWord, aesRotWord, aesSubWord, aesRconWord, aesWordXor, aesRoundKey,
   aesSubBytes, aesInvSubBytes, aesShiftRows, aesInvShiftRows, aesMixColumns, aesInvMixColumns,

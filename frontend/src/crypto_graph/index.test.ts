@@ -43,6 +43,155 @@ const xorGraph = (): AuthoredGraph => ({
 })
 
 describe('CryptoGraph compile/execute seam (#26)', () => {
+  it('executes and traces the composable byte and word primitives', () => {
+    const sBox = Array.from({ length: 256 }, (_, value) => value ^ 0xff)
+    const compiled = compile({
+      schema: 2,
+      nodes: [
+        source('input', bits(64, Uint8Array.of(0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef))),
+        { id: 'sub', operation: 'core.substitute-bytes@1', inputs: { value: { node: 'input', port: 'value' } }, parameters: { start: 1, count: 2, sBox } },
+        { id: 'permute', operation: 'core.permute-bytes@1', inputs: { value: { node: 'sub', port: 'value' } }, parameters: { permutation: [1, 0, 3, 2, 5, 4, 7, 6] } },
+        { id: 'rotate', operation: 'core.rotate-word@1', inputs: { value: { node: 'permute', port: 'value' } }, parameters: { target: 1, amount: 8 } },
+        { id: 'constant', operation: 'core.xor-constant@1', inputs: { value: { node: 'rotate', port: 'value' } }, parameters: { target: 0, constant: 0x01020304 } },
+      ],
+      outputs: [{ node: 'constant', port: 'value' }],
+    })
+    expect(compiled.ok).toBe(true)
+    if (!compiled.ok) return
+    const execution = compiled.value.execute()
+    expect(execution.ok).toBe(true)
+    expect(compiled.value.lineage?.length).toBe(368)
+    expect((execution.ok && hex(execution.value.outputs['constant.value'] as ReturnType<typeof bits>))).toBe('0xdd0364be89efcdab')
+  })
+
+  it.each(['aes.mix-columns@1', 'aes.inv-mix-columns@1'])(
+    '%s declares every bit in each consecutive four-byte column as a dependency',
+    (operation) => {
+      const graph = (value: ReturnType<typeof bits>): AuthoredGraph => ({
+        schema: 2,
+        nodes: [source('input', value), { id: 'transform', operation, inputs: { value: { node: 'input', port: 'value' } } }],
+        outputs: [{ node: 'transform', port: 'value' }],
+      })
+      const compiled = compile(graph(bits(128, new Uint8Array(16))))
+      expect(compiled.ok).toBe(true)
+      if (!compiled.ok) return
+
+      const lineage = compiled.value.lineage ?? []
+      for (let targetBit = 0; targetBit < 128; targetBit += 1) {
+        const column = Math.floor(targetBit / 32)
+        const sources = lineage.filter((edge) => edge.target === 'transform.value' && edge.targetBit === targetBit)
+        expect(sources.map((edge) => edge.sourceBit).sort((a, b) => a - b)).toEqual(
+          Array.from({ length: 32 }, (_, bit) => column * 32 + bit),
+        )
+      }
+      expect(lineage.some((edge) => edge.targetBit === 31 && edge.sourceBit >= 32)).toBe(false)
+      expect(lineage.some((edge) => edge.targetBit === 32 && edge.sourceBit < 32)).toBe(false)
+
+      const changed = new Uint8Array(16)
+      changed[0] = 0x40
+      const counterexample = compile(graph(bits(128, changed)))
+      expect(counterexample.ok).toBe(true)
+      if (!counterexample.ok) return
+      expect(counterexample.value.lineage).toEqual(compiled.value.lineage)
+      const before = compiled.value.execute()
+      const after = counterexample.value.execute()
+      expect(before.ok && after.ok).toBe(true)
+      if (!before.ok || !after.ok) return
+      const beforeByte = (before.value.outputs['transform.value'] as ReturnType<typeof bits>).bytes[0]
+      const afterByte = (after.value.outputs['transform.value'] as ReturnType<typeof bits>).bytes[0]
+      expect(((beforeByte ^ afterByte) & 0x80) !== 0).toBe(true)
+    },
+  )
+
+  it('expands chained AES word XOR lineage to input ports', () => {
+    const compiled = compile({
+      schema: 2,
+      nodes: [
+        source('state', bits(96, Uint8Array.of(0x00, 0x01, 0x02, 0x03, 0x10, 0x11, 0x12, 0x13, 0x20, 0x21, 0x22, 0x23))),
+        source('temp', bits(32, Uint8Array.of(0xaa, 0xbb, 0xcc, 0xdd))),
+        { id: 'xor', operation: 'aes.xor-words@1', inputs: { state: { node: 'state', port: 'value' }, temp: { node: 'temp', port: 'value' } }, parameters: { start: 0, count: 3 } },
+      ],
+      outputs: [{ node: 'xor', port: 'value' }],
+    })
+    expect(compiled.ok).toBe(true)
+    if (!compiled.ok) return
+    const execution = compiled.value.execute()
+    expect(execution.ok && hex(execution.value.outputs['xor.value'] as ReturnType<typeof bits>)).toBe('0xaabacedebaabdccd9a8afeee')
+    expect(compiled.value.lineage?.filter((edge) => edge.target === 'xor.value' && edge.targetBit === 37)).toEqual([
+      { source: 'state.value', sourceBit: 5, target: 'xor.value', targetBit: 37 },
+      { source: 'state.value', sourceBit: 37, target: 'xor.value', targetBit: 37 },
+      { source: 'temp.value', sourceBit: 5, target: 'xor.value', targetBit: 37 },
+    ])
+  })
+
+  it('declares AES RotWord and SubWord dependencies structurally', () => {
+    const graph = (operation: string): AuthoredGraph => ({
+      schema: 2,
+      nodes: [source('input', bits(32, Uint8Array.of(0x09, 0xcf, 0x4f, 0x3c))), { id: 'transform', operation, inputs: { value: { node: 'input', port: 'value' } } }],
+      outputs: [{ node: 'transform', port: 'value' }],
+    })
+    const rotated = compile(graph('aes.rot-word@1'))
+    expect(rotated.ok).toBe(true)
+    if (!rotated.ok) return
+    expect(rotated.value.lineage?.find((edge) => edge.targetBit === 0)).toEqual({ source: 'input.value', sourceBit: 8, target: 'transform.value', targetBit: 0 })
+    const substituted = compile(graph('aes.sub-word@1'))
+    expect(substituted.ok).toBe(true)
+    if (!substituted.ok) return
+    expect(substituted.value.lineage?.filter((edge) => edge.targetBit === 9).map((edge) => edge.sourceBit)).toEqual([8, 9, 10, 11, 12, 13, 14, 15])
+  })
+
+  it('declares existing AES byte, row, and round-key lineage', () => {
+    const graph = (operations: readonly string[]): AuthoredGraph => ({
+      schema: 2,
+      nodes: [source('input', bits(128, new Uint8Array(16))), ...operations.map((operation, index) => ({
+        id: `step-${index}`,
+        operation,
+        inputs: { ...(operation === 'aes.round-key@1'
+          ? Object.fromEntries(['w0', 'w1', 'w2', 'w3'].map((port) => [port, { node: 'input', port: 'value' }]))
+          : { value: { node: index === 0 ? 'input' : `step-${index - 1}`, port: 'value' } }) },
+      }))],
+      outputs: [{ node: `step-${operations.length - 1}`, port: 'value' }],
+    })
+    const compiled = compile(graph(['aes.sub-bytes@1', 'aes.shift-rows@1', 'aes.inv-shift-rows@1']))
+    expect(compiled.ok).toBe(true)
+    if (!compiled.ok) return
+    expect(compiled.value.lineage?.filter((edge) => edge.target === 'step-0.value' && edge.targetBit === 0).map((edge) => edge.sourceBit)).toEqual([0, 1, 2, 3, 4, 5, 6, 7])
+    expect(compiled.value.lineage?.find((edge) => edge.target === 'step-1.value' && edge.targetBit === 8)).toEqual({ source: 'step-0.value', sourceBit: 40, target: 'step-1.value', targetBit: 8 })
+    expect(compiled.value.lineage?.find((edge) => edge.target === 'step-2.value' && edge.targetBit === 8)).toEqual({ source: 'step-1.value', sourceBit: 104, target: 'step-2.value', targetBit: 8 })
+
+    const roundKey = compile({
+      schema: 2,
+      nodes: [...[0, 1, 2, 3].map((word) => source(`word-${word}`, bits(32, new Uint8Array(4)))), {
+        id: 'round-key', operation: 'aes.round-key@1',
+        inputs: Object.fromEntries(['w0', 'w1', 'w2', 'w3'].map((port, index) => [port, { node: `word-${index}`, port: 'value' }])),
+      }],
+      outputs: [{ node: 'round-key', port: 'value' }],
+    })
+    expect(roundKey.ok).toBe(true)
+    if (!roundKey.ok) return
+    expect(roundKey.value.lineage?.filter((edge) => edge.target === 'round-key.value' && edge.targetBit === 97)).toEqual([
+      { source: 'word-3.value', sourceBit: 1, target: 'round-key.value', targetBit: 97 },
+    ])
+  })
+
+  it('rejects invalid byte ranges, word targets, and permutations', () => {
+    const graph = (operation: string, parameters: Record<string, unknown>): AuthoredGraph => ({
+      schema: 2,
+      nodes: [source('input', bits(64, new Uint8Array(8))), { id: 'operation', operation, inputs: { value: { node: 'input', port: 'value' } }, parameters }],
+      outputs: [{ node: 'operation', port: 'value' }],
+    })
+    expect(compile(graph('core.substitute-bytes@1', { sBox: Array(256).fill(0), start: 7, count: 2 }))).toMatchObject({ ok: false, diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'operation.substitute-bytes-range-out-of-bounds' })]) })
+    expect(compile(graph('core.rotate-word@1', { target: 2, amount: 8 })).ok).toBe(false)
+    expect(compile(graph('core.permute-bytes@1', { permutation: [0, 1, 1, 3, 4, 5, 6, 7] })).ok).toBe(false)
+    const sparseSBox = Array(256) as number[]
+    for (let index = 0; index < 256; index += 1) if (index !== 17) sparseSBox[index] = index
+    expect(compile(graph('core.substitute-bytes@1', { sBox: sparseSBox }))).toMatchObject({ ok: false, diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'operation.invalid-s-box' })]) })
+    const sparsePermutation = Array.from({ length: 8 }, (_, index) => index)
+    delete sparsePermutation[3]
+    expect(compile(graph('core.permute-bytes@1', { permutation: sparsePermutation }))).toMatchObject({ ok: false, diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'operation.invalid-permutation' })]) })
+    expect(compile(graph('core.substitute-bytes@1', { sBox: Array(256).fill(7) })).ok).toBe(true)
+  })
+
   it('reports malformed, empty, and out-of-bounds projections without throwing', () => {
     const projectionGraph = (projection: unknown): AuthoredGraph => ({
       schema: 2,
@@ -122,6 +271,92 @@ describe('CryptoGraph compile/execute seam (#26)', () => {
     expect(compiled.value.lineage?.filter((edge) => edge.targetBit === 0)).toEqual([
       { source: 'source.value', sourceBit: 0, target: 'substitute.value', targetBit: 0 },
     ])
+  })
+
+  it('executes byte substitution and gather permutation with byte-level structural lineage', () => {
+    const sBox = Array.from({ length: 256 }, (_, index) => 255 - index)
+    const substituted = compile({
+      schema: 2,
+      nodes: [source('source', bits(32, Uint8Array.of(0x12, 0x34, 0x56, 0x78))), {
+        id: 'substitute', operation: 'core.substitute-bytes@1',
+        inputs: { value: { node: 'source', port: 'value' } }, parameters: { sBox, start: 1, count: 2 },
+      }],
+      outputs: [{ node: 'substitute', port: 'value' }],
+    })
+    expect(substituted.ok).toBe(true)
+    if (!substituted.ok) return
+    const substitutedExecution = substituted.value.execute()
+    expect(substitutedExecution.ok && hex(substitutedExecution.value.outputs['substitute.value'] as ReturnType<typeof bits>)).toBe('0x12cba978')
+    expect(substituted.value.lineage?.filter((edge) => edge.targetBit === 8)).toHaveLength(8)
+    expect(substituted.value.lineage?.filter((edge) => edge.targetBit === 0)).toEqual([
+      { source: 'source.value', sourceBit: 0, target: 'substitute.value', targetBit: 0 },
+    ])
+
+    const permuted = compile({
+      schema: 2,
+      nodes: [source('source', bits(32, Uint8Array.of(0x12, 0x34, 0x56, 0x78))), {
+        id: 'permute', operation: 'core.permute-bytes@1',
+        inputs: { value: { node: 'source', port: 'value' } }, parameters: { permutation: [3, 1, 2, 0] },
+      }],
+      outputs: [{ node: 'permute', port: 'value' }],
+    })
+    expect(permuted.ok).toBe(true)
+    if (!permuted.ok) return
+    const permutedExecution = permuted.value.execute()
+    expect(permutedExecution.ok && hex(permutedExecution.value.outputs['permute.value'] as ReturnType<typeof bits>)).toBe('0x78345612')
+    expect(permuted.value.lineage).toContainEqual({ source: 'source.value', sourceBit: 24, target: 'permute.value', targetBit: 0 })
+  })
+
+  it('rotates MSB-first words and XORs only the selected constant word', () => {
+    const graph = (operation: string, parameters: Record<string, unknown>): AuthoredGraph => ({
+      schema: 2,
+      nodes: [source('source', bits(64, Uint8Array.of(0x00, 0x01, 0x02, 0x03, 0x10, 0x11, 0x12, 0x13))), {
+        id: 'operation', operation, inputs: { value: { node: 'source', port: 'value' } }, parameters,
+      }],
+      outputs: [{ node: 'operation', port: 'value' }],
+    })
+    const rotated = compile(graph('core.rotate-word@1', { target: 1, amount: 8 }))
+    expect(rotated.ok).toBe(true)
+    if (!rotated.ok) return
+    const rotatedExecution = rotated.value.execute()
+    expect(rotatedExecution.ok && hex(rotatedExecution.value.outputs['operation.value'] as ReturnType<typeof bits>)).toBe('0x0001020311121310')
+    expect(rotated.value.lineage).toContainEqual({ source: 'source.value', sourceBit: 40, target: 'operation.value', targetBit: 32 })
+
+    const xored = compile(graph('core.xor-constant@1', { target: 1, constant: 0x01000000 }))
+    expect(xored.ok).toBe(true)
+    if (!xored.ok) return
+    const xoredExecution = xored.value.execute()
+    expect(xoredExecution.ok && hex(xoredExecution.value.outputs['operation.value'] as ReturnType<typeof bits>)).toBe('0x0001020311111213')
+    expect(xored.value.lineage?.filter((edge) => edge.target === 'operation.value')).toHaveLength(64)
+  })
+
+  it('chains AES word XOR by corresponding bit position and validates its range', () => {
+    const compiled = compile({
+      schema: 2,
+      nodes: [
+        source('state', bits(96, Uint8Array.of(1, 2, 3, 4, 0x10, 0x20, 0x30, 0x40, 0x80, 0x90, 0xa0, 0xb0))),
+        source('temp', bits(32, Uint8Array.of(0xff, 0, 0, 0))),
+        { id: 'xor', operation: 'aes.xor-words@1', inputs: { state: { node: 'state', port: 'value' }, temp: { node: 'temp', port: 'value' } }, parameters: { start: 0, count: 3 } },
+      ],
+      outputs: [{ node: 'xor', port: 'value' }],
+    })
+    expect(compiled.ok).toBe(true)
+    if (!compiled.ok) return
+    const execution = compiled.value.execute()
+    expect(execution.ok && hex(execution.value.outputs['xor.value'] as ReturnType<typeof bits>)).toBe('0xfe020304ee2233446eb293f4')
+    expect(compiled.value.lineage?.filter((edge) => edge.target === 'xor.value' && edge.targetBit === 69)).toEqual([
+      { source: 'state.value', sourceBit: 5, target: 'xor.value', targetBit: 69 },
+      { source: 'state.value', sourceBit: 37, target: 'xor.value', targetBit: 69 },
+      { source: 'state.value', sourceBit: 69, target: 'xor.value', targetBit: 69 },
+      { source: 'temp.value', sourceBit: 5, target: 'xor.value', targetBit: 69 },
+    ])
+    expect(compiled.value.lineage?.some((edge) => edge.source === 'xor.value')).toBe(false)
+    expect(compile({
+      schema: 2,
+      nodes: [source('state', bits(64, new Uint8Array(8))), source('temp', bits(32, new Uint8Array(4))), {
+        id: 'xor', operation: 'aes.xor-words@1', inputs: { state: { node: 'state', port: 'value' }, temp: { node: 'temp', port: 'value' } }, parameters: { start: 1, count: 2 },
+      }], outputs: [{ node: 'xor', port: 'value' }],
+    })).toMatchObject({ ok: false, diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'operation.xor-words-out-of-bounds' })]) })
   })
 
   it('executes gather nibble permutation and maps output bit 5 to input bit 1', () => {

@@ -434,6 +434,10 @@ const validateGraphNode = (
       : node.operation === 'spn.substitute@1' ? ['sBox']
       : node.operation === 'spn.permute@1' || node.operation === 'spn.permute-gather@1' ? ['permutation']
       : node.operation === 'core.substitute-nibbles@1' ? ['sBox', 'start', 'count']
+      : node.operation === 'core.substitute-bytes@1' ? ['sBox', 'start', 'count']
+      : node.operation === 'core.permute-bytes@1' ? ['permutation']
+      : node.operation === 'core.rotate-word@1' || node.operation === 'core.xor-constant@1' ? ['target', ...(node.operation === 'core.rotate-word@1' ? ['amount'] : ['constant'])]
+      : node.operation === 'aes.xor-words@1' ? ['start', 'count']
       : node.operation === 'aes.key-word@1' ? ['index']
       : node.operation === 'aes.rcon-word@1' ? ['round']
       : node.operation === 'core.xor@1' || node.operation === 'core.output@1'

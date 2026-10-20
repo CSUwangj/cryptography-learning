@@ -23,6 +23,13 @@ import {
 
 const fixtureDirectory = join(dirname(fileURLToPath(import.meta.url)), 'fixture')
 const frontendDirectory = join(fixtureDirectory, '..', '..', '..')
+const aes128V2Fixture: LessonDocuments = {
+  lesson: readFileSync(join(fixtureDirectory, 'aes128-v2.yaml'), 'utf8'),
+  locales: {
+    'en-US': 'title: AES-128 v2 calculation\nsummary: Verify composed AES-128 execution.\ntexts: {}',
+    'zh-CN': 'title: AES-128 v2 计算\nsummary: 验证组合 AES-128 执行。\ntexts: {}',
+  },
+}
 
 const fixture = (): LessonDocuments => ({
   lesson: readFileSync(join(fixtureDirectory, 'lesson.yaml'), 'utf8'),
@@ -49,6 +56,50 @@ class WorkerStub {
 }
 
 describe('Lesson Runtime compiler (#29)', () => {
+  it('executes literal AES-128 v2 schedule and cipher Lessons with projected key binding', async () => {
+    const compiled = compileLesson(aes128V2Fixture)
+    expect(compiled.ok).toBe(true)
+    if (!compiled.ok) return
+    const scheduleStep = compiled.value.steps.find((step) => step.id === 'schedule')!
+    const cipherStep = compiled.value.steps.find((step) => step.id === 'cipher')!
+    expect(cipherStep.execute?.bindings['round-key-1.value']).toEqual({ step: 'schedule', output: 'round-key-1.value' })
+    expect(compiled.value.graphs.schedule.graph.nodes.find((node) => node.id === 'word-1')?.inputs?.temp.bits).toEqual([96, 32])
+
+    // WorkerStub runs the worker request function in-process; this covers Lesson binding and
+    // snapshot behavior, not browser Worker transport, isolation, cancellation, or timing.
+    const previousWorker = globalThis.Worker
+    globalThis.Worker = WorkerStub as unknown as typeof Worker
+    try {
+      const session = createBrowserLessonSession(aes128V2Fixture, 'en-US')
+      expect(session.ok).toBe(true)
+      if (!session.ok) return
+      const schedule = await session.value.enter()
+      expect(schedule.ok).toBe(true)
+      if (!schedule.ok) return
+      const scheduleSnapshot = schedule.value.snapshots.schedule
+      expect(hex(scheduleSnapshot.outputs['round-key-0.value'] as never)).toBe('0x000102030405060708090a0b0c0d0e0f')
+      expect(hex(scheduleSnapshot.outputs['round-key-1.value'] as never)).toBe('0xd6aa74fdd2af72fadaa678f1d6ab76fe')
+      expect(hex(scheduleSnapshot.outputs['round-key-10.value'] as never)).toBe('0x13111d7fe3944a17f307a78b4d2b30c5')
+      const keyEvents = scheduleSnapshot.trace.filter((event) => 'primitive' in event && event.primitive === 'core.output@1')
+      expect(keyEvents[0]).toMatchObject({ path: 'round-key-0.value', value: { type: { family: 'bits', size: 128 } } })
+      expect(keyEvents.at(-1)).toMatchObject({ path: 'round-key-10.value', value: { type: { family: 'bits', size: 128 } } })
+      expect(scheduleSnapshot.trace.filter((event) => 'primitive' in event && event.primitive === 'core.output@1')
+        .every((event) => 'value' in event && event.value?.type.family === 'bits' && event.value.type.size === 128)).toBe(true)
+
+      const cipher = await session.value.next()
+      expect(cipher.ok).toBe(true)
+      if (cipher.ok) {
+        const snapshot = cipher.value.snapshots.cipher
+        expect(hex(snapshot.outputs['add-round-key-10.value'] as never)).toBe('0x69c4e0d86a7b0430d8cdb78070b4c55a')
+        expect(snapshot.trace.filter((event) => 'primitive' in event && event.primitive?.startsWith('aes.'))
+          .every((event) => 'value' in event && event.value?.type.family === 'bits' && event.value.type.size === 128)).toBe(true)
+      }
+      session.value.dispose()
+    } finally {
+      globalThis.Worker = previousWorker
+    }
+  })
+
   it('executes the authored v2 Teaching SPN fixture with bilingual label overrides', async () => {
     const compiled = compileLesson(teachingSpnV2DemoDocuments)
     expect(compiled).toMatchObject({ ok: true, value: { notices: [], steps: [{ presentation: {
