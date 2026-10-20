@@ -11,6 +11,10 @@ the approved issue/decisions using [issue-tracker.md](../../../docs/agents/issue
 The handoff document owns snapshot commands and review reporting. This workflow
 does not authorize tracker writes, commits, pushes, merges or another ticket.
 
+When preparing an invocation prompt, include only the ticket, authorization,
+and per-run overrides or experiment variant. Read reusable workflow rules here
+and acceptance criteria from their authoritative sources instead of copying them.
+
 ## Route the skills
 
 Resolve these installed skills once and record their actual `SKILL.md` paths in
@@ -122,6 +126,10 @@ recheck rounds.
 Use existing tools and `review_handoff.py`; do not add a general runner, scheduler
 or automatic retry/fallback layer. Provider disconnects and permission-service
 errors belong to the environment branch below, not the defect count.
+
+When a check stalls, inspect its blocking child processes and owned resources
+before retrying. Successful output does not prove process completion. Preserve
+timeout and exit evidence; any lifecycle repair still needs to be within scope.
 
 ## Prepare the execution boundary
 

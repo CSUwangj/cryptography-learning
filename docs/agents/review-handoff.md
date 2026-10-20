@@ -80,6 +80,8 @@ python3 scripts/review_handoff.py verify /tmp/issue96-round1.json --require-pass
 ```
 
 Run the other declared checks through `run` with the repository's pinned tools.
+Run checks that write to the same packet sequentially: concurrent `run` calls
+can overwrite each other's recorded attempts.
 Use the host's normal permission flow if a check needs escalation; the wrapper
 does not grant permission or bypass the sandbox. Inspect the log for meaningful
 test coverage, not just a zero exit code. Add an existing tool version command
