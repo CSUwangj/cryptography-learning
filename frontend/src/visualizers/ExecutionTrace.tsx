@@ -2,7 +2,8 @@ import React, { useMemo } from 'react'
 import { hex, type CryptoValue, type TraceCheckpoint, type TraceEvent, type TraceStage, type WorkerExecutionSnapshot } from 'crypto_graph'
 import { learningColors, LearningPresentationView, type LearningDiagnostic, type LearningPresentation, type LearningRow } from '../ui/learning'
 import { PermutationVisual } from './OperationVisuals'
-import { primitiveResources } from '../app/i18n'
+import enUSPrimitives from '../app/i18n/locales/en-US/primitives.json'
+import zhCNPrimitives from '../app/i18n/locales/zh-CN/primitives.json'
 
 type Locale = 'en-US' | 'zh-CN'
 
@@ -120,7 +121,7 @@ const stageLabel = (
   if (event.path === 'output') return text.output
   if ('summary' in event) return `${event.path in outputs ? text.output : text.checkpoint} (${event.path})`
   if (!event.stage && event.primitive) {
-    const labels = primitiveResources[locale as Locale] ?? primitiveResources['en-US']
+    const labels = locale === 'zh-CN' ? zhCNPrimitives : enUSPrimitives
     const label = primitiveLabels?.[event.primitive] ?? labels[event.primitive as keyof typeof labels]
       ?? (locale === 'zh-CN' ? '未命名操作' : 'Unnamed operation')
     return event.round === undefined ? label : `${label} ${event.round}`

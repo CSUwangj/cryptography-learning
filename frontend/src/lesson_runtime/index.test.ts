@@ -790,6 +790,7 @@ steps:
     expect(JSON.parse(execFileSync(process.execPath, ['scripts/validate_lessons.mjs', 'src/lesson_runtime/fixture'], {
       cwd: frontendDirectory,
       encoding: 'utf8',
+      timeout: 15_000,
     }))).toMatchObject({
       ok: true,
       diagnostics: [],
@@ -805,7 +806,10 @@ steps:
     const missing = spawnSync(process.execPath, ['scripts/validate_lessons.mjs', 'missing'], {
       cwd: frontendDirectory,
       encoding: 'utf8',
+      timeout: 15_000,
     })
+    expect(missing.error).toBeUndefined()
+    expect(missing.signal).toBeNull()
     expect(missing.status).toBe(1)
     expect(JSON.parse(missing.stdout)).toMatchObject({ ok: false })
   }, 60_000)
@@ -817,7 +821,9 @@ steps:
       mkdirSync(join(directory, 'locales'), { recursive: true })
       writeFileSync(join(directory, 'lesson.yaml'), documents.lesson)
       for (const [locale, source] of Object.entries(documents.locales)) writeFileSync(join(directory, 'locales', `${locale}.yaml`), source)
-      const result = spawnSync(process.execPath, ['scripts/validate_lessons.mjs', directory], { cwd: frontendDirectory, encoding: 'utf8' })
+      const result = spawnSync(process.execPath, ['scripts/validate_lessons.mjs', directory], { cwd: frontendDirectory, encoding: 'utf8', timeout: 15_000 })
+      expect(result.error).toBeUndefined()
+      expect(result.signal).toBeNull()
       return { status: result.status, report: JSON.parse(result.stdout) }
     }
     try {
