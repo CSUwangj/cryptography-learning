@@ -135,7 +135,7 @@ test.describe('Learning Lesson (#30)', () => {
                     { lang: 'en-US', text: 'Fundamentals' },
                     { lang: 'zh-CN', text: '基础' },
                   ],
-                  lessons: [{ id: 'xor-intro' }],
+                  lessons: [{ id: 'xor-intro', title: variables?.language === 'zh-CN' ? '探索异或' : 'Explore XOR' }, { id: 'malformed-yaml', title: null }],
                 }],
               },
             },
@@ -146,7 +146,9 @@ test.describe('Learning Lesson (#30)', () => {
 
     await page.goto('/learning')
     await expect(page.getByText('Fundamentals')).toBeVisible()
-    await page.getByRole('link', { name: 'xor-intro' }).click()
+    await expect(page.getByRole('link', { name: 'Title unavailable (malformed-yaml)' })).toBeVisible()
+    await page.getByRole('link', { name: 'Explore XOR' }).click()
+    await expect(page.getByRole('navigation', { name: 'Lesson breadcrumb' })).toContainText('Explore XOR')
     await expect(page.getByRole('heading', { name: 'Explore XOR' })).toBeVisible()
 
     await page.getByRole('button', { name: 'Next' }).click()
@@ -165,6 +167,7 @@ test.describe('Learning Lesson (#30)', () => {
     await page.getByRole('button', { name: 'Language' }).click()
     await page.getByRole('option', { name: 'Chinese(Simplified)' }).click()
     await expect(input).toHaveValue('0x0000')
+    await expect(page.getByRole('navigation', { name: '课程导航路径' })).toContainText('探索异或')
     await expect(page.getByText('请输入以 0x 开头的四位十六进制数。')).toBeVisible()
     await page.getByRole('button', { name: '下一步' }).click()
     await expect(page.getByText('0x00ff (bits<16>)')).toBeVisible()

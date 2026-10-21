@@ -22,9 +22,9 @@ impl Query {
         Ok(Practice::from_catalog(catalog))
     }
 
-    async fn learning(&self, ctx: &Context<'_>) -> FieldResult<Learning> {
+    async fn learning(&self, ctx: &Context<'_>, language: String) -> FieldResult<Learning> {
         let catalog = ctx.data::<LessonCatalog>()?;
-        Ok(Learning::from_catalog(catalog))
+        Ok(Learning::from_catalog(catalog, &language))
     }
 
     async fn lesson_documents(
@@ -114,10 +114,10 @@ struct Learning {
 }
 
 impl Learning {
-    fn from_catalog(catalog: &LessonCatalog) -> Self {
+    fn from_catalog(catalog: &LessonCatalog, language: &str) -> Self {
         Self {
             lesson_categories: catalog
-                .learning()
+                .learning(language)
                 .into_iter()
                 .map(LearningCategory::from)
                 .collect(),
@@ -145,11 +145,15 @@ impl From<LearningCatalogCategory> for LearningCategory {
 #[derive(SimpleObject, Debug, Clone)]
 struct Lesson {
     id: String,
+    title: Option<String>,
 }
 
 impl From<CatalogLesson> for Lesson {
     fn from(lesson: CatalogLesson) -> Self {
-        Self { id: lesson.id }
+        Self {
+            id: lesson.id,
+            title: lesson.title,
+        }
     }
 }
 
@@ -316,10 +320,14 @@ mod tests {
     use async_graphql::{EmptyMutation, EmptySubscription, Schema};
 
     #[tokio::test]
-    async fn exposes_ordered_catalog_and_nullable_missing_locale() {
+    async fn exposes_localized_catalog_title_and_document_query() {
         let directory = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(directory.path().join("locales")).unwrap();
-        std::fs::write(directory.path().join("lesson.yaml"), "version: 1").unwrap();
+        std::fs::write(
+            directory.path().join("lesson.yaml"),
+            "version: 1\ndefault_locale: en-US",
+        )
+        .unwrap();
         std::fs::write(directory.path().join("locales/en-US.yaml"), "title: XOR").unwrap();
         let catalog = LessonCatalog::try_from_raw(RawLearning {
             lesson_categories: vec![RawLessonCategory {
@@ -339,15 +347,15 @@ mod tests {
             .data(catalog)
             .finish();
         let response = schema.execute(
-            "{ learning { lessonCategories { id lessons { id } } } lessonDocuments(lessonId: \"xor-intro\", language: \"zh-CN\") { lesson locale } }",
+            "{ learning(language: \"zh-CN\") { lessonCategories { id lessons { id title } } } lessonDocuments(lessonId: \"xor-intro\", language: \"zh-CN\") { lesson locale } }",
         ).await;
 
         assert!(response.errors.is_empty());
         assert_eq!(
             response.data.into_json().unwrap(),
             serde_json::json!({
-                "learning": {"lessonCategories": [{"id": "fundamentals", "lessons": [{"id": "xor-intro"}]}]},
-                "lessonDocuments": {"lesson": "version: 1", "locale": null},
+                "learning": {"lessonCategories": [{"id": "fundamentals", "lessons": [{"id": "xor-intro", "title": "XOR"}]}]},
+                "lessonDocuments": {"lesson": "version: 1\ndefault_locale: en-US", "locale": null},
             }),
         );
     }

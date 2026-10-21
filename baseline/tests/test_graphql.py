@@ -37,11 +37,11 @@ query Lab($categoryId: String!, $labId: String!, $language: String) {
 
 LEARNING_QUERY = """
 query Learning($lessonId: String!, $language: String!) {
-  learning {
+  learning(language: $language) {
     lessonCategories {
       id
       name { lang text }
-      lessons { id }
+      lessons { id title }
     }
   }
   lessonDocuments(lessonId: $lessonId, language: $language) {
@@ -102,7 +102,14 @@ class GraphqlBaselineTest(unittest.TestCase):
         self.assertEqual(category["id"], "fundamentals")
         self.assertEqual(
             category["lessons"],
-            [{"id": lesson_id} for lesson_id in ["xor-intro", "fallback-xor", "malformed-yaml", "classical-substitution", "aes-128-demo", "aes-128-comparison-demo"]],
+            [
+                {"id": "xor-intro", "title": "探索异或"},
+                {"id": "fallback-xor", "title": "Fallback XOR"},
+                {"id": "malformed-yaml", "title": None},
+                {"id": "classical-substitution", "title": "替换密码"},
+                {"id": "aes-128-demo", "title": "AES-128 密码"},
+                {"id": "aes-128-comparison-demo", "title": "AES-128 比较与雪崩"},
+            ],
         )
         self.assertIn("default_locale: en-US", body["data"]["lessonDocuments"]["lesson"])
         self.assertIn("探索异或", body["data"]["lessonDocuments"]["locale"])

@@ -1,5 +1,6 @@
 import { type ApolloClient } from '@apollo/client'
 import { useQuery } from '@apollo/client/react'
+import { useTranslation } from 'react-i18next'
 import {
   LearningCatalogDocument,
   LessonDocumentsDocument,
@@ -9,15 +10,16 @@ import type { LearningCategory, LessonDocuments } from './domain'
 const mapCategory = (category: {
   id: string
   name: readonly { lang: string; text: string }[]
-  lessons: readonly { id: string }[]
+  lessons: readonly { id: string; title: string | null }[]
 }): LearningCategory => ({
   id: category.id,
   names: category.name.map((name) => ({ language: name.lang, text: name.text })),
-  lessons: category.lessons.map((lesson) => ({ id: lesson.id })),
+  lessons: category.lessons.map((lesson) => ({ id: lesson.id, title: lesson.title })),
 })
 
 export const useLearningCatalog = () => {
-  const query = useQuery(LearningCatalogDocument)
+  const { i18n } = useTranslation()
+  const query = useQuery(LearningCatalogDocument, { variables: { language: i18n.language } })
   return {
     loading: query.loading,
     error: query.error,

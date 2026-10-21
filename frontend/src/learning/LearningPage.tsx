@@ -113,7 +113,7 @@ const LessonCatalog: React.FC = () => {
         ?? category.id
       return <section key={category.id}>
         <H3>{name}</H3>
-        <ul>{category.lessons.map((lesson) => <li key={lesson.id}><Link to={`/learning/${lesson.id}`}>{lesson.id}</Link></li>)}</ul>
+        <ul>{category.lessons.map((lesson) => <li key={lesson.id}><Link to={`/learning/${lesson.id}`}>{lesson.title ?? `${t('learning.titleUnavailable')} (${lesson.id})`}</Link></li>)}</ul>
       </section>
     })}
   </section>
@@ -122,6 +122,8 @@ const LessonCatalog: React.FC = () => {
 const LessonView: React.FC = () => {
   const { lessonId } = useParams<LessonRoute>()
   const { i18n, t } = useTranslation()
+  const catalog = useLearningCatalog()
+  const catalogLesson = catalog.categories?.flatMap((category) => category.lessons).find((lesson) => lesson.id === lessonId)
   const client = useApolloClient()
   const session = useRef<BrowserLessonSession | null>(null)
   const activeLesson = useRef<string | null>(null)
@@ -240,7 +242,10 @@ const LessonView: React.FC = () => {
   }
 
   return <section>
-    <Link to="/learning">{t('learning.backToCatalog')}</Link>
+    <nav aria-label={t('learning.breadcrumb')}>
+      <Link to="/learning">{t('learning.backToCatalog')}</Link>
+      {' / '}{catalogLesson?.title ?? `${t('learning.titleUnavailable')} (${lessonId})`}
+    </nav>
     <H2>{locale.title}</H2>
     <p>{locale.summary}</p>
     {step.prose && <Markdown source={rewriteLessonAssets(locale.texts[step.prose] ?? '', lessonId)} />}

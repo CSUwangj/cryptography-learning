@@ -1,5 +1,5 @@
-query LearningCatalog {
-  learning {
+query LearningCatalog($language: String!) {
+  learning(language: $language) {
     lessonCategories {
       id
       name {
@@ -8,6 +8,7 @@ query LearningCatalog {
       }
       lessons {
         id
+        title
       }
     }
   }

@@ -49,6 +49,7 @@ type LearningCategory {
 
 type Lesson {
   id: String!
+  title: String
 }
 
 type LessonDocuments {
@@ -63,7 +64,7 @@ type Practice {
 type Query {
   hello: String!
   practice: Practice!
-  learning: Learning!
+  learning(language: String!): Learning!
   lessonDocuments(lessonId: String!, language: String!): LessonDocuments!
   lab(categoryId: String!, labId: String!, language: String): LabInstance!
   completionBoard(courseRunId: String): CompletionBoard!

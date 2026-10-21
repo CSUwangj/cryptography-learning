@@ -86,6 +86,7 @@ pub struct CatalogTranslation {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CatalogLesson {
     pub id: String,
+    pub title: Option<String>,
     directory: PathBuf,
 }
 
@@ -178,6 +179,7 @@ impl LessonCatalog {
                 }
                 let stored = CatalogLesson {
                     id: lesson.id.clone(),
+                    title: None,
                     directory,
                 };
                 lessons.insert(lesson.id, stored.clone());
@@ -195,8 +197,23 @@ impl LessonCatalog {
         })
     }
 
-    pub fn learning(&self) -> Vec<CatalogCategory> {
-        self.categories.clone()
+    pub fn learning(&self, language: &str) -> Vec<CatalogCategory> {
+        self.categories
+            .iter()
+            .map(|category| CatalogCategory {
+                id: category.id.clone(),
+                name: category.name.clone(),
+                lessons: category
+                    .lessons
+                    .iter()
+                    .map(|lesson| {
+                        let mut lesson = lesson.clone();
+                        lesson.title = lesson_title(&lesson, language);
+                        lesson
+                    })
+                    .collect(),
+            })
+            .collect()
     }
 
     pub fn documents(
@@ -306,6 +323,28 @@ impl LessonCatalog {
     }
 }
 
+#[derive(Deserialize)]
+struct LessonMetadata {
+    default_locale: String,
+}
+
+fn lesson_title(lesson: &CatalogLesson, language: &str) -> Option<String> {
+    let metadata = std::fs::read_to_string(lesson.directory.join("lesson.yaml")).ok()?;
+    let metadata: LessonMetadata = serde_yaml_ng::from_str(&metadata).ok()?;
+    title_in_locale(lesson, language).or_else(|| title_in_locale(lesson, &metadata.default_locale))
+}
+
+fn title_in_locale(lesson: &CatalogLesson, language: &str) -> Option<String> {
+    let path = PathBuf::from("locales").join(format!("{language}.yaml"));
+    if !safe_relative(&path) {
+        return None;
+    }
+    let document = std::fs::read_to_string(lesson.directory.join(path)).ok()?;
+    let value: serde_yaml_ng::Value = serde_yaml_ng::from_str(&document).ok()?;
+    let title = value.get("title")?.as_str()?.trim();
+    (!title.is_empty()).then(|| title.to_owned())
+}
+
 fn safe_relative(path: &Path) -> bool {
     !path.as_os_str().is_empty()
         && !path.is_absolute()
@@ -342,12 +381,51 @@ mod tests {
         std::fs::write(root.path().join("locales/en-US.yaml"), "title: XOR").unwrap();
         let catalog = LessonCatalog::try_from_raw(learning(root.path())).unwrap();
 
-        assert_eq!(catalog.learning()[0].lessons[0].id, "xor-intro");
+        assert_eq!(catalog.learning("en-US")[0].lessons[0].id, "xor-intro");
         assert_eq!(
             catalog.documents("xor-intro", "en-US").unwrap(),
             ("invalid: [ Lesson YAML".into(), Some("title: XOR".into()))
         );
         assert_eq!(catalog.documents("xor-intro", "zh-CN").unwrap().1, None);
+    }
+
+    #[test]
+    fn resolves_requested_title_then_default_and_keeps_invalid_title_nullable() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("locales")).unwrap();
+        std::fs::write(
+            root.path().join("lesson.yaml"),
+            "default_locale: en-US\nopaque: true",
+        )
+        .unwrap();
+        std::fs::write(
+            root.path().join("locales/en-US.yaml"),
+            "title: Default title",
+        )
+        .unwrap();
+        std::fs::write(
+            root.path().join("locales/zh-CN.yaml"),
+            "title: Requested title",
+        )
+        .unwrap();
+        let catalog = LessonCatalog::try_from_raw(learning(root.path())).unwrap();
+
+        assert_eq!(
+            catalog.learning("zh-CN")[0].lessons[0].title.as_deref(),
+            Some("Requested title")
+        );
+        std::fs::write(root.path().join("locales/zh-CN.yaml"), "title: '  '").unwrap();
+        assert_eq!(
+            catalog.learning("zh-CN")[0].lessons[0].title.as_deref(),
+            Some("Default title")
+        );
+        assert_eq!(
+            catalog.learning("en-US")[0].lessons[0].title.as_deref(),
+            Some("Default title")
+        );
+
+        std::fs::write(root.path().join("locales/en-US.yaml"), "title: 42").unwrap();
+        assert_eq!(catalog.learning("zh-CN")[0].lessons[0].title, None);
     }
 
     #[test]
