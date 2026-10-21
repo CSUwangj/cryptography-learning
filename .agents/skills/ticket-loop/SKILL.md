@@ -1,6 +1,6 @@
 ---
 name: ticket-loop
-description: Execute or resume one approved ticket through TDD, pre-review, independent formal review and fixes, ending with staged changes and verifiable evidence.
+description: Execute or resume one approved ticket through requirements review, TDD, pre-review, independent formal review and fixes, ending with staged changes and verifiable evidence.
 ---
 
 # Ticket loop
@@ -26,7 +26,7 @@ do not silently substitute another version or install new tooling.
 
 | Role | Instructions |
 | --- | --- |
-| Coordinator | This skill; run `code-review` for each review stage |
+| Coordinator | This skill; run `code-review` for each code-review stage |
 | Implementer | `implement`; `tdd` for behavior changes and non-trivial logic |
 | Pre-review and formal review | `code-review`, with independent Standards and Spec contexts |
 | All roles | Repository [caveman](../caveman/SKILL.md) at **lite**; plugin `ponytail:ponytail` at **full** |
@@ -53,7 +53,9 @@ These are the maintainer-approved overrides within this loop:
 Pass these overrides with the skill paths to each delegated role; do not rely
 on a child or external runner inheriting the coordinator's context.
 
-Behavior-changing tickets use implementation/TDD, pre-review, then formal review.
+Behavior-changing tickets use requirements review, implementation/TDD, pre-review,
+then formal review. Requirements review is separate from both code-review stages
+and does not replace them.
 Pure documentation, comments or formatting use relevant checks and formal review,
 without pre-review or artificial red tests. Classify by effects: configuration,
 data and executable examples that change behavior take the behavior-changing path.
@@ -80,21 +82,21 @@ The maintainer-approved reusable model and route selection is:
 
 | Configuration | Model | Effort | Execution route |
 | --- | --- | --- | --- |
-| Implementation | `gpt-5.6-terra` | high | Local Codex CLI for implementation and pre-review |
-| Formal review | `gpt-6-astra` | medium | Host subagents with explicit selectors and the privately selected provider |
+| Implementation | `gpt-6.1-sol` | high | Local Codex CLI for implementation and pre-review |
+| Formal review | `gpt-6.1-sol` | max | Host subagents with explicit selectors and the privately selected provider |
 
 The coordinator uses Implementation's provider/model/effort in the actual
 maintainer-started main session; record that session's runner separately. A
 different main-session selection needs an explicit maintainer override or a
 handoff to the selected session. This skill cannot switch its own runtime model;
-do not create an Astra supervisor that polls a delegated Terra coordinator.
+do not create a review-model supervisor that polls a delegated coordinator.
 
 Record reasoning effort when exposed, including an explicit choice of model
 default for a new selection. The role mapping is:
 
 - Coordination, implementation and both pre-review axes use **Implementation**
   in separate contexts; pre-review and implementation never share a context.
-- Both formal-review axes, escalation diagnosis and an authorized escalated
+- Requirements review, both formal-review axes, escalation diagnosis and an authorized escalated
   repair use **Formal review**.
 - The maintainer may separately override pre-review. This mapping is explicit
   authorization, not implicit inheritance from host configuration.
@@ -149,6 +151,14 @@ timeout and exit evidence; any lifecycle repair still needs to be within scope.
    the conflicting or missing sources and ask for the smallest decision. Persist
    approved changes in the proper authority before dependent work; obtain tracker
    publication permission if absent. An execution note is not a second specification.
+5. For behavior-changing tickets, use the selected Formal review model to review
+   the approved ticket, acceptance criteria, repository contracts, non-goals and
+   execution note for conflicts, omissions and invented requirements. Record its
+   verdict and open questions in the note before dispatching implementation.
+   The reviewer identifies ambiguity; only the maintainer resolves product
+   requirements. The reviewer does not add requirements or choose the
+   implementation design. This is a requirements review, not a `code-review` run
+   against an implementation diff.
 
 Proceed when the note covers the ticket and no blocking decision remains.
 Do not ask for another approval just because preparation has finished.
@@ -163,10 +173,10 @@ it honestly and target a missing behavior rather than fabricating a failure.
 Use existing test tools and agreed public interfaces, without speculative test
 architecture. Run documentation examples using the files actually shown.
 
-The coordinator using Implementation (currently Terra) owns routine validation
+The coordinator using Implementation owns routine validation
 and evidence capture, running checks directly or assigning them to the implementer.
 This includes the ticket's focused/full tests, typecheck, install/build, guide
-examples and browser checks where applicable; it is not work reserved for Astra.
+examples and browser checks where applicable; these are not reserved for Formal review.
 Use the host's normal permission flow for blocked commands. Assignment cannot
 grant permissions or turn an unavailable check into a pass. Schedule dependency
 installation outside review and browser runs so it cannot mutate their environment.
@@ -207,6 +217,11 @@ Give reviewers the approved sources, exact packet, applicable guidance and this 
 > the checkout. Report stage/axis, source-backed expected and observed behavior,
 > location and evidence, using the repository format. Verify the snapshot again
 > at the end. Report verification limits separately from the code verdict.
+
+Record each formal axis with the handoff document's `review` command. At dispatch
+or restart, mark that axis pending; after return, record the actual verdict and
+finding dispositions. An unreturned report stays pending; an unresolved dispute
+stays disputed. Pre-review reports cannot supply formal-review entries.
 
 Formal review starts in contexts independent of coordination, implementation,
 pre-review and escalation diagnosis, covering the whole ticket, not only surviving
@@ -264,11 +279,11 @@ ask the maintainer. New scope or unresolved requirements always require a decisi
 
 ## Deliver
 
-Default completion requires `verify --require-passed`, acceptance coverage
+Default completion requires `verify --require-passed --require-reviewed`, acceptance coverage
 (including justified unaffected earlier evidence),
 no remaining blockers, both formal-review axes completed, and required human
 decisions recorded. If the maintainer explicitly accepts a verification gap,
-record it under repository authority, verify the snapshot, and report that
+record it under repository authority, use `verify --require-reviewed`, and report that
 exception; do not label unavailable or unrun checks as passed. Without that
 exception, incomplete evidence means incomplete delivery despite a review pass.
 

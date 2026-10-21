@@ -34,7 +34,7 @@ staged change. Recheck affected evidence after changing that snapshot.
 Use `scripts/review_handoff.py` for the single-ticket loop. It uses Python's
 standard library and does not stage, commit, change branches, or contact a
 service. The caller remains responsible for authorizing each check command.
-Read `python3 scripts/review_handoff.py --help` for the three subcommands.
+Read `python3 scripts/review_handoff.py --help` for the available subcommands.
 
 Prepare an English notes file outside the checkout. Include the approved issue
 and decision links, acceptance-to-check mapping, non-goals and accepted risks,
@@ -80,8 +80,9 @@ python3 scripts/review_handoff.py verify /tmp/issue96-round1.json --require-pass
 ```
 
 Run the other declared checks through `run` with the repository's pinned tools.
-Run checks that write to the same packet sequentially: concurrent `run` calls
-can overwrite each other's recorded attempts.
+Serialize all `run` and `review` writes to one packet; concurrent writes can
+overwrite each other's records. Reviewers can inspect code in parallel while
+the coordinator records their returned reports sequentially.
 Use the host's normal permission flow if a check needs escalation; the wrapper
 does not grant permission or bypass the sandbox. Inspect the log for meaningful
 test coverage, not just a zero exit code. Add an existing tool version command
@@ -101,10 +102,44 @@ when needed to make environment-dependent evidence interpretable.
   completion, failed launch or changed snapshot is `unavailable`. A check with
   no attempt is `not-run`. Only exit zero on the recorded snapshot is `passed`.
 - `verify` checks snapshot and log identity. `--require-passed` also requires
-  the latest attempt of every declared check to pass. Ordinary `verify` permits
-  reviewing code with explicitly incomplete evidence; it is not a completion
-  gate. Neither mode decides whether the planned checks cover the acceptance
-  criteria.
+  the latest attempt of every declared check to pass. `--require-reviewed`
+  separately requires both formal-review axes to pass on this snapshot with
+  no open or disputed findings. Normal delivery requires both flags. Ordinary
+  `verify` permits incomplete evidence; none of these modes judges coverage,
+  review correctness or reviewer independence.
+
+### Record formal reviews
+
+Send reviewers the packet and the snapshot ID printed by `create` or `verify`.
+New packets and older packets without review records have both axes pending.
+Before restarting an axis on the same snapshot, record `pending` using the
+dispatch note as evidence. After each report returns, record its actual status
+(`passed`, `changes-required` or `disputed`); pre-review is not a formal verdict.
+Use `disputed` while a reported blocker awaits adjudication, even if another
+reviewer passed. Store reports and disposition reasons in English outside the
+checkout. The helper embeds their text, so later edits do not rewrite history.
+
+For example, after both independent formal reports have actually returned a pass:
+
+```sh
+python3 scripts/review_handoff.py review /tmp/issue96-round1.json \
+  --axis standards --status passed --snapshot SNAPSHOT_ID \
+  --evidence /tmp/issue96-formal-standards.md
+python3 scripts/review_handoff.py review /tmp/issue96-round1.json \
+  --axis spec --status passed --snapshot SNAPSHOT_ID \
+  --evidence /tmp/issue96-formal-spec.md
+python3 scripts/review_handoff.py verify /tmp/issue96-round1.json \
+  --require-passed --require-reviewed
+```
+
+Add `--finding ID STATUS` for each finding raised or updated in that report:
+`open`, `disputed`, `resolved`, `withdrawn` or `non-blocking`. IDs are scoped to
+their axis. Omitted IDs retain their previous status, including when recording
+a pass; clearing a finding requires an explicit disposition and its reason in
+the evidence. Review entries are retained. A different snapshot needs fresh
+review records; carry outstanding finding IDs into that review from the notes.
+The helper checks recorded state, not whether a report omitted a real finding
+or falsely claimed a pass.
 
 Use a new packet filename after code changes; the helper refuses to overwrite
 an existing packet at creation. Run affected checks against the new snapshot,

@@ -61,6 +61,17 @@ class ReviewHandoffTest(unittest.TestCase):
     def data(self):
         return json.loads(self.packet.read_text())
 
+    def record_review(self, axis, status="passed", *, expected=0, snapshot=None, findings=()):
+        evidence = self.directory / f"{axis}-review.md"
+        evidence.write_text(f"Formal {axis} review: {status}. Evidence covers the recorded snapshot.\n")
+        return self.cli(
+            "review", self.packet, "--axis", axis, "--status", status,
+            "--snapshot", snapshot or self.data()["snapshot_id"],
+            "--evidence", evidence,
+            *[argument for finding in findings for argument in ("--finding", *finding)],
+            expected=expected,
+        )
+
     def test_complete_handoff_has_reproducible_diff_and_check_evidence(self):
         self.create()
         diff = subprocess.run(shlex.split(self.data()["diff_command"]), capture_output=True, text=True, check=True)
@@ -86,6 +97,111 @@ class ReviewHandoffTest(unittest.TestCase):
         self.run_python("print('built')", label="build")
         self.cli("verify", self.packet, "--require-passed")
         self.assertEqual([a["status"] for a in self.data()["checks"]["unit"]], ["failed", "passed"])
+
+    def test_passing_checks_do_not_imply_completed_reviews(self):
+        self.create()
+        self.run_python("print('checks passed')")
+        result = self.cli("verify", self.packet, "--require-passed")
+        self.assertIn('Formal review status: {"spec": "pending", "standards": "pending"}', result.stdout)
+        result = self.cli("verify", self.packet, "--require-passed", "--require-reviewed", expected=1)
+        self.assertIn("both formal-review axes must pass", result.stderr)
+
+    def test_formal_reviews_are_separate_from_checks_and_keep_each_axis_history(self):
+        self.create()
+        self.record_review("standards")
+        self.cli("verify", self.packet, "--require-reviewed", expected=1)
+        for status in ("pending", "changes-required", "disputed"):
+            with self.subTest(status=status):
+                self.record_review("spec", status)
+                self.cli("verify", self.packet, "--require-reviewed", expected=1)
+        self.record_review("spec")
+        self.cli("verify", self.packet, "--require-reviewed")
+        self.cli("verify", self.packet, "--require-passed", "--require-reviewed", expected=1)
+        self.run_python("print('verified')")
+        self.cli("verify", self.packet, "--require-passed", "--require-reviewed")
+        self.assertEqual([r["status"] for r in self.data()["reviews"]["spec"]],
+                         ["pending", "changes-required", "disputed", "passed"])
+        self.assertIn("Formal spec review: passed", self.data()["reviews"]["spec"][-1]["evidence"])
+
+    def test_unresolved_findings_survive_pass_and_need_explicit_disposition(self):
+        self.create()
+        self.record_review("standards")
+        for status in ("open", "disputed"):
+            with self.subTest(status=status):
+                self.record_review("spec", findings=[("R1", status)])
+                result = self.cli("verify", self.packet, "--require-reviewed", expected=1)
+                self.assertIn("spec:R1", result.stderr)
+                self.record_review("spec")
+                self.cli("verify", self.packet, "--require-reviewed", expected=1)
+        # The other axis cannot clear Spec's finding with the same ID.
+        self.record_review("standards", findings=[("R1", "resolved")])
+        self.cli("verify", self.packet, "--require-reviewed", expected=1)
+        for status in ("resolved", "withdrawn", "non-blocking"):
+            with self.subTest(status=status):
+                self.record_review("spec", findings=[("R1", status)])
+                self.cli("verify", self.packet, "--require-reviewed")
+
+    def test_reviews_cannot_be_recorded_or_reused_on_another_snapshot(self):
+        self.create()
+        self.record_review("standards")
+        self.record_review("spec")
+        original = self.data()
+        original_bytes = self.packet.read_bytes()
+        (self.repo / self.target).write_text("repaired implementation\n")
+        self.git("add", "--", self.target)
+        self.record_review("spec", expected=1)
+        self.assertEqual(self.packet.read_bytes(), original_bytes)
+        self.cli("verify", self.packet, "--require-reviewed", expected=1)
+        self.packet = self.directory / "round2.json"
+        self.create()
+        self.assertNotEqual(original["snapshot_id"], self.data()["snapshot_id"])
+        result = self.record_review("spec", snapshot=original["snapshot_id"], expected=1)
+        self.assertIn("snapshot ID differs", result.stderr)
+        self.assertEqual(self.data()["reviews"]["spec"], [])
+        copied = self.data()
+        copied["reviews"] = original["reviews"]
+        self.packet.write_text(json.dumps(copied))
+        result = self.cli("verify", self.packet, "--require-reviewed", expected=1)
+        self.assertIn("snapshot ID differs", result.stderr)
+
+    def test_legacy_packets_need_explicit_review_records(self):
+        self.create()
+        self.run_python("print('checked')")
+        legacy = self.data()
+        del legacy["reviews"]
+        del legacy["snapshot_id"]
+        self.packet.write_text(json.dumps(legacy))
+        self.cli("verify", self.packet, "--require-passed")
+        self.cli("verify", self.packet, "--require-reviewed", expected=1)
+        result = self.cli("verify", self.packet)
+        identity = result.stdout.split("Snapshot ID: ", 1)[1].splitlines()[0]
+        self.record_review("standards", snapshot=identity)
+        self.record_review("spec", snapshot=identity)
+        self.cli("verify", self.packet, "--require-passed", "--require-reviewed")
+
+    def test_invalid_review_records_leave_packet_unchanged(self):
+        self.create()
+        original = self.packet.read_bytes()
+        for findings in ([("R1", "typo")], [(" ", "open")],
+                         [("R1", "open"), ("R1", "resolved")]):
+            with self.subTest(findings=findings):
+                self.record_review("spec", findings=findings, expected=1)
+                self.assertEqual(self.packet.read_bytes(), original)
+        empty = self.directory / "empty-review.md"
+        empty.write_text(" ")
+        result = self.cli(
+            "review", self.packet, "--axis", "spec", "--status", "passed",
+            "--snapshot", self.data()["snapshot_id"], "--evidence", empty, expected=1,
+        )
+        self.assertIn("must not be empty", result.stderr)
+        self.assertEqual(self.packet.read_bytes(), original)
+        result = self.cli(
+            "review", self.packet, "--axis", "spec", "--status", "passed",
+            "--snapshot", self.data()["snapshot_id"],
+            "--evidence", self.repo / self.target, expected=1,
+        )
+        self.assertIn("outside the reviewed worktree", result.stderr)
+        self.assertEqual(self.packet.read_bytes(), original)
 
     def test_unstaged_target_is_rejected(self):
         (self.repo / self.target).write_text("unstaged fix\n")

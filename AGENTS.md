@@ -57,18 +57,24 @@ For an authorized single-ticket implementation/review loop, use
 [ticket-loop](.agents/skills/ticket-loop/SKILL.md) and
 [`scripts/review_handoff.py`](scripts/review_handoff.py) to pin the review
 snapshot and capture check results. Use the skill's maintainer-approved reusable
-mapping: Terra as the actual coordinating main session, implementer and
-pre-review model; Astra for independent formal review and escalation diagnosis.
+mapping for the actual coordinating main session, implementation, requirements
+review, pre-review, independent formal review and escalation diagnosis.
+For behavior-changing tickets, the selected formal-review model must review the
+approved ticket, acceptance criteria, repository contracts, non-goals and execution note
+for conflicts, omissions or invented requirements. Record its verdict and open
+questions before dispatching implementation. The review may identify ambiguity;
+only the maintainer resolves product requirements, and the model must not choose
+new requirements or an implementation design on the maintainer's behalf.
 Record each role's model, effort and execution route; reuse approved private
 provider selections and ask only for missing choices or changes. Never use
 implicit host defaults.
 Delegate within that ticket and resolve clear defects without another approval.
 Within this loop, the coordinator may choose existing public test interfaces
 and record their coverage and limits without another maintainer confirmation.
-The Terra coordinator owns routine validation and evidence capture, directly or
+The coordinator owns routine validation and evidence capture, directly or
 through the assigned implementer, using existing tools and normal permissions.
 Use completion notifications or bounded waits and read relevant log changes;
-do not keep an Astra supervisor polling a Terra coordinator or add a general runner.
+do not add a review-model supervisor polling a delegated coordinator or a general runner.
 Escalate both stalled repairs and repeated counterexamples to the same authorized
 rule after two repair rounds, as defined in the skill. First distinguish ambiguous
 requirements from implementation failures and unavailable evidence. Requirement
@@ -76,8 +82,12 @@ conflicts, scope expansion and permission blocks go to the maintainer; confirmed
 implementation failures may use the selected review model for diagnosis and
 repair under the skill's escalation rule, followed by review independent of
 diagnosis and repair. Escalate continued failure after that intervention to the
-maintainer. A review pass and completed verification are separate gates. Stop at
-staged delivery; committing and starting another ticket remain maintainer decisions.
+maintainer. A review pass and completed verification are separate gates. Record
+both formal-review axes and finding dispositions against the handoff snapshot;
+pending or disputed reviews and unresolved findings block delivery. Check both
+gates with `verify --require-passed --require-reviewed` before staged delivery.
+The helper checks recorded evidence, not review correctness or independence.
+Committing and starting another ticket remain maintainer decisions.
 
 ## Keep changes reviewable
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create and verify a staged review snapshot, and capture checks against it."""
+"""Pin a staged snapshot and record checks, formal reviews and finding dispositions."""
 
 from __future__ import annotations
 
@@ -13,6 +13,11 @@ import re
 import shlex
 import subprocess
 import sys
+
+
+REVIEW_AXES = ("standards", "spec")
+REVIEW_STATUSES = ("pending", "passed", "changes-required", "disputed")
+FINDING_STATUSES = ("open", "disputed", "resolved", "withdrawn", "non-blocking")
 
 
 def digest(content: bytes) -> str:
@@ -89,6 +94,11 @@ def outside_repo(file: Path, repo: Path) -> None:
         raise ValueError("keep handoff files and logs outside the reviewed worktree")
 
 
+def snapshot_id(data: dict) -> str:
+    identity = {key: data[key] for key in ("repo", "base", "issue", "paths", "excluded", "snapshot")}
+    return digest(json.dumps(identity, sort_keys=True).encode())
+
+
 def create(args: argparse.Namespace) -> int:
     repo = Path(git(args.repo.resolve(), "rev-parse", "--show-toplevel").decode().strip()).resolve()
     base = git(repo, "rev-parse", "--verify", f"{args.base}^{{commit}}").decode().strip()
@@ -119,9 +129,11 @@ def create(args: argparse.Namespace) -> int:
         ]),
         "snapshot": snapshot(repo, base, targets, excluded),
         "checks": {name: [] for name in args.check},
+        "reviews": {axis: [] for axis in REVIEW_AXES},
     }
+    data["snapshot_id"] = snapshot_id(data)
     save(output, data, new=True)
-    print(f"Created {output}; checks have not run. Review command:\n{data['diff_command']}")
+    print(f"Created {output}; checks have not run. Snapshot ID: {data['snapshot_id']}\nReview command:\n{data['diff_command']}")
     return 0
 
 
@@ -158,15 +170,78 @@ def statuses(data: dict) -> dict:
     }
 
 
+def review_statuses(data: dict) -> tuple[dict, dict]:
+    reviews = {}
+    findings = {}
+    identity = snapshot_id(data)
+    for axis in REVIEW_AXES:
+        attempts = data.get("reviews", {}).get(axis, [])
+        reviews[axis] = "pending"
+        for attempt in attempts:
+            if attempt.get("snapshot_id") != identity:
+                raise ValueError(f"{axis} review snapshot ID differs from packet")
+            if attempt.get("status") not in REVIEW_STATUSES or not attempt.get("evidence", "").strip():
+                raise ValueError(f"{axis} review requires a valid status and nonempty evidence")
+            reviews[axis] = attempt["status"]
+            for name, status in attempt["findings"].items():
+                if not name.strip() or status not in FINDING_STATUSES:
+                    raise ValueError(f"invalid finding disposition: {axis}:{name}")
+                findings[f"{axis}:{name}"] = status
+    return reviews, findings
+
+
 def verify(args: argparse.Namespace) -> int:
     data = load(args.packet.resolve())
     verify_snapshot(data)
     verify_logs(data)
     results = statuses(data)
+    print(f"Snapshot ID: {snapshot_id(data)}")
     print("Snapshot matches. Check status: " + json.dumps(results, sort_keys=True))
+    reviews, findings = review_statuses(data)
+    print("Formal review status: " + json.dumps(reviews, sort_keys=True))
+    unresolved = {name: status for name, status in findings.items() if status in ("open", "disputed")}
+    print("Unresolved findings: " + json.dumps(unresolved, sort_keys=True))
     if args.require_passed and (not results or any(s != "passed" for s in results.values())):
         raise ValueError("not all planned checks passed; snapshot validity is not acceptance")
+    if args.require_reviewed and any(s != "passed" for s in reviews.values()):
+        raise ValueError("both formal-review axes must pass on this snapshot")
+    if args.require_reviewed and unresolved:
+        raise ValueError("unresolved findings: " + ", ".join(sorted(unresolved)))
     print("Coverage, excluded-file impact, and requirements still require independent review.")
+    return 0
+
+
+def record_review(args: argparse.Namespace) -> int:
+    file = args.packet.resolve()
+    data = load(file)
+    verify_snapshot(data)
+    verify_logs(data)
+    review_statuses(data)
+    identity = snapshot_id(data)
+    if args.snapshot != identity:
+        raise ValueError("review snapshot ID differs from packet; review the current snapshot")
+    evidence_file = args.evidence.resolve()
+    outside_repo(evidence_file, Path(data["repo"]))
+    evidence = evidence_file.read_text(encoding="utf-8").strip()
+    if not evidence:
+        raise ValueError("review evidence must not be empty")
+    findings = dict(args.finding)
+    if len(findings) != len(args.finding):
+        raise ValueError("finding IDs must be unique within a review entry")
+    if any(not name.strip() or status not in FINDING_STATUSES for name, status in findings.items()):
+        raise ValueError("finding requires an ID and one of: " + ", ".join(FINDING_STATUSES))
+    entry = {
+        "status": args.status,
+        "snapshot_id": identity,
+        "recorded_at": datetime.now(timezone.utc).isoformat(),
+        "evidence_path": str(evidence_file),
+        "evidence": evidence,
+        "findings": findings,
+    }
+    data.setdefault("reviews", {}).setdefault(args.axis, []).append(entry)
+    verify_snapshot(data)
+    save(file, data)
+    print(f"Recorded formal {args.axis} review: {args.status}")
     return 0
 
 
@@ -242,9 +317,19 @@ def main() -> int:
     runner.add_argument("--label", type=check_name, required=True)
     runner.add_argument("--cwd", type=Path, default=Path("."))
     runner.set_defaults(handler=run_check)
+    reviewer = commands.add_parser("review", help="record one formal-review axis against its reviewed snapshot")
+    reviewer.add_argument("packet", type=Path)
+    reviewer.add_argument("--axis", choices=REVIEW_AXES, required=True)
+    reviewer.add_argument("--status", choices=REVIEW_STATUSES, required=True)
+    reviewer.add_argument("--snapshot", required=True, help="snapshot ID supplied to the reviewer")
+    reviewer.add_argument("--evidence", type=Path, required=True)
+    reviewer.add_argument("--finding", nargs=2, action="append", default=[], metavar=("ID", "STATUS"),
+                          help="record a finding disposition: " + ", ".join(FINDING_STATUSES))
+    reviewer.set_defaults(handler=record_review)
     verifier = commands.add_parser("verify", help="check snapshot/log identity; does not run tests")
     verifier.add_argument("packet", type=Path)
     verifier.add_argument("--require-passed", action="store_true")
+    verifier.add_argument("--require-reviewed", action="store_true", help="require both formal-review axes to pass with no unresolved findings")
     verifier.set_defaults(handler=verify)
     argv = sys.argv[1:]
     command = []
