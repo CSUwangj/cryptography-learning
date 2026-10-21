@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import json
+import os
 import shlex
 import subprocess
 import sys
@@ -37,10 +38,10 @@ class ReviewHandoffTest(unittest.TestCase):
             text=True, capture_output=True, check=True,
         )
 
-    def cli(self, *args, expected=0):
+    def cli(self, *args, expected=0, env=None):
         result = subprocess.run(
             [sys.executable, str(SCRIPT), *map(str, args)],
-            text=True, capture_output=True, check=False,
+            text=True, capture_output=True, check=False, env=env,
         )
         self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
         return result
@@ -89,14 +90,121 @@ class ReviewHandoffTest(unittest.TestCase):
         self.create("--check", "build")
         self.cli("verify", self.packet)
         self.cli("verify", self.packet, "--require-passed", expected=1)
-        self.run_python("import sys; print('failure'); sys.exit(7)", expected=1)
+        failure = self.directory / "check-fails"
+        failure.touch()
+        command = f"from pathlib import Path; import sys; sys.exit(7 if Path({str(failure)!r}).exists() else 0)"
+        self.run_python(command, expected=1)
         self.assertEqual(self.data()["checks"]["unit"][0]["exit_code"], 7)
         self.cli("verify", self.packet, "--require-passed", expected=1)
-        self.run_python("print('fixed')")
+        failure.unlink()
+        self.run_python(command)
         self.cli("verify", self.packet, "--require-passed", expected=1)
         self.run_python("print('built')", label="build")
-        self.cli("verify", self.packet, "--require-passed")
+        result = self.cli("verify", self.packet, "--require-passed")
         self.assertEqual([a["status"] for a in self.data()["checks"]["unit"]], ["failed", "passed"])
+        self.assertIn('"attempts": 2', result.stdout)
+        self.assertIn('"previous_failed": 1', result.stdout)
+
+    def test_frontend_runtime_and_dependency_changes_require_full_suite(self):
+        changed = []
+        for name in ("frontend/src/verification-example.ts", "frontend/package-lock.json",
+                     "frontend/schema/schema.gql", "frontend/index.html", "frontend/.nvmrc",
+                     "frontend/vite.config.mts", "frontend/tsconfig.json"):
+            with self.subTest(path=name):
+                file = self.repo / name
+                file.parent.mkdir(parents=True, exist_ok=True)
+                file.write_text((file.read_text() if file.exists() else "") + "verification fixture\n")
+                self.git("add", "--", name)
+                changed.append(name)
+                self.packet = self.directory / f"case-{len(changed)}.json"
+                result = self.create(
+                    "--paths", self.target, name,
+                    *[argument for old in changed[:-1] for argument in ("--exclude", old, "Other fixture")],
+                    expected=1,
+                )
+                self.assertIn("missing required check: frontend-tests", result.stderr)
+                self.assertFalse(self.packet.exists())
+
+    def test_frontend_documentation_does_not_require_runtime_suite(self):
+        documents = ("frontend/README.md", "frontend/schema/README.md", "frontend/src/README.md")
+        for name in documents:
+            (self.repo / name).write_text("Documentation-only example.\n")
+            self.git("add", "--", name)
+        self.create("--paths", self.target, *documents)
+        self.run_python("print('documentation checked')")
+        self.cli("verify", self.packet, "--require-passed")
+
+    def test_full_suite_is_required_even_when_focused_check_passes(self):
+        name = "frontend/src/verification-example.ts"
+        (self.repo / name).write_text("export const example = true\n")
+        self.git("add", "--", name)
+        self.create("--paths", self.target, name, "--check", "frontend-tests")
+        self.run_python("print('focused check passed')")
+        result = self.cli("verify", self.packet, "--require-passed", expected=1)
+        self.assertIn('"frontend-tests": "not-run"', result.stdout)
+        # Older packets can omit the gate entirely; verification must still find it.
+        legacy = self.data()
+        del legacy["checks"]["frontend-tests"]
+        self.packet.write_text(json.dumps(legacy))
+        self.cli("verify", self.packet)
+        result = self.cli("verify", self.packet, "--require-passed", expected=1)
+        self.assertIn("missing required check: frontend-tests", result.stderr)
+        self.assertIn('Incomplete checks: ["frontend-tests"]', result.stdout)
+
+    def test_frontend_gate_executes_only_its_fixed_command_and_directory(self):
+        self.create("--check", "frontend-tests")
+        original = self.packet.read_bytes()
+        marker = self.directory / "executed.json"
+        replacement = f"from pathlib import Path; Path({str(marker)!r}).write_text('subset ran')"
+        self.run_python(replacement, label="frontend-tests", expected=1)
+        self.assertFalse(marker.exists())
+        self.assertEqual(self.packet.read_bytes(), original)
+
+        # A stand-in records the runner's dispatch without invoking the frontend suite.
+        bin_dir = self.directory / "bin"
+        bin_dir.mkdir()
+        fish = bin_dir / "fish"
+        fish.write_text(
+            f"#!{sys.executable}\nimport json, os, sys\nfrom pathlib import Path\n"
+            f"Path({str(marker)!r}).write_text(json.dumps([os.getcwd(), sys.argv[1:]]))\n"
+        )
+        fish.chmod(0o755)
+        env = {**os.environ, "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"]}
+        command = ("fish", "-lc", "nvm use; and npm test -- --maxWorkers=1")
+        self.cli("run", self.packet, "--label", "frontend-tests", "--", *command, env=env, expected=1)
+        self.assertFalse(marker.exists())
+        self.assertEqual(self.packet.read_bytes(), original)
+        self.cli("run", self.packet, "--label", "frontend-tests", "--cwd", "frontend",
+                 "--", *command, env=env)
+        self.assertEqual(json.loads(marker.read_text()), [str(self.repo / "frontend"), list(command[1:])])
+        self.run_python("print('other acceptance check passed')")
+        self.cli("verify", self.packet, "--require-passed")
+
+    def test_replacement_command_or_directory_cannot_overwrite_failed_check(self):
+        self.create()
+        command = "import sys; sys.exit(7)"
+        self.run_python(command, expected=1)
+        original = self.packet.read_bytes()
+        marker = self.directory / "subset-ran"
+        replacement = f"from pathlib import Path; Path({str(marker)!r}).touch()"
+        self.run_python(replacement, expected=1)
+        self.assertFalse(marker.exists())
+        self.assertEqual(self.packet.read_bytes(), original)
+        self.cli("run", self.packet, "--label", "unit", "--cwd", "frontend",
+                 "--", sys.executable, "-c", command, expected=1)
+        self.assertEqual(self.packet.read_bytes(), original)
+        self.cli("verify", self.packet, "--require-passed", expected=1)
+
+    def test_legacy_changed_commands_cannot_supply_passing_evidence(self):
+        self.create("--check", "focused")
+        self.run_python("import sys; sys.exit(7)", expected=1)
+        self.run_python("print('subset passed')", label="focused")
+        legacy = self.data()
+        legacy["checks"]["unit"].extend(legacy["checks"].pop("focused"))
+        self.packet.write_text(json.dumps(legacy))
+        self.cli("verify", self.packet)
+        result = self.cli("verify", self.packet, "--require-passed", expected=1)
+        self.assertIn("command or working directory changed", result.stderr)
 
     def test_passing_checks_do_not_imply_completed_reviews(self):
         self.create()
@@ -260,10 +368,13 @@ class ReviewHandoffTest(unittest.TestCase):
 
     def test_missing_command_is_unavailable_and_log_tampering_is_rejected(self):
         self.create()
-        self.cli("run", self.packet, "--label", "unit", "--", "/no-such-check-command", expected=1)
+        command = self.directory / "check-command"
+        self.cli("run", self.packet, "--label", "unit", "--", command, expected=1)
         self.assertEqual(self.data()["checks"]["unit"][0]["status"], "unavailable")
         self.cli("verify", self.packet, "--require-passed", expected=1)
-        self.run_python("print('finished')")
+        command.write_text(f"#!{sys.executable}\nprint('finished')\n")
+        command.chmod(0o755)
+        self.cli("run", self.packet, "--label", "unit", "--", command)
         log = Path(self.data()["checks"]["unit"][-1]["log"])
         log.write_text("different log\n")
         self.assertIn("log changed", self.cli("verify", self.packet, expected=1).stderr)

@@ -18,6 +18,7 @@ import sys
 REVIEW_AXES = ("standards", "spec")
 REVIEW_STATUSES = ("pending", "passed", "changes-required", "disputed")
 FINDING_STATUSES = ("open", "disputed", "resolved", "withdrawn", "non-blocking")
+FRONTEND_TEST_COMMAND = ["fish", "-lc", "nvm use; and npm test -- --maxWorkers=1"]
 
 
 def digest(content: bytes) -> str:
@@ -99,6 +100,38 @@ def snapshot_id(data: dict) -> str:
     return digest(json.dumps(identity, sort_keys=True).encode())
 
 
+def required_checks(targets: list[str]) -> set[str]:
+    if any(
+        not name.endswith(".md") and (
+            name.startswith(("frontend/src/", "frontend/public/", "frontend/schema/"))
+            or name in {
+                "frontend/package.json", "frontend/package-lock.json", "frontend/.nvmrc",
+                "frontend/index.html", "frontend/vite.config.mts", "frontend/tsconfig.json",
+            }
+        )
+        for name in targets
+    ):
+        return {"frontend-tests"}
+    return set()
+
+
+def check_identity(data: dict, name: str) -> tuple[list[str], str] | None:
+    if name == "frontend-tests":
+        return FRONTEND_TEST_COMMAND, str((Path(data["repo"]) / "frontend").resolve())
+    attempts = data["checks"][name]
+    return (attempts[0]["command"], attempts[0]["cwd"]) if attempts else None
+
+
+def check_contract_errors(data: dict) -> list[str]:
+    errors = [f"missing required check: {name}"
+              for name in sorted(required_checks(data["paths"]) - data["checks"].keys())]
+    for name, attempts in data["checks"].items():
+        identity = check_identity(data, name)
+        if any((attempt["command"], attempt["cwd"]) != identity for attempt in attempts):
+            errors.append(f"{name}: command or working directory changed; use separate diagnostic evidence")
+    return errors
+
+
 def create(args: argparse.Namespace) -> int:
     repo = Path(git(args.repo.resolve(), "rev-parse", "--show-toplevel").decode().strip()).resolve()
     base = git(repo, "rev-parse", "--verify", f"{args.base}^{{commit}}").decode().strip()
@@ -110,6 +143,9 @@ def create(args: argparse.Namespace) -> int:
         raise ValueError("exclusion paths must be unique")
     if len(set(args.check)) != len(args.check):
         raise ValueError("check names must be unique")
+    missing = required_checks(targets) - set(args.check)
+    if missing:
+        raise ValueError("missing required check: " + ", ".join(sorted(missing)))
     notes = args.notes.read_text(encoding="utf-8").strip()
     if not args.issue.strip() or not notes:
         raise ValueError("issue and acceptance/evidence notes are required")
@@ -197,10 +233,28 @@ def verify(args: argparse.Namespace) -> int:
     results = statuses(data)
     print(f"Snapshot ID: {snapshot_id(data)}")
     print("Snapshot matches. Check status: " + json.dumps(results, sort_keys=True))
+    history = {
+        name: {
+            "attempts": len(attempts),
+            "previous_failed": sum(a["status"] == "failed" for a in attempts[:-1]),
+            "previous_unavailable": sum(a["status"] == "unavailable" for a in attempts[:-1]),
+        }
+        for name, attempts in data["checks"].items()
+    }
+    print("Check history: " + json.dumps(history, sort_keys=True))
+    incomplete = sorted(
+        {name for name, status in results.items() if status != "passed"}
+        | (required_checks(data["paths"]) - results.keys())
+    )
+    print("Incomplete checks: " + json.dumps(incomplete))
+    errors = check_contract_errors(data)
+    print("Check contract errors: " + json.dumps(errors))
     reviews, findings = review_statuses(data)
     print("Formal review status: " + json.dumps(reviews, sort_keys=True))
     unresolved = {name: status for name, status in findings.items() if status in ("open", "disputed")}
     print("Unresolved findings: " + json.dumps(unresolved, sort_keys=True))
+    if args.require_passed and errors:
+        raise ValueError("; ".join(errors))
     if args.require_passed and (not results or any(s != "passed" for s in results.values())):
         raise ValueError("not all planned checks passed; snapshot validity is not acceptance")
     if args.require_reviewed and any(s != "passed" for s in reviews.values()):
@@ -260,6 +314,13 @@ def run_check(args: argparse.Namespace) -> int:
     if not cwd.is_relative_to(repo) or not cwd.is_dir():
         raise ValueError("check cwd must be a directory inside the reviewed worktree")
     attempts = data["checks"][args.label]
+    identity = check_identity(data, args.label)
+    if identity is not None and (command, str(cwd)) != identity:
+        raise ValueError(
+            f"{args.label}: command or working directory changed; "
+            f"expected cwd={identity[1]}, command={shlex.join(identity[0])}; "
+            "use separate diagnostic evidence"
+        )
     log = file.with_name(f"{file.stem}-{args.label}-{len(attempts) + 1}.log")
     attempt = {
         "command": command,

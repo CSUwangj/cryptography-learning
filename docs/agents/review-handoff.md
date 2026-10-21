@@ -63,17 +63,42 @@ After staging the final ticket files, create a packet. Replace the example
 paths, issue, base, and check names with the actual task. `--base` must resolve
 to the current HEAD: this helper handles staged changes, not committed ranges.
 Each `--paths` entry is an exact repository-relative file, including both paths
-of a rename. List every check planned for this snapshot using `--check`.
+of a rename. Register every applicable issue and repository acceptance check
+using `--check` before final verification, including checks not yet runnable.
+Focused tests supplement required full suites. Keep diagnostic variants in
+separate external logs linked from the notes; they do not replace acceptance checks.
+
+The reserved `frontend-tests` check runs the full Vitest suite with one worker:
+cwd `frontend`, command `fish -lc 'nvm use; and npm test -- --maxWorkers=1'`.
+The helper requires this check when a non-Markdown target is under `frontend/src/`,
+`frontend/public/` or `frontend/schema/`, or is `frontend/package.json`,
+`frontend/package-lock.json`, `frontend/.nvmrc`, `frontend/index.html`,
+`frontend/vite.config.mts` or `frontend/tsconfig.json`. This includes deletions;
+Markdown documentation does not trigger this path-based gate. It does not infer
+all ticket coverage: classify other paths, runtime uses of Markdown and
+documentation-only changes against AGENTS.md and the issue. Unrelated excluded
+changes remain a review responsibility. A required check with an approved verification gap stays
+declared and incomplete; use the existing exception procedure instead of omitting it.
 
 ```sh
 python3 scripts/review_handoff.py create \
   --repo . --base BASE_SHA --issue '#96' \
   --notes /tmp/issue96-notes.md --output /tmp/issue96-round1.json \
-  --check typecheck --check tests --check build \
+  --check frontend-install --check frontend-typecheck \
+  --check frontend-tests --check frontend-build \
   --paths frontend/src/lesson_runtime/compiler.ts frontend/src/lesson_runtime/index.test.ts
 
 python3 scripts/review_handoff.py run /tmp/issue96-round1.json \
-  --label typecheck --cwd frontend -- fish -lc 'nvm use; and npm run typecheck'
+  --label frontend-install --cwd frontend -- fish -lc 'nvm use; and npm ci'
+
+python3 scripts/review_handoff.py run /tmp/issue96-round1.json \
+  --label frontend-typecheck --cwd frontend -- fish -lc 'nvm use; and npm run typecheck'
+
+python3 scripts/review_handoff.py run /tmp/issue96-round1.json \
+  --label frontend-tests --cwd frontend -- fish -lc 'nvm use; and npm test -- --maxWorkers=1'
+
+python3 scripts/review_handoff.py run /tmp/issue96-round1.json \
+  --label frontend-build --cwd frontend -- fish -lc 'nvm use; and npm run build'
 
 python3 scripts/review_handoff.py verify /tmp/issue96-round1.json
 python3 scripts/review_handoff.py verify /tmp/issue96-round1.json --require-passed
@@ -101,10 +126,20 @@ when needed to make environment-dependent evidence interpretable.
   are retained. A failed command is `failed`; a command with no recorded
   completion, failed launch or changed snapshot is `unavailable`. A check with
   no attempt is `not-run`. Only exit zero on the recorded snapshot is `passed`.
+- `frontend-tests` accepts only the fixed command and cwd above, even on its first
+  attempt. Other labels bind command and cwd on their first attempt. A changed
+  command or cwd is rejected before execution and does not replace earlier evidence.
+  Inspect the actual selected tests; fixed command text does not prove coverage or
+  freeze environment variables, installed dependencies or external services.
 - `verify` checks snapshot and log identity. `--require-passed` also requires
-  the latest attempt of every declared check to pass. `--require-reviewed`
-  separately requires both formal-review axes to pass on this snapshot with
-  no open or disputed findings. Normal delivery requires both flags. Ordinary
+  the mandatory frontend check to be declared when applicable, consistent command
+  identities, and the latest attempt of every declared check to pass. Its summary
+  includes latest status, attempt count, earlier failed/unavailable attempts and
+  incomplete checks. An unchanged rerun may pass without hiding earlier failures.
+  Older packets remain readable, but missing mandatory checks or mixed commands
+  cannot satisfy `--require-passed`; create a new packet and recheck as needed.
+  `--require-reviewed` separately requires both formal-review axes to pass on this
+  snapshot with no open or disputed findings. Normal delivery requires both flags. Ordinary
   `verify` permits incomplete evidence; none of these modes judges coverage,
   review correctness or reviewer independence.
 
@@ -146,6 +181,10 @@ an existing packet at creation. Run affected checks against the new snapshot,
 and explicitly justify any unaffected prior evidence in the notes. Do not
 copy old passing attempts into a new packet. An environmental retry on the
 same snapshot uses `run` again, retaining the failed attempt and its log.
+Keep the command and cwd unchanged; record tool versions, worker count and
+permission context in the notes. Changed test selections or parallelism are
+diagnostic evidence. Run heavyweight checks sequentially, including base/target
+comparisons, and use ticket-loop's failure diagnosis branch when causality is unclear.
 After a runner interruption, confirm its command has exited before retrying.
 The helper neither monitors nor cleans up abandoned child processes.
 

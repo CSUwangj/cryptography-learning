@@ -43,8 +43,22 @@
 Run the smallest checks that cover the change, and report any checks not run:
 
 - Backend or schema: `cd backend && cargo test --locked -- --nocapture`
-- Frontend: use `frontend/.nvmrc`, then `cd frontend && npm ci && npm run typecheck && npm test && npm run build`
+- Frontend: use `frontend/.nvmrc`, then `cd frontend && npm ci && npm run typecheck && npm test -- --maxWorkers=1 && npm run build`
 - Deployable behavior: `./baseline/run.sh` (requires Docker)
+
+Register every applicable issue and repository check before final verification;
+unrun checks remain `not-run`. Frontend runtime or dependency changes require a
+separate `frontend-tests` handoff check for the full suite with one worker.
+Focused tests supplement that check. Documentation-only changes use relevant
+documentation checks. The helper's concrete path coverage and commands are in
+[`docs/agents/review-handoff.md`](docs/agents/review-handoff.md).
+
+Keep each acceptance check's command and working directory fixed across attempts.
+Record changed test selections or parallelism as separate diagnostic evidence;
+preserve earlier failures when a later attempt passes. Run heavyweight checks
+sequentially and record tool versions, worker count and permission context.
+Use controlled base/target comparisons to investigate uncertain failures, with
+the evidence limits and stopping conditions in `ticket-loop`.
 
 Use `npm run lint` cautiously: the configured script includes `--fix` and modifies files.
 
