@@ -58,6 +58,7 @@ test.describe('CryptoGraph Worker (#28)', () => {
       const client = new graph.CryptoGraphWorkerClient()
       const cancelled = client.execute({ requestId: 'cancelled', kind: 'execute', payload: { graph: fixture([0x0f, 0x0f]) } })
       cancelled.cancel()
+      client.dispose()
       const NativeWorker = window.Worker
       let staleDelivered = false
       class DelayedWorker extends EventTarget {
@@ -76,6 +77,7 @@ test.describe('CryptoGraph Worker (#28)', () => {
       Object.defineProperty(window, 'Worker', { configurable: true, value: DelayedWorker })
       const stale = client.execute({ requestId: 'stale', kind: 'execute', payload: { graph: fixture([0x0f, 0x0f]) } })
       const current = await client.execute({ requestId: 'current', kind: 'execute', payload: { graph: fixture([0x0f, 0x0f]) } }).result
+      client.dispose()
       Object.defineProperty(window, 'Worker', { configurable: true, value: NativeWorker })
       const comparison = await client.execute({
         requestId: 'comparison',
@@ -91,6 +93,7 @@ test.describe('CryptoGraph Worker (#28)', () => {
         payload: { graph: fixture([0x0f, 0x0f]) },
       }).result
       const cleanedUp = !client.running
+      client.dispose()
       let timeoutWorkerTerminated = false
       class NeverRespondingWorker extends EventTarget {
         postMessage(): void {}
@@ -142,6 +145,6 @@ test.describe('CryptoGraph Worker (#28)', () => {
     expect(result.timeoutWorkerTerminated).toBe(true)
     expect(result.cleanedUpAfterTimeout).toBe(true)
     expect(result.comparison).toEqual([{ path: 'output', mask: '0x0ff0', changedBits: 8, ratio: 0.5 }])
-    expect(result.traceStatus).toEqual({ truncated: true, retained: 1, dropped: 8 })
+    expect(result.traceStatus).toEqual({ truncated: true, retained: 1, dropped: 11 })
   })
 })

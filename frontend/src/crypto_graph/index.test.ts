@@ -43,6 +43,17 @@ const xorGraph = (): AuthoredGraph => ({
 })
 
 describe('CryptoGraph compile/execute seam (#26)', () => {
+  it('rejects source values whose extra words storage conflicts with their declared width', () => {
+    const value = { ...bits(8, Uint8Array.of(1)), words: new Uint8Array(0) }
+    expect(compile({
+      nodes: [source('source', value)],
+      outputs: [{ node: 'source', port: 'value' }],
+    })).toMatchObject({
+      ok: false,
+      diagnostics: [{ code: 'invalid-parameter', path: 'source.parameters.value' }],
+    })
+  })
+
   it('executes and traces the composable byte and word primitives', () => {
     const sBox = Array.from({ length: 256 }, (_, value) => value ^ 0xff)
     const compiled = compile({
