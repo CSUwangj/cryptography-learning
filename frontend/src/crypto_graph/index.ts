@@ -256,13 +256,96 @@ export type WorkerResponse =
 
 type Result<T> = { ok: true; value: T } | { ok: false; diagnostics: readonly Diagnostic[] }
 
-type Operation = {
-  manifest: OperationManifest
-  validateParameters?: (parameters: Record<string, unknown>, node: AuthoredNode) => Diagnostic[]
-  inferOutputTypes?: (inputTypes: Readonly<Record<string, PortType>>, parameters: Readonly<Record<string, unknown>>, node?: AuthoredNode) => Result<Readonly<Record<string, PortType>>>
-  lineage?: (parameters: Readonly<Record<string, unknown>>, inputTypes: Readonly<Record<string, PortType>>) => LineageDeclaration
-  execute: (inputs: Record<string, CryptoValue>, parameters: Record<string, unknown>, mappings: ReadonlyMap<string, AlphabetMapping>) => Record<string, CryptoValue>
+type OperationParameters = {
+  'core.source@1': { type: PortType; value?: CryptoValue; roundKeys?: readonly CryptoValue[] }
+  'core.substitute-nibbles@1': { sBox: readonly number[]; start?: number; count?: number }
+  'spn.permute-gather@1': { permutation: readonly number[] }
+  'core.substitute-bytes@1': { sBox: readonly number[]; start?: number; count?: number }
+  'core.permute-bytes@1': { permutation: readonly number[] }
+  'core.rotate-word@1': { target: number; amount: number }
+  'core.xor-constant@1': { target: number; constant: number }
+  'aes.xor-words@1': { start: number; count: number }
+  'spn.substitute@1': { sBox: readonly number[] }
+  'spn.permute@1': { permutation: readonly number[] }
+  'classical.caesar@1': Record<never, never>
+  'classical.affine@1': Record<never, never>
+  'classical.substitution@1': Record<never, never>
+  'classical.vigenere@1': Record<never, never>
+  'classical.transposition@1': { rows?: number }
+  'aes.key-word@1': { index: number }
+  'aes.rcon-word@1': { round: number }
+  'test.invalid-lineage@1': { mode?: 'width' | 'port' | 'bit' }
 }
+
+type RotateWordParameters = OperationParameters['core.rotate-word@1']
+const validRotateWordParameters: RotateWordParameters = { target: 0, amount: 8 }
+void validRotateWordParameters
+// @ts-expect-error wrong operation parameter kind
+const invalidRotateWordParameters: RotateWordParameters = { permutation: [0, 1, 2, 3] }
+void invalidRotateWordParameters
+// @ts-expect-error unknown operation parameter
+const unknownRotateWordParameter: RotateWordParameters = { target: 0, amount: 8, mode: 'width' }
+void unknownRotateWordParameter
+
+type Operation<K extends keyof OperationParameters = never> = {
+  manifest: OperationManifest & ([K] extends [never] ? {} : { identity: K })
+  validateParameters?: (parameters: Record<string, unknown>, node: AuthoredNode) => Diagnostic[]
+  inferOutputTypes?: (inputTypes: Readonly<Record<string, PortType>>, parameters: Readonly<OperationParameters[K]>, node?: AuthoredNode) => Result<Readonly<Record<string, PortType>>>
+  lineage?: (parameters: Readonly<OperationParameters[K]>, inputTypes: Readonly<Record<string, PortType>>) => LineageDeclaration
+  execute: (inputs: Record<string, CryptoValue>, parameters: OperationParameters[K], mappings: ReadonlyMap<string, AlphabetMapping>) => Record<string, CryptoValue>
+}
+
+type RegisteredOperation = {
+  manifest: OperationManifest
+  validateAndBind: (parameters: Record<string, unknown>, node: AuthoredNode) => { diagnostics: Diagnostic[]; bind: () => BoundOperation }
+}
+
+type BoundOperation = {
+  parameters: Readonly<Record<string, unknown>>
+  traceParameters: Readonly<Record<string, unknown>>
+  sourceType?: PortType
+  sourceValue?: CryptoValue
+  legacyTraceOperation?: TraceOperation
+  inferOutputTypes?: (inputTypes: Readonly<Record<string, PortType>>, node?: AuthoredNode) => Result<Readonly<Record<string, PortType>>>
+  lineage?: (inputTypes: Readonly<Record<string, PortType>>) => LineageDeclaration
+  execute: (inputs: Record<string, CryptoValue>, mappings: ReadonlyMap<string, AlphabetMapping>, sourceValue?: CryptoValue) => Record<string, CryptoValue>
+}
+
+const registerOperation = <K extends keyof OperationParameters>(operation: Operation<K>): RegisteredOperation => ({
+  manifest: operation.manifest,
+  validateAndBind(parameters, node) {
+    const captured = structuredClone(parameters)
+    const diagnostics = operation.validateParameters?.(captured, node) ?? []
+    return {
+      diagnostics,
+      bind: () => {
+        const typed = captured as OperationParameters[K]
+        return {
+          parameters: captured,
+          traceParameters: structuredClone(node.traceParameters ?? captured),
+          ...(['spn.substitute@1', 'core.substitute-nibbles@1', 'core.substitute-bytes@1'].includes(operation.manifest.identity) && Array.isArray((typed as OperationParameters['spn.substitute@1'] | OperationParameters['core.substitute-nibbles@1'] | OperationParameters['core.substitute-bytes@1']).sBox) ? {
+            legacyTraceOperation: { sBox: [...(typed as OperationParameters['spn.substitute@1'] | OperationParameters['core.substitute-nibbles@1'] | OperationParameters['core.substitute-bytes@1']).sBox] },
+          } : {}),
+          ...(['spn.permute@1', 'spn.permute-gather@1', 'core.permute-bytes@1'].includes(operation.manifest.identity) && Array.isArray((typed as OperationParameters['spn.permute@1'] | OperationParameters['spn.permute-gather@1'] | OperationParameters['core.permute-bytes@1']).permutation) ? {
+            legacyTraceOperation: { permutation: [...(typed as OperationParameters['spn.permute@1'] | OperationParameters['spn.permute-gather@1'] | OperationParameters['core.permute-bytes@1']).permutation] },
+          } : {}),
+          ...(operation.manifest.identity === 'core.source@1' ? {
+            sourceType: (typed as OperationParameters['core.source@1']).type,
+            sourceValue: (typed as OperationParameters['core.source@1']).value,
+          } : {}),
+          ...(operation.inferOutputTypes ? { inferOutputTypes: (inputTypes: Readonly<Record<string, PortType>>, boundNode?: AuthoredNode) => operation.inferOutputTypes!(inputTypes, typed, boundNode) } : {}),
+          ...(operation.lineage ? { lineage: (inputTypes: Readonly<Record<string, PortType>>) => operation.lineage!(typed, inputTypes) } : {}),
+          // The registry closure fixes operation identity; compile validation and source-input checks precede invocation.
+          execute: (inputs, mappings, sourceValue) => operation.execute(inputs,
+            operation.manifest.identity === 'core.source@1' && sourceValue !== undefined
+              ? { ...typed as OperationParameters['core.source@1'], value: sourceValue } as OperationParameters[K]
+              : typed,
+            mappings),
+        }
+      },
+    }
+  },
+})
 
 export type CompiledGraph = {
   readonly graph: AuthoredGraph
@@ -621,7 +704,7 @@ export const serializeTrace = (trace: readonly TraceEvent[]): readonly Serialize
     ...(value && 'bytes' in value ? { value: { type: value.type, hex: hex(value) } } : {}),
   }))
 
-const source: Operation = {
+const source: Operation<'core.source@1'> = {
   manifest: {
     identity: 'core.source@1',
     inputs: [],
@@ -639,7 +722,8 @@ const source: Operation = {
   },
   lineage: (parameters) => ({ value: Array.from({ length: isPortType(parameters.type) && parameters.type.family === 'bits' ? parameters.type.size as number : 0 }, () => []) }),
   execute(_, parameters) {
-    return { value: cloneValue(parameters.value as CryptoValue) }
+    if (!parameters.value) throw new Error('Source value is required.')
+    return { value: cloneValue(parameters.value) }
   },
 }
 
@@ -717,16 +801,17 @@ const rangeParameter = (parameters: Readonly<Record<string, unknown>>, size: num
   return { ok: true, value: { start: start as number, count: count as number } }
 }
 
-const substituteNibbles: Operation = {
+const substituteNibbles: Operation<'core.substitute-nibbles@1'> = {
   manifest: {
     identity: 'core.substitute-nibbles@1',
     inputs: [{ name: 'value', type: { family: 'bits', size: 'N' } }],
     outputs: [{ name: 'value', type: { family: 'bits', size: 'N' } }],
   },
   validateParameters(parameters, node) {
-    return validPermutation(parameters.sBox, 16)
+    const validRange = [parameters.start, parameters.count].every((value) => value === undefined || (Number.isSafeInteger(value) && (value as number) >= 0))
+    return validPermutation(parameters.sBox, 16) && validRange
       ? []
-      : [diagnostic('operation.invalid-s-box', 'S-box must be a permutation of 0 through 15.', `${node.id}.parameters.sBox`, node)]
+      : [diagnostic(validRange ? 'operation.invalid-s-box' : 'operation.substitute-nibbles-range-out-of-bounds', validRange ? 'S-box must be a permutation of 0 through 15.' : 'Substitution range is outside the input width.', validRange ? `${node.id}.parameters.sBox` : `${node.id}.parameters`, node)]
   },
   inferOutputTypes(inputTypes, parameters, node) {
     const type = inputTypes.value
@@ -750,9 +835,9 @@ const substituteNibbles: Operation = {
   },
   execute(inputs, parameters) {
     const input = inputs.value as BitsValue
-    const sBox = parameters.sBox as readonly number[]
-    const start = parameters.start === undefined ? 0 : parameters.start as number
-    const count = parameters.count === undefined ? input.type.size / 4 - start : parameters.count as number
+    const sBox = parameters.sBox
+    const start = parameters.start ?? 0
+    const count = parameters.count ?? input.type.size / 4 - start
     const output = new Uint8Array(bytesForBits(input.type.size))
     for (let nibble = 0; nibble < input.type.size / 4; nibble += 1) {
       const value = readBits(input, nibble * 4, 4)
@@ -762,11 +847,16 @@ const substituteNibbles: Operation = {
   },
 }
 
-const permuteGather: Operation = {
+const permuteGather: Operation<'spn.permute-gather@1'> = {
   manifest: {
     identity: 'spn.permute-gather@1',
     inputs: [{ name: 'value', type: { family: 'bits', size: 'N' } }],
     outputs: [{ name: 'value', type: { family: 'bits', size: 'N' } }],
+  },
+  validateParameters(parameters, node) {
+    return Array.isArray(parameters.permutation) && Array.from(parameters.permutation).every((value) => Number.isSafeInteger(value) && value >= 0)
+      ? []
+      : [diagnostic('operation.invalid-permutation', 'Permutation must contain non-negative integers.', `${node.id}.parameters.permutation`, node)]
   },
   inferOutputTypes(inputTypes, parameters) {
     const type = inputTypes.value
@@ -779,7 +869,7 @@ const permuteGather: Operation = {
   },
   lineage(parameters, inputTypes) {
     const size = inputTypes.value?.family === 'bits' ? inputTypes.value.size as number : 0
-    const permutation = parameters.permutation as readonly number[]
+    const permutation = parameters.permutation
     return { value: Array.from({ length: size }, (_, bit) => {
       const nibble = Math.floor(bit / 4)
       return [{ port: 'value', bit: (permutation[nibble] ?? 0) * 4 + bit % 4 }]
@@ -787,7 +877,7 @@ const permuteGather: Operation = {
   },
   execute(inputs, parameters) {
     const input = inputs.value as BitsValue
-    const permutation = parameters.permutation as readonly number[]
+    const permutation = parameters.permutation
     const output = new Uint8Array(bytesForBits(input.type.size))
     for (let nibble = 0; nibble < permutation.length; nibble += 1) {
       writeBits(output, input.type.size, nibble * 4, readBits(input, permutation[nibble] * 4, 4), 4)
@@ -796,7 +886,7 @@ const permuteGather: Operation = {
   },
 }
 
-const substituteBytes: Operation = {
+const substituteBytes: Operation<'core.substitute-bytes@1'> = {
   manifest: {
     identity: 'core.substitute-bytes@1',
     inputs: [{ name: 'value', type: { family: 'bits', size: 'N' } }],
@@ -804,10 +894,11 @@ const substituteBytes: Operation = {
   },
   validateParameters(parameters, node) {
     const sBox = parameters.sBox
-    return Array.isArray(sBox) && sBox.length === 256
+    const validRange = [parameters.start, parameters.count].every((value) => value === undefined || (Number.isSafeInteger(value) && (value as number) >= 0))
+    return validRange && Array.isArray(sBox) && sBox.length === 256
       && Array.from({ length: 256 }, (_, index) => Object.prototype.hasOwnProperty.call(sBox, index) && Number.isSafeInteger(sBox[index]) && sBox[index] >= 0 && sBox[index] <= 255).every(Boolean)
       ? []
-      : [diagnostic('operation.invalid-s-box', 'S-box must contain 256 byte values.', `${node.id}.parameters.sBox`, node)]
+      : [diagnostic(validRange ? 'operation.invalid-s-box' : 'operation.substitute-bytes-range-out-of-bounds', validRange ? 'S-box must contain 256 byte values.' : 'Substitution range is outside the input width.', validRange ? `${node.id}.parameters.sBox` : `${node.id}.parameters`, node)]
   },
   inferOutputTypes(inputTypes, parameters, node) {
     const type = inputTypes.value
@@ -835,20 +926,25 @@ const substituteBytes: Operation = {
   },
   execute(inputs, parameters) {
     const input = inputs.value as BitsValue
-    const sBox = parameters.sBox as readonly number[]
-    const start = parameters.start === undefined ? 0 : parameters.start as number
-    const count = parameters.count === undefined ? input.type.size / 8 - start : parameters.count as number
+    const sBox = parameters.sBox
+    const start = parameters.start ?? 0
+    const count = parameters.count ?? input.type.size / 8 - start
     const output = input.bytes.slice()
     for (let byte = start; byte < start + count; byte += 1) output[byte] = sBox[output[byte]]
     return { value: bits(input.type.size, output) }
   },
 }
 
-const permuteBytes: Operation = {
+const permuteBytes: Operation<'core.permute-bytes@1'> = {
   manifest: {
     identity: 'core.permute-bytes@1',
     inputs: [{ name: 'value', type: { family: 'bits', size: 'N' } }],
     outputs: [{ name: 'value', type: { family: 'bits', size: 'N' } }],
+  },
+  validateParameters(parameters, node) {
+    return Array.isArray(parameters.permutation) && Array.from(parameters.permutation).every((value) => Number.isSafeInteger(value) && value >= 0)
+      ? []
+      : [diagnostic('operation.invalid-permutation', 'Permutation must contain non-negative integers.', `${node.id}.parameters.permutation`, node)]
   },
   inferOutputTypes(inputTypes, parameters) {
     const type = inputTypes.value
@@ -861,7 +957,7 @@ const permuteBytes: Operation = {
   },
   lineage(parameters, inputTypes) {
     const size = inputTypes.value?.family === 'bits' ? inputTypes.value.size as number : 0
-    const permutation = parameters.permutation as readonly number[]
+    const permutation = parameters.permutation
     return { value: Array.from({ length: size }, (_, bit) => {
       const byte = Math.floor(bit / 8)
       return [{ port: 'value', bit: (permutation[byte] ?? 0) * 8 + bit % 8 }]
@@ -869,16 +965,23 @@ const permuteBytes: Operation = {
   },
   execute(inputs, parameters) {
     const input = inputs.value as BitsValue
-    const permutation = parameters.permutation as readonly number[]
+    const permutation = parameters.permutation
     return { value: bits(input.type.size, Uint8Array.from(permutation.map((index) => input.bytes[index]))) }
   },
 }
 
-const rotateWord: Operation = {
+const rotateWord: Operation<'core.rotate-word@1'> = {
   manifest: {
     identity: 'core.rotate-word@1',
     inputs: [{ name: 'value', type: { family: 'bits', size: 'N' } }],
     outputs: [{ name: 'value', type: { family: 'bits', size: 'N' } }],
+  },
+  validateParameters(parameters, node) {
+    const target = parameters.target
+    const amount = parameters.amount
+    return Number.isSafeInteger(target) && (target as number) >= 0 && Number.isSafeInteger(amount) && (amount as number) >= 1 && (amount as number) <= 31
+      ? []
+      : [diagnostic('operation.rotate-word-out-of-bounds', 'Word rotation parameters are outside the input width.', `${node.id}.parameters`, node)]
   },
   inferOutputTypes(inputTypes, parameters, node) {
     const type = inputTypes.value
@@ -903,8 +1006,7 @@ const rotateWord: Operation = {
   execute(inputs, parameters) {
     const input = inputs.value as BitsValue
     const output = input.bytes.slice()
-    const target = parameters.target as number
-    const amount = parameters.amount as number
+    const { target, amount } = parameters
     const start = target * 32
     output.fill(0, start / 8, start / 8 + 4)
     for (let bit = 0; bit < 32; bit += 1) writeBits(output, input.type.size, start + bit, readBits(input, start + ((bit + amount) % 32), 1), 1)
@@ -912,11 +1014,29 @@ const rotateWord: Operation = {
   },
 }
 
-const xorConstant: Operation = {
+type RotateWordCallbackParameters = Parameters<typeof rotateWord.execute>[1]
+const validRotateWordCallbackParameters: RotateWordCallbackParameters = { target: 0, amount: 8 }
+void validRotateWordCallbackParameters
+// @ts-expect-error callback rejects another operation's parameter kind
+const invalidRotateWordCallbackParameters: RotateWordCallbackParameters = { permutation: [0, 1, 2, 3] }
+void invalidRotateWordCallbackParameters
+// @ts-expect-error callback rejects unknown parameters
+const unknownRotateWordCallbackParameter: RotateWordCallbackParameters = { target: 0, amount: 8, mode: 'width' }
+void unknownRotateWordCallbackParameter
+
+const xorConstant: Operation<'core.xor-constant@1'> = {
   manifest: {
     identity: 'core.xor-constant@1',
     inputs: [{ name: 'value', type: { family: 'bits', size: 'N' } }],
     outputs: [{ name: 'value', type: { family: 'bits', size: 'N' } }],
+  },
+  validateParameters(parameters, node) {
+    const target = parameters.target
+    const constant = parameters.constant
+    return Number.isSafeInteger(target) && (target as number) >= 0
+      && Number.isSafeInteger(constant) && (constant as number) >= 0 && (constant as number) <= 0xffffffff
+      ? []
+      : [diagnostic('operation.xor-constant-out-of-bounds', 'Word constant parameters are outside the input width.', `${node.id}.parameters`, node)]
   },
   inferOutputTypes(inputTypes, parameters, node) {
     const type = inputTypes.value
@@ -936,8 +1056,7 @@ const xorConstant: Operation = {
   execute(inputs, parameters) {
     const input = inputs.value as BitsValue
     const output = input.bytes.slice()
-    const target = parameters.target as number
-    const constant = parameters.constant as number
+    const { target, constant } = parameters
     const start = target * 32
     for (let bit = 0; bit < 32; bit += 1) {
       const value = readBits(input, start + bit, 1) ^ ((constant >>> (31 - bit)) & 1)
@@ -949,11 +1068,18 @@ const xorConstant: Operation = {
   },
 }
 
-const aesXorWords: Operation = {
+const aesXorWords: Operation<'aes.xor-words@1'> = {
   manifest: {
     identity: 'aes.xor-words@1',
     inputs: [{ name: 'state', type: { family: 'bits', size: 'N' } }, { name: 'temp', type: { family: 'bits', size: 32 } }],
     outputs: [{ name: 'value', type: { family: 'bits', size: 'N' } }],
+  },
+  validateParameters(parameters, node) {
+    const start = parameters.start
+    const count = parameters.count
+    return Number.isSafeInteger(start) && (start as number) >= 0 && Number.isSafeInteger(count) && (count as number) >= 0
+      ? []
+      : [diagnostic('operation.xor-words-out-of-bounds', 'Chained XOR range is outside the input width.', `${node.id}.parameters`, node)]
   },
   inferOutputTypes(inputTypes, parameters, node) {
     const type = inputTypes.state
@@ -984,8 +1110,7 @@ const aesXorWords: Operation = {
     const state = inputs.state as BitsValue
     const temp = inputs.temp as BitsValue
     const output = state.bytes.slice()
-    const start = parameters.start as number
-    const count = parameters.count as number
+    const { start, count } = parameters
     let previous = temp
     for (let word = start; word < start + count; word += 1) {
       const current = bits(32, Uint8Array.from(Array.from({ length: 4 }, (_, byte) => state.bytes[word * 4 + byte] ^ previous.bytes[byte])))
@@ -996,7 +1121,7 @@ const aesXorWords: Operation = {
   },
 }
 
-const substitute: Operation = {
+const substitute: Operation<'spn.substitute@1'> = {
   manifest: {
     identity: 'spn.substitute@1',
     inputs: [{ name: 'value', type: { family: 'bits', size: 16 } }],
@@ -1015,7 +1140,7 @@ const substitute: Operation = {
     }) }
   },
   execute(inputs, parameters) {
-    const sBox = parameters.sBox as readonly number[]
+    const sBox = parameters.sBox
     const input = inputs.value as BitsValue
     return {
       value: bits(16, input.bytes.map((byte) => (sBox[byte >> 4] << 4) | sBox[byte & 0x0f])),
@@ -1023,7 +1148,7 @@ const substitute: Operation = {
   },
 }
 
-const permute: Operation = {
+const permute: Operation<'spn.permute@1'> = {
   manifest: {
     identity: 'spn.permute@1',
     inputs: [{ name: 'value', type: { family: 'bits', size: 16 } }],
@@ -1036,7 +1161,7 @@ const permute: Operation = {
   },
   lineage(parameters, inputTypes) {
     const size = inputTypes.value?.family === 'bits' ? inputTypes.value.size as number : 16
-    const permutation = parameters.permutation as readonly number[]
+    const permutation = parameters.permutation
     const inverse = permutation.reduce<number[]>((result, source, destination) => {
       result[source] = destination
       return result
@@ -1050,7 +1175,7 @@ const permute: Operation = {
     const input = inputs.value as BitsValue
     const nibbles = [input.bytes[0] >> 4, input.bytes[0] & 0x0f, input.bytes[1] >> 4, input.bytes[1] & 0x0f]
     const output = new Uint8Array(4)
-    for (const [index, destination] of (parameters.permutation as readonly number[]).entries()) output[destination] = nibbles[index]
+    for (const [index, destination] of parameters.permutation.entries()) output[destination] = nibbles[index]
     return { value: bits(16, Uint8Array.of((output[0] << 4) | output[1], (output[2] << 4) | output[3])) }
   },
 }
@@ -1244,7 +1369,7 @@ const affine: Operation = {
   },
 }
 
-const transposition: Operation = {
+const transposition: Operation<'classical.transposition@1'> = {
   manifest: {
     identity: 'classical.transposition@1',
     inputs: [
@@ -1316,7 +1441,7 @@ const aesRcon: readonly number[] = (() => {
   return table
 })()
 
-const aesKeyWord: Operation = {
+const aesKeyWord: Operation<'aes.key-word@1'> = {
   manifest: {
     identity: 'aes.key-word@1',
     inputs: [{ name: 'key', type: { family: 'bits', size: 'N' } }],
@@ -1329,7 +1454,7 @@ const aesKeyWord: Operation = {
   },
   execute(inputs, parameters) {
     const key = inputs.key as BitsValue
-    const index = parameters.index as number
+    const { index } = parameters
     const offset = index * 4
     if (offset + 4 > key.bytes.length) {
       throw new CipherDiagnostic('aes.key-word-out-of-range', 'Key word index exceeds the key length.', { index, keyBytes: key.bytes.length })
@@ -1364,7 +1489,7 @@ const aesSubWord: Operation = {
   },
 }
 
-const aesRconWord: Operation = {
+const aesRconWord: Operation<'aes.rcon-word@1'> = {
   manifest: {
     identity: 'aes.rcon-word@1',
     inputs: [],
@@ -1377,7 +1502,7 @@ const aesRconWord: Operation = {
       : [diagnostic('aes.invalid-rcon-round', 'Rcon round must be a positive integer within the supported range.', `${node.id}.parameters.round`, node, { maximum: aesRcon.length })]
   },
   execute(_inputs, parameters) {
-    return { value: bits(32, Uint8Array.of(aesRcon[(parameters.round as number) - 1], 0, 0, 0)) }
+    return { value: bits(32, Uint8Array.of(aesRcon[parameters.round - 1], 0, 0, 0)) }
   },
 }
 
@@ -1569,7 +1694,7 @@ const throwing: Operation = {
   },
 }
 
-const invalidLineage: Operation = {
+const invalidLineage: Operation<'test.invalid-lineage@1'> = {
   manifest: { identity: 'test.invalid-lineage@1', inputs: [{ name: 'value', type: { family: 'bits', size: 4 } }], outputs: [{ name: 'value', type: { family: 'bits', size: 4 } }] },
   lineage: (parameters) => parameters.mode === 'width'
     ? { value: [] }
@@ -1579,13 +1704,19 @@ const invalidLineage: Operation = {
   execute(inputs) { return { value: cloneValue(inputs.value) } },
 }
 
-const operations = new Map<string, Operation>([
-  source, xor, concat, substitute, permute, substituteNibbles, permuteGather, substituteBytes, permuteBytes, rotateWord, xorConstant, aesXorWords, output,
+const operations = new Map<string, RegisteredOperation>([
+  source, xor, concat, substitute, permute,
+  substituteNibbles, permuteGather, substituteBytes, permuteBytes,
+  rotateWord, xorConstant, aesXorWords, output,
   caesar, affine, substitution, vigenere, transposition,
-  aesKeyWord, aesRotWord, aesSubWord, aesRconWord, aesWordXor, aesRoundKey,
-  aesSubBytes, aesInvSubBytes, aesShiftRows, aesInvShiftRows, aesMixColumns, aesInvMixColumns,
+  aesKeyWord, aesRotWord, aesSubWord, aesRconWord,
+  aesWordXor, aesRoundKey, aesSubBytes, aesInvSubBytes,
+  aesShiftRows, aesInvShiftRows, aesMixColumns, aesInvMixColumns,
   throwing, invalidLineage,
-].map((operation) => [operation.manifest.identity, operation]))
+].map((operation) => {
+  const registered = registerOperation(operation)
+  return [registered.manifest.identity, registered] as const
+}))
 
 export const operationManifests: readonly OperationManifest[] = [...operations.values()]
   .filter((operation) => !operation.manifest.identity.startsWith('test.'))
@@ -1849,7 +1980,8 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
   const expanded = expandGraph(graph, diagnostics)
   const compiledGraph = structuredClone(expanded.graph)
   const nodes = new Map<string, AuthoredNode>()
-  const resolved = new Map<string, Operation>()
+  const resolved = new Map<string, RegisteredOperation>()
+  const bound = new Map<string, BoundOperation>()
   const mappings = new Map<string, AlphabetMapping>()
 
   for (const mapping of compiledGraph.alphabetMappings ?? []) {
@@ -1875,7 +2007,9 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
     const operation = resolved.get(node.id)
     if (!operation) continue
     const params = node.parameters ?? {}
-    diagnostics.push(...(operation.validateParameters?.(params, node) ?? []))
+    const binding = operation.validateAndBind(params, node)
+    diagnostics.push(...binding.diagnostics)
+    if (!binding.diagnostics.length) bound.set(node.id, binding.bind())
     if (node.operation === 'core.source@1' && isPortType(params.type)
       && (params.type.family === 'alphabet-symbol' || params.type.family === 'alphabet-text')
       && !mappings.has(params.type.mapping)) {
@@ -1985,10 +2119,11 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
         inputTypes.set(port.name, type)
       }
       let inferred: Readonly<Record<string, PortType>> | undefined
-      if (operation.inferOutputTypes) {
-        const result = operation.inferOutputTypes(Object.fromEntries(inputTypes), node.parameters ?? {}, node)
-        if (!result.ok) diagnostics.push(...result.diagnostics.map((item) => ({ ...item, path: `${node.id}.${item.path}` })))
-        else inferred = result.value
+      const operationBinding = bound.get(id)!
+      if (operationBinding.inferOutputTypes) {
+        const result = operationBinding.inferOutputTypes(Object.fromEntries(inputTypes), node)
+        if (result && !result.ok) diagnostics.push(...result.diagnostics.map((item) => ({ ...item, path: `${node.id}.${item.path}` })))
+        else if (result) inferred = result.value
       } else if (operation.manifest.outputTypeParameter) {
         const type = node.parameters?.[operation.manifest.outputTypeParameter]
         if (isPortType(type) && (!('size' in type) || typeof type.size === 'number')) {
@@ -2034,13 +2169,14 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
       for (const id of order) {
         const node = nodes.get(id)!
         const operation = resolved.get(id)!
-        if (!operation.lineage) continue
+        const operationBinding = bound.get(id)!
+        if (!operationBinding.lineage) continue
         const inputTypes = Object.fromEntries(operation.manifest.inputs.flatMap((port) => {
           const input = node.inputs?.[port.name]
           const type = input && outputTypes.get(`${input.node}.${input.port}`)
           return input && type ? [[port.name, input.bits && type.family === 'bits' ? { family: 'bits' as const, size: input.bits[1] } : type]] : []
         }))
-        const declaration = operation.lineage(node.parameters ?? {}, inputTypes)
+        const declaration = operationBinding.lineage(inputTypes)
         for (const output of operation.manifest.outputs) {
           const outputType = outputTypes.get(`${id}.${output.name}`)
           const sources = declaration[output.name]
@@ -2098,16 +2234,16 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
             const node = nodes.get(id)!
             const operation = resolved.get(id)!
             const parameters = { ...(node.parameters ?? {}) }
-            if (node.operation === 'core.source@1' && executionInputs[`${id}.value`]) parameters.value = executionInputs[`${id}.value`]
             const inputs: Record<string, CryptoValue> = {}
             for (const [name, ref] of Object.entries(node.inputs ?? {})) {
               const value = values.get(ref.node)![ref.port]
               inputs[name] = ref.bits === undefined ? value : projectBits(value as BitsValue, ref.bits[0], ref.bits[1])
             }
             if (node.operation === 'core.source@1') {
-              const value = parameters.value as CryptoValue | undefined
+              const sourceBinding = bound.get(id)!
+              const value = executionInputs[`${id}.value`] ?? sourceBinding.sourceValue
               if (!value) return { ok: false, diagnostics: [diagnostic('missing-execution-input', 'Source needs an execution input.', `${id}.value`, node)] }
-              const declaredType = parameters.type
+              const declaredType = sourceBinding.sourceType
               if (!isCryptoValue(value) || !isPortType(declaredType) || !typeMatches(declaredType, actualType(value), new Map())) {
                 // Width mismatch on an otherwise valid bits value: expose expected/actual bit
                 // sizes. Wrong family/type or malformed values keep the bare diagnostic.
@@ -2132,7 +2268,9 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
             }
             let result: Record<string, CryptoValue>
             try {
-              result = operation.execute(inputs, parameters, mappings)
+              result = bound.get(id)!.execute(inputs, mappings, node.operation === 'core.source@1'
+                ? executionInputs[`${id}.value`] ?? bound.get(id)!.sourceValue
+                : undefined)
             } catch (error) {
               return { ok: false, diagnostics: [error instanceof CipherDiagnostic
                 ? diagnostic(error.code, error.message, error.code === 'cipher.invalid-transposition-rows' ? `${id}.inputs.rows` : id, node, error.details)
@@ -2153,7 +2291,7 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
                 path: `${id}.value`,
                 level: 'detail',
                 primitive: node.operation,
-                parameters: structuredClone(node.traceParameters ?? node.parameters ?? {}),
+                parameters: structuredClone(bound.get(id)!.traceParameters),
                 ...(node.role ? { role: node.role } : {}),
                 ...(node.round === undefined ? {} : { round: node.round }),
                 ...(node.iteration === undefined ? {} : { iteration: node.iteration }),
@@ -2173,11 +2311,7 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
               const round = Number(roundStage[2])
               const stage = roundStage[3] as 'key-mix' | 'substitute' | 'permute'
               const value = cloneValue(result.value)
-              const traceOperation = stage === 'substitute'
-                ? { sBox: [...parameters.sBox as readonly number[]] }
-                : stage === 'permute'
-                  ? { permutation: [...parameters.permutation as readonly number[]] }
-                  : undefined
+              const traceOperation = stage === 'substitute' || stage === 'permute' ? bound.get(id)!.legacyTraceOperation : undefined
               if (compiledGraph.traceLevel === 'detail') appendTrace({
                 path: `${instance}.${round}/${stage}`,
                 level: 'detail',

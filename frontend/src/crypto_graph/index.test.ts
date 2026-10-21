@@ -183,6 +183,16 @@ describe('CryptoGraph compile/execute seam (#26)', () => {
     expect(compile(graph('core.substitute-bytes@1', { sBox: Array(256).fill(0), start: 7, count: 2 }))).toMatchObject({ ok: false, diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'operation.substitute-bytes-range-out-of-bounds' })]) })
     expect(compile(graph('core.rotate-word@1', { target: 2, amount: 8 })).ok).toBe(false)
     expect(compile(graph('core.permute-bytes@1', { permutation: [0, 1, 1, 3, 4, 5, 6, 7] })).ok).toBe(false)
+    for (const parameters of [{ permutation: null }, {}]) {
+      expect(compile(graph('core.permute-bytes@1', parameters))).toMatchObject({
+        ok: false,
+        diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'operation.invalid-permutation' })]),
+      })
+    }
+    expect(compile(graph('core.substitute-bytes@1', { sBox: Array(256).fill(0), start: null }))).toMatchObject({
+      ok: false,
+      diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'operation.substitute-bytes-range-out-of-bounds' })]),
+    })
     const sparseSBox = Array(256) as number[]
     for (let index = 0; index < 256; index += 1) if (index !== 17) sparseSBox[index] = index
     expect(compile(graph('core.substitute-bytes@1', { sBox: sparseSBox }))).toMatchObject({ ok: false, diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'operation.invalid-s-box' })]) })
@@ -190,6 +200,24 @@ describe('CryptoGraph compile/execute seam (#26)', () => {
     delete sparsePermutation[3]
     expect(compile(graph('core.permute-bytes@1', { permutation: sparsePermutation }))).toMatchObject({ ok: false, diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'operation.invalid-permutation' })]) })
     expect(compile(graph('core.substitute-bytes@1', { sBox: Array(256).fill(7) })).ok).toBe(true)
+  })
+
+  it('rejects sparse v1 gather and byte permutations before typed callbacks', () => {
+    const cases = [
+      { operation: 'spn.permute-gather@1', size: 16, permutation: [0, 1, 2, 3], hole: 2 },
+      { operation: 'core.permute-bytes@1', size: 32, permutation: [0, 1, 2, 3], hole: 2 },
+    ] as const
+    for (const testCase of cases) {
+      const permutation = [...testCase.permutation]
+      delete permutation[testCase.hole]
+      expect(compile({
+        nodes: [
+          source('input', bits(testCase.size, new Uint8Array(testCase.size / 8))),
+          { id: 'operation', operation: testCase.operation, inputs: { value: { node: 'input', port: 'value' } }, parameters: { permutation } },
+        ],
+        outputs: [{ node: 'operation', port: 'value' }],
+      })).toMatchObject({ ok: false, diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'operation.invalid-permutation' })]) })
+    }
   })
 
   it('reports malformed, empty, and out-of-bounds projections without throwing', () => {
@@ -721,6 +749,99 @@ describe('CryptoGraph compile/execute seam (#26)', () => {
     const snapshot = direct.value.execute({ 'input.value': sourceInput })
     sourceInput.bytes[1] = 2
     expect(snapshot.ok && hex(snapshot.value.outputs['input.value'] as ReturnType<typeof bits>)).toBe('0x0001')
+  })
+
+  it('keeps validated operation parameters when the exposed compiled graph is mutated', () => {
+    const graph: AuthoredGraph = {
+      nodes: [
+        source('input', bits(16, Uint8Array.of(0x12, 0x34))),
+        { id: 'permute', operation: 'spn.permute@1', inputs: { value: { node: 'input', port: 'value' } }, parameters: { permutation: [3, 0, 1, 2] } },
+      ],
+      outputs: [{ node: 'permute', port: 'value' }],
+    }
+    const compiled = compile(graph)
+    expect(compiled.ok).toBe(true)
+    if (!compiled.ok) return
+    const permutation = compiled.value.graph.nodes[1].parameters!.permutation as number[]
+    permutation.fill(0)
+    const inPlaceExecution = compiled.value.execute()
+    expect(inPlaceExecution.ok).toBe(true)
+    if (inPlaceExecution.ok) expect(hex(inPlaceExecution.value.outputs['permute.value'] as ReturnType<typeof bits>)).toBe('0x2341')
+
+    compiled.value.graph.nodes[1].parameters = { target: 0, amount: 1 }
+
+    const execution = compiled.value.execute()
+    expect(execution.ok).toBe(true)
+    if (execution.ok) expect(hex(execution.value.outputs['permute.value'] as ReturnType<typeof bits>)).toBe('0x2341')
+  })
+
+  it('validates source overrides against the type captured at compilation', () => {
+    const compiled = compile({
+      nodes: [{ id: 'input', operation: 'core.source@1', parameters: { type: { family: 'bits', size: 8 } } }],
+      outputs: [{ node: 'input', port: 'value' }],
+    })
+    expect(compiled.ok).toBe(true)
+    if (!compiled.ok) return
+    compiled.value.graph.nodes[0].parameters!.type = { family: 'bits', size: 16 }
+
+    const execution = compiled.value.execute({ 'input.value': bits(16, Uint8Array.of(0, 1)) })
+    expect(execution).toMatchObject({
+      ok: false,
+      diagnostics: [{ code: 'invalid-execution-input', details: { expectedBits: 8, actualBits: 16 } }],
+    })
+  })
+
+  it('keeps v1 primitive trace parameters aligned with the compiled operation', () => {
+    const compiled = compile({
+      traceLevel: 'detail',
+      nodes: [
+        source('input', bits(16, Uint8Array.of(0x12, 0x34))),
+        { id: 'round.1/permute', operation: 'spn.permute@1', inputs: { value: { node: 'input', port: 'value' } }, parameters: { permutation: [3, 0, 1, 2] } },
+      ],
+      outputs: [{ node: 'round.1/permute', port: 'value' }],
+    })
+    expect(compiled.ok).toBe(true)
+    if (!compiled.ok) return
+    compiled.value.graph.nodes[1].parameters!.permutation = null
+
+    const execution = compiled.value.execute()
+    expect(execution).toMatchObject({ ok: true, value: { trace: expect.arrayContaining([expect.objectContaining({ operation: { permutation: [3, 0, 1, 2] } })]) } })
+  })
+
+  it('preserves v1 trace metadata for byte permutations using legacy round paths', () => {
+    const compiled = compile({
+      traceLevel: 'detail',
+      nodes: [
+        source('input', bits(32, Uint8Array.of(0x10, 0x20, 0x30, 0x40))),
+        { id: 'round.1/permute', operation: 'core.permute-bytes@1', inputs: { value: { node: 'input', port: 'value' } }, parameters: { permutation: [1, 0, 2, 3] } },
+      ],
+      outputs: [{ node: 'round.1/permute', port: 'value' }],
+    })
+    expect(compiled.ok).toBe(true)
+    if (!compiled.ok) return
+
+    const execution = compiled.value.execute()
+    expect(execution).toMatchObject({
+      ok: true,
+      value: { trace: expect.arrayContaining([expect.objectContaining({ operation: { permutation: [1, 0, 2, 3] } })]) },
+    })
+  })
+
+  it('keeps v2 trace parameters aligned with the compiled operation', () => {
+    const compiled = compile({
+      schema: 2,
+      nodes: [
+        source('input', bits(16, Uint8Array.of(0x12, 0x34))),
+        { id: 'permute', operation: 'spn.permute@1', inputs: { value: { node: 'input', port: 'value' } }, parameters: { permutation: [3, 0, 1, 2] } },
+      ],
+      outputs: [{ node: 'permute', port: 'value' }],
+    })
+    expect(compiled.ok).toBe(true)
+    if (!compiled.ok) return
+    compiled.value.graph.nodes[1].parameters!.permutation = null
+
+    const execution = compiled.value.execute()
+    expect(execution).toMatchObject({ ok: true, value: { trace: expect.arrayContaining([expect.objectContaining({ primitive: 'spn.permute@1', parameters: { permutation: [3, 0, 1, 2] } })]) } })
   })
 
   it('supports bytes, words, and alphabet symbols without treating text as a wire value', () => {
