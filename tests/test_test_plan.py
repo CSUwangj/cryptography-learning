@@ -101,6 +101,43 @@ class TestPlanTest(unittest.TestCase):
         self.assertIn("home-layout.spec.ts", checks["browser_home-layout"])
         self.assertIn("learning.spec.ts", checks["browser_learning"])
 
+    def test_image_paths_select_smoke_except_preserved_browser_acceptance(self):
+        smoke_paths = (
+            "baseline/content/lessons/example.md",
+            "baseline/tests/test_http_spa.py",
+            "Dockerfile",
+            "docker-compose.yml",
+            "start-web-tier.sh",
+            "acceptance/run.sh",
+        )
+        for path in smoke_paths:
+            with self.subTest(path=path):
+                checks = {item["id"]: item for item in test_plan.plan_paths([path])["checks"]}
+                self.assertIn("image_smoke", checks)
+                self.assertEqual(checks["image_smoke"]["argv"][-1], "smoke")
+                self.assertNotIn("image_acceptance", checks)
+
+        preserved = {
+            "baseline/fixtures/graphql/catalog.json": "image_acceptance",
+            "baseline/terminal/ws_protocol.py": "image_acceptance",
+            "frontend/e2e/web-tier.spec.ts": "image_acceptance",
+        }
+        for path, identifier in preserved.items():
+            with self.subTest(path=path):
+                checks = {item["id"]: item for item in test_plan.plan_paths([path])["checks"]}
+                self.assertIn(identifier, checks)
+                self.assertEqual(checks[identifier]["argv"][-1], "pr")
+
+    def test_mixed_image_paths_keep_union_of_smoke_and_browser_checks(self):
+        plan = test_plan.plan_paths([
+            "Dockerfile",
+            "frontend/e2e/web-tier.spec.ts",
+        ])
+        checks = {item["id"]: item for item in plan["checks"]}
+        self.assertTrue({"image_smoke", "image_acceptance"} <= set(checks))
+        self.assertEqual(checks["image_smoke"]["argv"][-1], "smoke")
+        self.assertEqual(checks["image_acceptance"]["argv"][-1], "pr")
+
     def test_frontend_discovery_uses_supplied_repository(self):
         with tempfile.TemporaryDirectory() as directory:
             repo = Path(directory)
@@ -136,8 +173,8 @@ class TestPlanTest(unittest.TestCase):
             "frontend/schema/schema.gql": {"backend_schema", "frontend-tests", "frontend_codegen", "frontend_typecheck"},
             "frontend/src/crypto_graph/worker_adapter.ts": {"frontend-tests", "frontend_typecheck", "browser_crypto-graph-worker"},
             "baseline/fixtures/graphql/catalog.json": {"frontend-tests", "image_acceptance"},
-            "baseline/content/lessons/example.md": {"image_acceptance"},
-            "baseline/tests/test_http_spa.py": {"image_acceptance"},
+            "baseline/content/lessons/example.md": {"image_smoke"},
+            "baseline/tests/test_http_spa.py": {"image_smoke"},
             "baseline/terminal/ws_protocol.py": {"image_acceptance"},
             "frontend/demos/example.ts": {"frontend-tests", "demo_browser"},
             "frontend/e2e/web-tier.spec.ts": {"image_acceptance"},
@@ -154,7 +191,7 @@ class TestPlanTest(unittest.TestCase):
             "acceptance/completion/run.sh": {"completion_acceptance", "tooling"},
             "frontend/package-lock.json": {"frontend-tests", "frontend_typecheck", "frontend_build", "frontend_install"},
             "rust-toolchain.toml": {"backend_fmt", "backend_clippy", "backend_tests", "backend_build"},
-            "start-web-tier.sh": {"image_acceptance", "tooling"},
+            "start-web-tier.sh": {"image_smoke", "tooling"},
         }
         for path, expected in cases.items():
             with self.subTest(path=path):

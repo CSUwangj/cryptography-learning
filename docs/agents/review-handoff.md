@@ -74,9 +74,13 @@ Inspect `python3 scripts/test_plan.py local --repo .`; the same mappings drive
 push CI. The plan records check IDs, argv/cwd and selection reasons. Declare every
 selected ID with `--check`. `frontend-tests` runs the selected Vitest files with
 one worker and rejects an empty match. Broad frontend configuration changes can
-select all Vitest tests. The plan does not infer ticket-specific browser acceptance:
-add that check when approved behavior requires it. `baseline/content/**` is runtime
-input even when Markdown; unrelated excluded changes remain a review responsibility.
+select all Vitest tests. The image planner uses `image_smoke` for ordinary image,
+Docker, startup, `baseline/content/**`, and `baseline/tests/**` changes; direct
+`frontend/e2e/web-tier.spec.ts` and the preserved fixture/terminal mappings retain
+served-image browser acceptance. Browser coverage for smoke-selected changes is
+deferred to nightly, with the accepted risk that a browser regression introduced
+by image or baseline inputs may wait until that next run. `baseline/content/**`
+is runtime input even when Markdown; unrelated excluded changes remain a review responsibility.
 A required check with an approved verification gap stays declared and incomplete;
 use the existing exception procedure instead of omitting it.
 Client schema changes also select `backend_schema` for the web-server SDL parity test.

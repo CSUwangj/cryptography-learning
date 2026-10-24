@@ -64,9 +64,17 @@ def plan_paths(paths, repo=ROOT):
         item = _frontend(selected, repo=repo, full=full, reason=reason)
         add(item["id"], item["cwd"], item["argv"], reason)
 
+    def image_check(mode, reason):
+        add(
+            "image_smoke" if mode == "smoke" else "image_acceptance",
+            ".",
+            ["./acceptance/run.sh", "cryptography-learning-web-tier:ci", "--mode", mode],
+            reason,
+        )
+
     for path in paths:
         if path.startswith("baseline/content/"):
-            add("image_acceptance", ".", ["./acceptance/run.sh", "cryptography-learning-web-tier:ci", "--mode", "pr"], "mounted content is runtime fixture data")
+            image_check("smoke", "mounted content is runtime fixture data")
             continue
         if path.startswith("frontend/demos/") or path.startswith("frontend/src/lesson_runtime/fixture/"):
             frontend(["frontend/src/lesson_runtime/index.test.ts", "frontend/src/visualizers/index.test.ts", "frontend/src/visualizers/migration.test.tsx"], reason="runtime demo or fixture consumers changed")
@@ -184,7 +192,10 @@ def plan_paths(paths, repo=ROOT):
                 add("frontend_typecheck", "frontend", ["npm", "run", "typecheck"], "unknown frontend executable path; broad fallback")
                 add("frontend_build", "frontend", ["npm", "run", "build"], "unknown frontend executable path; broad fallback")
         elif path.startswith(("baseline/tests/", "baseline/terminal/")):
-            add("image_acceptance", ".", ["./acceptance/run.sh", "cryptography-learning-web-tier:ci", "--mode", "pr"], "deployed baseline test or terminal fixture changed")
+            image_check(
+                "pr" if path.startswith("baseline/terminal/") else "smoke",
+                "deployed baseline test or terminal fixture changed",
+            )
         elif path.startswith("baseline/fixtures/graphql/"):
             frontend(["frontend/src/practice/map.test.ts"], reason="external GraphQL fixtures have frontend mapping consumers")
             add("image_acceptance", ".", ["./acceptance/run.sh", "cryptography-learning-web-tier:ci", "--mode", "pr"], "external GraphQL fixtures have served-image consumers")
@@ -192,7 +203,7 @@ def plan_paths(paths, repo=ROOT):
             add("completion_acceptance", ".", ["./acceptance/completion/run.sh", "cryptography-learning-web-tier:ci", "cryptography-learning-completion-relay:ci"], "completion relay acceptance harness changed")
             add("tooling", ".", ["python3", "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py", "-v"], "acceptance harness contract changed")
         elif path.startswith("acceptance/") or path in {"Dockerfile", "docker-compose.yml", "start-web-tier.sh"}:
-            add("image_acceptance", ".", ["./acceptance/run.sh", "cryptography-learning-web-tier:ci", "--mode", "pr"], "image or acceptance harness changed")
+            image_check("smoke", "image or acceptance harness changed")
             add("tooling", ".", ["python3", "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py", "-v"], "acceptance harness contract changed")
         else:
             if path.startswith("scripts/"):

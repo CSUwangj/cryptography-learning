@@ -35,7 +35,7 @@ jobs:
               identifier = check["id"]
               if identifier == "tooling":
                   group = "tooling"
-              elif identifier in {"image_acceptance", "completion_acceptance"}:
+              elif identifier in {"image_smoke", "image_acceptance", "completion_acceptance"}:
                   group = "image"
               elif identifier.startswith(("backend", "relay")) or identifier == "claims":
                   group = "backend"
@@ -43,7 +43,7 @@ jobs:
                   group = "frontend"
               entry = groups.setdefault(group, {"group": group, "checks": [], "browser": False, "has_install": False})
               entry["checks"].append(identifier)
-              entry["browser"] |= "browser" in identifier or identifier == "demo_browser" or group == "image"
+              entry["browser"] |= identifier in {"image_acceptance", "completion_acceptance", "demo_browser"} or "browser" in identifier
               entry["has_install"] |= identifier == "frontend_install"
 
           print("groups=" + json.dumps({"include": list(groups.values())}, separators=(",", ":")))
@@ -69,7 +69,7 @@ jobs:
           toolchain: 1.97.0
           components: rustfmt, clippy
       - uses: actions/setup-node@v4
-        if: ${{ matrix.group == 'frontend' || matrix.group == 'image' }}
+        if: ${{ matrix.group == 'frontend' || matrix.browser }}
         with:
           node-version-file: frontend/.nvmrc
       - name: Run frontend install check once
@@ -78,7 +78,7 @@ jobs:
           PLAN: ${{ needs.plan.outputs.encoded }}
         run: python3 scripts/test_plan.py run --plan "$PLAN" --id frontend_install
       - name: Install frontend dependencies
-        if: ${{ matrix.group == 'image' || (matrix.group == 'frontend' && !matrix.has_install) }}
+        if: ${{ matrix.browser || (matrix.group == 'frontend' && !matrix.has_install) }}
         working-directory: frontend
         run: npm ci
       - name: Install Chromium for browser checks
