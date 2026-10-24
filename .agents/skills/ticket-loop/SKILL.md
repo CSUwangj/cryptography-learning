@@ -186,7 +186,8 @@ Run focused checks during development. Stage the candidate ticket files and
 capture a packet with every applicable acceptance check before pre-review;
 unfinished checks remain `not-run`. Use the handoff document's reserved
 `frontend-tests` gate for frontend runtime/dependency changes. Focused tests
-supplement the full suite. Keep command and cwd fixed across attempts and record
+are the immediate evidence; the full suite runs in the nightly workflow. Keep
+command and cwd fixed across attempts and record
 diagnostic variants separately. Stop editing while reviewers inspect that snapshot.
 Only the currently assigned implementer edits ticket files. The coordinator
 confirms delivery is finished, the packet exists and `verify` passes before any
@@ -205,15 +206,16 @@ Environment failures require honest limits and the normal permission flow.
    traces. Classify the observed failure as an assertion, permission/launch error,
    timeout or unfinished process. A warning alone does not establish the cause.
 2. Run heavyweight checks sequentially. Record pinned tool versions, worker count
-   and permission context; use the repository's single-worker full frontend suite
-   for acceptance. Resolve permission failures through the normal host flow.
+   and permission context; use the planner-selected frontend suite for immediate
+   acceptance and the nightly workflow for full coverage. Resolve permission
+   failures through the normal host flow.
 3. When causality remains uncertain, compare target and base using complete
    checkouts, required fixtures and equivalent dependencies/settings. Keep the
    implementation checkout intact. Change one factor at a time where practical;
    record confounders when that is not possible.
 4. Report what the evidence establishes: a base failure predates the change but
    does not prove every affected behavior is unchanged. A later pass preserves
-   earlier failure history; focused success does not complete the full-suite gate.
+   earlier failure history; focused success does not establish nightly full-suite coverage.
 5. Stop when evidence identifies the cause or the specific remaining evidence gap.
    Rerun only to test a stated hypothesis or verify a correction. An unresolved
    required check remains incomplete under Deliver's exception rules; do not

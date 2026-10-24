@@ -25,7 +25,7 @@ class ReviewHandoffTest(unittest.TestCase):
             check=True, capture_output=True,
         )
         self.base = self.git("rev-parse", "HEAD").stdout.strip()
-        self.target = "handoff [sample].txt"
+        self.target = "docs/agents/handoff [sample].md"
         (self.repo / self.target).write_text("ticket implementation\n")
         self.git("add", "--", self.target)
         self.notes = self.directory / "notes.md"
@@ -47,10 +47,22 @@ class ReviewHandoffTest(unittest.TestCase):
         return result
 
     def create(self, *args, expected=0):
+        paths = [self.target]
+        remaining = []
+        index = 0
+        while index < len(args):
+            if args[index] == "--paths":
+                index += 1
+                while index < len(args) and not args[index].startswith("--"):
+                    paths.append(args[index])
+                    index += 1
+            else:
+                remaining.append(args[index])
+                index += 1
         return self.cli(
             "create", "--repo", self.repo, "--base", self.base,
             "--issue", "#96", "--notes", self.notes, "--output", self.packet,
-            "--check", "unit", "--paths", self.target, *args, expected=expected,
+            "--check", "unit", "--paths", *dict.fromkeys(paths), *remaining, expected=expected,
         )
 
     def run_python(self, code, *, label="unit", expected=0):
@@ -77,7 +89,7 @@ class ReviewHandoffTest(unittest.TestCase):
         self.create()
         diff = subprocess.run(shlex.split(self.data()["diff_command"]), capture_output=True, text=True, check=True)
         self.assertIn("+ticket implementation", diff.stdout)
-        self.run_python("from pathlib import Path; assert Path('handoff [sample].txt').read_text() == 'ticket implementation\\n'; print('assertion passed')")
+        self.run_python("from pathlib import Path; assert Path('docs/agents/handoff [sample].md').read_text() == 'ticket implementation\\n'; print('assertion passed')")
         self.cli("verify", self.packet, "--require-passed")
         attempt = self.data()["checks"]["unit"][0]
         self.assertEqual(attempt["exit_code"], 0)
@@ -105,7 +117,7 @@ class ReviewHandoffTest(unittest.TestCase):
         self.assertIn('"attempts": 2', result.stdout)
         self.assertIn('"previous_failed": 1', result.stdout)
 
-    def test_frontend_runtime_and_dependency_changes_require_full_suite(self):
+    def test_frontend_runtime_and_dependency_changes_require_planned_checks(self):
         changed = []
         for name in ("frontend/src/verification-example.ts", "frontend/package-lock.json",
                      "frontend/schema/schema.gql", "frontend/index.html", "frontend/.nvmrc",
@@ -122,7 +134,7 @@ class ReviewHandoffTest(unittest.TestCase):
                     *[argument for old in changed[:-1] for argument in ("--exclude", old, "Other fixture")],
                     expected=1,
                 )
-                self.assertIn("missing required check: frontend-tests", result.stderr)
+                self.assertIn("missing required check:", result.stderr)
                 self.assertFalse(self.packet.exists())
 
     def test_frontend_documentation_does_not_require_runtime_suite(self):
@@ -134,25 +146,26 @@ class ReviewHandoffTest(unittest.TestCase):
         self.run_python("print('documentation checked')")
         self.cli("verify", self.packet, "--require-passed")
 
-    def test_full_suite_is_required_even_when_focused_check_passes(self):
-        name = "frontend/src/verification-example.ts"
-        (self.repo / name).write_text("export const example = true\n")
+    def test_handoff_requires_selected_frontend_check_not_deferred_full_suite(self):
+        name = "frontend/src/crypto_graph/index.test.ts"
+        (self.repo / name).write_text("test fixture change\n")
         self.git("add", "--", name)
-        self.create("--paths", self.target, name, "--check", "frontend-tests")
-        self.run_python("print('focused check passed')")
+        self.create("--paths", name, "--check", "frontend-tests", "--check", "frontend_typecheck")
         result = self.cli("verify", self.packet, "--require-passed", expected=1)
         self.assertIn('"frontend-tests": "not-run"', result.stdout)
-        # Older packets can omit the gate entirely; verification must still find it.
         legacy = self.data()
         del legacy["checks"]["frontend-tests"]
         self.packet.write_text(json.dumps(legacy))
         self.cli("verify", self.packet)
         result = self.cli("verify", self.packet, "--require-passed", expected=1)
         self.assertIn("missing required check: frontend-tests", result.stderr)
-        self.assertIn('Incomplete checks: ["frontend-tests"]', result.stdout)
+        self.assertIn('"frontend-tests"', result.stdout)
 
     def test_frontend_gate_executes_only_its_fixed_command_and_directory(self):
-        self.create("--check", "frontend-tests")
+        name = "frontend/src/crypto_graph/index.test.ts"
+        (self.repo / name).write_text("test fixture change\n")
+        self.git("add", "--", name)
+        self.create("--paths", name, "--check", "frontend-tests", "--check", "frontend_typecheck")
         original = self.packet.read_bytes()
         marker = self.directory / "executed.json"
         replacement = f"from pathlib import Path; Path({str(marker)!r}).write_text('subset ran')"
@@ -170,15 +183,14 @@ class ReviewHandoffTest(unittest.TestCase):
         )
         fish.chmod(0o755)
         env = {**os.environ, "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"]}
-        command = ("fish", "-lc", "nvm use; and npm test -- --maxWorkers=1")
+        command = tuple(next(item["argv"] for item in self.data()["plan"]["checks"] if item["id"] == "frontend-tests"))
         self.cli("run", self.packet, "--label", "frontend-tests", "--", *command, env=env, expected=1)
         self.assertFalse(marker.exists())
         self.assertEqual(self.packet.read_bytes(), original)
         self.cli("run", self.packet, "--label", "frontend-tests", "--cwd", "frontend",
                  "--", *command, env=env)
-        self.assertEqual(json.loads(marker.read_text()), [str(self.repo / "frontend"), list(command[1:])])
-        self.run_python("print('other acceptance check passed')")
-        self.cli("verify", self.packet, "--require-passed")
+        self.assertEqual(json.loads(marker.read_text())[0], str(self.repo / "frontend"))
+        self.assertIn("crypto_graph/index.test.ts", command[-1])
 
     def test_replacement_command_or_directory_cannot_overwrite_failed_check(self):
         self.create()
@@ -343,6 +355,13 @@ class ReviewHandoffTest(unittest.TestCase):
         self.run_python("raise AssertionError('must not execute stale target')", expected=1)
         self.assertEqual(self.data()["checks"]["unit"], [])
 
+    def test_changed_selection_plan_invalidates_snapshot_identity(self):
+        self.create()
+        data = self.data()
+        data["plan"]["checks"].append({"id": "invented", "cwd": ".", "argv": ["true"], "reasons": ["test"]})
+        self.packet.write_text(json.dumps(data))
+        self.assertIn("handoff plan or identity changed", self.cli("verify", self.packet, expected=1).stderr)
+
     def test_rejects_wrong_base_empty_diff_and_unclassified_new_files(self):
         self.cli(
             "create", "--repo", self.repo, "--base", "HEAD~1", "--issue", "#96",
@@ -360,7 +379,7 @@ class ReviewHandoffTest(unittest.TestCase):
 
     def test_check_that_edits_snapshot_is_not_passing_evidence(self):
         self.create()
-        self.run_python("from pathlib import Path; Path('handoff [sample].txt').write_text('changed by check')", expected=1)
+        self.run_python("from pathlib import Path; Path('docs/agents/handoff [sample].md').write_text('changed by check')", expected=1)
         attempt = self.data()["checks"]["unit"][0]
         self.assertEqual(attempt["exit_code"], 0)
         self.assertEqual(attempt["status"], "unavailable")
@@ -390,7 +409,7 @@ class ReviewHandoffTest(unittest.TestCase):
         self.cli("verify", self.packet, "--require-passed", expected=1)
 
     def test_paths_are_literal_even_with_shell_and_git_metacharacters(self):
-        name = "$(touch injected); [glob].txt"
+        name = "docs/agents/$(touch injected); [glob].md"
         (self.repo / name).write_text("literal file\n")
         self.git("add", "--", name)
         self.create("--paths", self.target, name)

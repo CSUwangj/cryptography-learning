@@ -47,9 +47,10 @@ Run the smallest checks that cover the change, and report any checks not run:
 - Deployable behavior: `./baseline/run.sh` (requires Docker)
 
 Register every applicable issue and repository check before final verification;
-unrun checks remain `not-run`. Frontend runtime or dependency changes require a
-separate `frontend-tests` handoff check for the full suite with one worker.
-Focused tests supplement that check. Documentation-only changes use relevant
+unrun checks remain `not-run`. Inspect `python3 scripts/test_plan.py local --repo .`
+to select immediate checks; the handoff and push workflow share this mapping.
+Broad frontend configuration changes can select the full Vitest suite, while
+feature changes use the selected tests. Documentation-only changes use relevant
 documentation checks. The helper's concrete path coverage and commands are in
 [`docs/agents/review-handoff.md`](docs/agents/review-handoff.md).
 

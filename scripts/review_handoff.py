@@ -14,11 +14,12 @@ import shlex
 import subprocess
 import sys
 
+import test_plan
+
 
 REVIEW_AXES = ("standards", "spec")
 REVIEW_STATUSES = ("pending", "passed", "changes-required", "disputed")
 FINDING_STATUSES = ("open", "disputed", "resolved", "withdrawn", "non-blocking")
-FRONTEND_TEST_COMMAND = ["fish", "-lc", "nvm use; and npm test -- --maxWorkers=1"]
 
 
 def digest(content: bytes) -> str:
@@ -96,35 +97,32 @@ def outside_repo(file: Path, repo: Path) -> None:
 
 
 def snapshot_id(data: dict) -> str:
-    identity = {key: data[key] for key in ("repo", "base", "issue", "paths", "excluded", "snapshot")}
+    keys = ("repo", "base", "issue", "paths", "excluded", "snapshot")
+    identity = {key: data[key] for key in keys}
+    if "plan" in data:
+        identity["plan"] = data["plan"]
     return digest(json.dumps(identity, sort_keys=True).encode())
 
 
-def required_checks(targets: list[str]) -> set[str]:
-    if any(
-        not name.endswith(".md") and (
-            name.startswith(("frontend/src/", "frontend/public/", "frontend/schema/"))
-            or name in {
-                "frontend/package.json", "frontend/package-lock.json", "frontend/.nvmrc",
-                "frontend/index.html", "frontend/vite.config.mts", "frontend/tsconfig.json",
-            }
-        )
-        for name in targets
-    ):
-        return {"frontend-tests"}
-    return set()
+def required_checks(targets: list[str], repo: Path) -> set[str]:
+    return {item["id"] for item in test_plan.plan_paths(targets, repo)["checks"]}
+
+
+def packet_plan(data: dict) -> dict:
+    return data.get("plan") or test_plan.plan_paths(data["paths"], Path(data["repo"]))
 
 
 def check_identity(data: dict, name: str) -> tuple[list[str], str] | None:
-    if name == "frontend-tests":
-        return FRONTEND_TEST_COMMAND, str((Path(data["repo"]) / "frontend").resolve())
+    planned = next((item for item in packet_plan(data)["checks"] if item["id"] == name), None)
+    if planned:
+        return planned["argv"], str((Path(data["repo"]) / planned["cwd"]).resolve())
     attempts = data["checks"][name]
     return (attempts[0]["command"], attempts[0]["cwd"]) if attempts else None
 
 
 def check_contract_errors(data: dict) -> list[str]:
     errors = [f"missing required check: {name}"
-              for name in sorted(required_checks(data["paths"]) - data["checks"].keys())]
+              for name in sorted(required_checks(packet_plan(data)["paths"], Path(data["repo"])) - data["checks"].keys())]
     for name, attempts in data["checks"].items():
         identity = check_identity(data, name)
         if any((attempt["command"], attempt["cwd"]) != identity for attempt in attempts):
@@ -143,7 +141,9 @@ def create(args: argparse.Namespace) -> int:
         raise ValueError("exclusion paths must be unique")
     if len(set(args.check)) != len(args.check):
         raise ValueError("check names must be unique")
-    missing = required_checks(targets) - set(args.check)
+    all_paths = targets
+    plan = test_plan.plan_paths(all_paths, repo)
+    missing = required_checks(all_paths, repo) - set(args.check)
     if missing:
         raise ValueError("missing required check: " + ", ".join(sorted(missing)))
     notes = args.notes.read_text(encoding="utf-8").strip()
@@ -158,6 +158,7 @@ def create(args: argparse.Namespace) -> int:
         "base": base,
         "paths": targets,
         "excluded": excluded,
+        "plan": plan,
         "notes": notes,
         "diff_command": shlex.join([
             "git", "--literal-pathspecs", "-C", str(repo), "diff", "--cached",
@@ -182,6 +183,8 @@ def load(file: Path) -> dict:
 
 
 def verify_snapshot(data: dict) -> None:
+    if data.get("snapshot_id") and data["snapshot_id"] != snapshot_id(data):
+        raise ValueError("handoff plan or identity changed; create a new handoff")
     current = snapshot(Path(data["repo"]), data["base"], data["paths"], data["excluded"])
     if current != data["snapshot"]:
         raise ValueError("review snapshot changed; create a new handoff and recheck affected evidence")
@@ -244,7 +247,7 @@ def verify(args: argparse.Namespace) -> int:
     print("Check history: " + json.dumps(history, sort_keys=True))
     incomplete = sorted(
         {name for name, status in results.items() if status != "passed"}
-        | (required_checks(data["paths"]) - results.keys())
+        | (required_checks(packet_plan(data)["paths"], Path(data["repo"])) - results.keys())
     )
     print("Incomplete checks: " + json.dumps(incomplete))
     errors = check_contract_errors(data)
@@ -314,6 +317,7 @@ def run_check(args: argparse.Namespace) -> int:
     if not cwd.is_relative_to(repo) or not cwd.is_dir():
         raise ValueError("check cwd must be a directory inside the reviewed worktree")
     attempts = data["checks"][args.label]
+    planned = next((item for item in packet_plan(data)["checks"] if item["id"] == args.label), {})
     identity = check_identity(data, args.label)
     if identity is not None and (command, str(cwd)) != identity:
         raise ValueError(
@@ -336,7 +340,10 @@ def run_check(args: argparse.Namespace) -> int:
         save(file, data)
         print(f"Running {args.label}; log: {log}", flush=True)
         try:
-            result = subprocess.run(command, cwd=cwd, stdout=stream, stderr=subprocess.STDOUT, check=False)
+            local_command = command
+            if Path(command[0]).name in {"npm", "npx", "node"}:
+                local_command = ["fish", "-lc", "nvm use; and " + shlex.join(command)]
+            result = subprocess.run(local_command, cwd=cwd, env={**os.environ, **planned.get("env", {})}, stdout=stream, stderr=subprocess.STDOUT, check=False)
             attempt.update(
                 exit_code=result.returncode,
                 status="passed" if result.returncode == 0 else "failed",

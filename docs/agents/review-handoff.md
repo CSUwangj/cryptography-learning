@@ -65,40 +65,39 @@ to the current HEAD: this helper handles staged changes, not committed ranges.
 Each `--paths` entry is an exact repository-relative file, including both paths
 of a rename. Register every applicable issue and repository acceptance check
 using `--check` before final verification, including checks not yet runnable.
-Focused tests supplement required full suites. Keep diagnostic variants in
-separate external logs linked from the notes; they do not replace acceptance checks.
+Focused tests are the immediate checks for changed paths. The complete suite is a
+nightly check and remains available through manual dispatch. Keep diagnostic
+variants in separate external logs linked from the notes; they do not replace
+acceptance checks.
 
-The reserved `frontend-tests` check runs the full Vitest suite with one worker:
-cwd `frontend`, command `fish -lc 'nvm use; and npm test -- --maxWorkers=1'`.
-The helper requires this check when a non-Markdown target is under `frontend/src/`,
-`frontend/public/` or `frontend/schema/`, or is `frontend/package.json`,
-`frontend/package-lock.json`, `frontend/.nvmrc`, `frontend/index.html`,
-`frontend/vite.config.mts` or `frontend/tsconfig.json`. This includes deletions;
-Markdown documentation does not trigger this path-based gate. It does not infer
-all ticket coverage: classify other paths, runtime uses of Markdown and
-documentation-only changes against AGENTS.md and the issue. Unrelated excluded
-changes remain a review responsibility. A required check with an approved verification gap stays
-declared and incomplete; use the existing exception procedure instead of omitting it.
+Inspect `python3 scripts/test_plan.py local --repo .`; the same mappings drive
+push CI. The plan records check IDs, argv/cwd and selection reasons. Declare every
+selected ID with `--check`. `frontend-tests` runs the selected Vitest files with
+one worker and rejects an empty match. Broad frontend configuration changes can
+select all Vitest tests. The plan does not infer ticket-specific browser acceptance:
+add that check when approved behavior requires it. `baseline/content/**` is runtime
+input even when Markdown; unrelated excluded changes remain a review responsibility.
+A required check with an approved verification gap stays declared and incomplete;
+use the existing exception procedure instead of omitting it.
+Client schema changes also select `backend_schema` for the web-server SDL parity test.
+Focused checks are the immediate gate for the changed paths; the full suite is a
+nightly verification and remains available through manual dispatch.
 
 ```sh
 python3 scripts/review_handoff.py create \
   --repo . --base BASE_SHA --issue '#96' \
   --notes /tmp/issue96-notes.md --output /tmp/issue96-round1.json \
-  --check frontend-install --check frontend-typecheck \
-  --check frontend-tests --check frontend-build \
-  --paths frontend/src/lesson_runtime/compiler.ts frontend/src/lesson_runtime/index.test.ts
+  --check frontend-install --check frontend-tests --check frontend_typecheck \
+  --paths frontend/src/practice/map.test.ts
 
 python3 scripts/review_handoff.py run /tmp/issue96-round1.json \
   --label frontend-install --cwd frontend -- fish -lc 'nvm use; and npm ci'
 
 python3 scripts/review_handoff.py run /tmp/issue96-round1.json \
-  --label frontend-typecheck --cwd frontend -- fish -lc 'nvm use; and npm run typecheck'
+  --label frontend_typecheck --cwd frontend -- npm run typecheck
 
 python3 scripts/review_handoff.py run /tmp/issue96-round1.json \
-  --label frontend-tests --cwd frontend -- fish -lc 'nvm use; and npm test -- --maxWorkers=1'
-
-python3 scripts/review_handoff.py run /tmp/issue96-round1.json \
-  --label frontend-build --cwd frontend -- fish -lc 'nvm use; and npm run build'
+  --label frontend-tests --cwd frontend -- npm test -- --maxWorkers=1 --passWithNoTests=false src/practice/map.test.ts
 
 python3 scripts/review_handoff.py verify /tmp/issue96-round1.json
 python3 scripts/review_handoff.py verify /tmp/issue96-round1.json --require-passed
@@ -126,14 +125,15 @@ when needed to make environment-dependent evidence interpretable.
   are retained. A failed command is `failed`; a command with no recorded
   completion, failed launch or changed snapshot is `unavailable`. A check with
   no attempt is `not-run`. Only exit zero on the recorded snapshot is `passed`.
-- `frontend-tests` accepts only the fixed command and cwd above, even on its first
-  attempt. Other labels bind command and cwd on their first attempt. A changed
-  command or cwd is rejected before execution and does not replace earlier evidence.
+- Planner-selected labels accept only their planned argv and cwd, even on their first
+  attempt. Local npm/npx/node commands run through Fish+nvm. Other labels bind command
+  and cwd on their first attempt. A changed command or cwd is rejected before execution
+  and does not replace earlier evidence.
   Inspect the actual selected tests; fixed command text does not prove coverage or
   freeze environment variables, installed dependencies or external services.
 - `verify` checks snapshot and log identity. `--require-passed` also requires
-  the mandatory frontend check to be declared when applicable, consistent command
-  identities, and the latest attempt of every declared check to pass. Its summary
+  every planner-selected check to be declared, consistent command identities, and
+  the latest attempt of every declared check to pass. Its summary
   includes latest status, attempt count, earlier failed/unavailable attempts and
   incomplete checks. An unchanged rerun may pass without hiding earlier failures.
   Older packets remain readable, but missing mandatory checks or mixed commands

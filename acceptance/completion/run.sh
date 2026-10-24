@@ -186,9 +186,10 @@ mkdir -p "$PLAYWRIGHT_ARTIFACT_DIR"
 
 echo "==> Running Chromium Playwright completion-records.spec.ts"
 run_frontend_playwright() {
+  local report="$ARTIFACT_DIR/playwright-results.json"
   # Pin Node from frontend/.nvmrc and install from the lockfile before Playwright.
   if command -v fish >/dev/null 2>&1; then
-    fish -lc "cd '$ROOT/frontend'; nvm use; npm ci; npx playwright test --project=chromium e2e/completion-records.spec.ts"
+    fish -lc "cd '$ROOT/frontend'; nvm use; and npm ci >/dev/null; and npx playwright test --project=chromium e2e/completion-records.spec.ts --reporter=json > '$report'"
     return
   fi
   (
@@ -205,9 +206,19 @@ run_frontend_playwright() {
       exit 1
     fi
     npm ci
-    npx playwright test --project=chromium e2e/completion-records.spec.ts
+    npx playwright test --project=chromium e2e/completion-records.spec.ts --reporter=json > "$report"
   )
 }
 run_frontend_playwright
+python3 - "$ARTIFACT_DIR/playwright-results.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+stats = json.loads(Path(sys.argv[1]).read_text())['stats']
+print(f"Completion Playwright counts: executed={stats['expected'] + stats['unexpected'] + stats['flaky']}, skipped={stats['skipped']}")
+if stats['expected'] != 1 or stats['unexpected'] or stats['flaky'] or stats['skipped']:
+    raise SystemExit("completion browser test must execute once without skips or failures")
+PY
 
 echo "==> Completion acceptance green for $WEB_IMAGE + $RELAY_IMAGE"
