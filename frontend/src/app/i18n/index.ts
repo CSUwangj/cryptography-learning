@@ -89,6 +89,14 @@ i18n
               'decrypt': 'Decrypt',
             },
           },
+          'learningNavigation': {
+            'label': 'Learning Navigation',
+            'categories': 'Lesson categories',
+            'lessons': 'Lessons',
+            'selectCategory': 'Select a Lesson category',
+            'loading': 'Loading Learning Navigation',
+            'error': 'Unable to load Learning Navigation.',
+          },
           'notFound': {
             'title': 'Not Found',
             'message': 'The page you requested could not be found.',
@@ -202,6 +210,14 @@ i18n
               'encrypt': '加密',
               'decrypt': '解密',
             },
+          },
+          'learningNavigation': {
+            'label': '学习导航',
+            'categories': '课程分类',
+            'lessons': '课程',
+            'selectCategory': '选择课程分类',
+            'loading': '正在加载学习导航',
+            'error': '无法加载学习导航。',
           },
           'notFound': {
             'title': '未找到',

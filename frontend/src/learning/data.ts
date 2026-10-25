@@ -17,13 +17,13 @@ const mapCategory = (category: {
   lessons: category.lessons.map((lesson) => ({ id: lesson.id, title: lesson.title })),
 })
 
-export const useLearningCatalog = () => {
+export const useLearningCatalog = (skip = false) => {
   const { i18n } = useTranslation()
-  const query = useQuery(LearningCatalogDocument, { variables: { language: i18n.language } })
+  const query = useQuery(LearningCatalogDocument, { skip, variables: { language: i18n.language } })
   return {
     loading: query.loading,
     error: query.error,
-    categories: query.data?.learning.lessonCategories.map(mapCategory),
+    categories: query.data?.learning?.lessonCategories.map(mapCategory),
   }
 }
 

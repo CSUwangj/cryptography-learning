@@ -1,4 +1,4 @@
-import React, { useState, type PropsWithChildren } from 'react'
+import React, { lazy, Suspense, useState, type PropsWithChildren } from 'react'
 import {
   Alignment,
   Button,
@@ -18,6 +18,8 @@ import { navbarHeight } from 'ui'
 import styled from '@emotion/styled'
 import { IconNames } from '@blueprintjs/icons'
 import { PracticeNavigation } from 'practice'
+
+const LearningNavigation = lazy(() => import('learning').then(({ LearningNavigation: Page }) => ({ default: Page })))
 
 type I18nRenderProps = {
   s: string
@@ -74,6 +76,35 @@ const NavMenu = styled(Navbar)`
       margin-right: 4px;
     }
   }
+
+  @media (max-width: 1100px) {
+    .bp6-navbar-heading .bp6-button-text {
+      display: none;
+    }
+  }
+
+  @media (max-width: 768px) {
+    .bp6-navbar button.bp6-button {
+      min-width: 36px;
+      padding-inline: 8px;
+    }
+
+    .bp6-navbar button.bp6-button .bp6-button-text {
+      display: none;
+    }
+
+    .bp6-navbar [data-learning-navigation] .bp6-button-text {
+      display: inline;
+    }
+
+    .bp6-navbar .bp6-navbar-divider {
+      display: none;
+    }
+
+    .bp6-navbar .bp6-navbar-heading {
+      margin-right: 4px;
+    }
+  }
 `
 
 const PrimaryNavigation = styled(NavbarGroup)`
@@ -110,11 +141,6 @@ const NavigationActions = styled(Unselectable)`
   gap: 4px;
   min-width: 0;
 
-  @media (max-width: 520px) {
-    [data-learning] {
-      display: none;
-    }
-  }
 `
 
 // Temporary fixture slot for #95 P0-A5/A6; production callers retain the existing navigation.
@@ -140,7 +166,7 @@ export const Shell: React.FC<PropsWithChildren<{ learningPrototype?: React.React
           <NavbarDivider />
           <NavigationActions>
             {/* <Button minimal large icon={IconNames.HELP} text={t('nav.tutorial')} onClick={() => history.push('/tutorial')} /> */}
-            {learningPrototype ?? <CompactAction data-learning minimal large icon={IconNames.SEARCH} text={t('nav.learning')} aria-label={t('nav.learning')} onClick={() => history.push('/learning')} />}
+            {learningPrototype ?? <Suspense fallback={<CompactAction data-learning minimal large icon={IconNames.SEARCH} text={t('nav.learning')} aria-label={t('nav.learning')} onClick={() => history.push('/learning')} />}><LearningNavigation /></Suspense>}
             <PracticeTrigger $prototypeCompact={Boolean(learningPrototype)} />
             <CompactAction minimal large icon={IconNames.ENVELOPE} text={t('nav.feedback')} aria-label={t('nav.feedback')} onClick={handleOpenFeedback} />
           </NavigationActions>

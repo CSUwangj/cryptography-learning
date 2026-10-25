@@ -158,7 +158,7 @@ test.describe('Learning Lesson (#30)', () => {
     await expect(page.getByText('0x0ff0 (bits<16>)')).toBeVisible()
     await expect(page.getByText('Correct output.')).toBeVisible()
     await page.getByRole('button', { name: 'Next' }).click()
-    await page.getByRole('button', { name: 'XOR' }).click()
+    await page.getByRole('button', { name: 'XOR', exact: true }).click()
     await expect(page.getByText('This graph applies XOR.')).toBeVisible()
 
     await page.getByRole('button', { name: 'Previous' }).click()
@@ -253,7 +253,7 @@ test.describe('Learning Lesson (#30)', () => {
     await expect(page.getByText('operation-failed: Operation execution failed. (mixed)')).toBeVisible()
     await expect(page.getByRole('button', { name: 'Previous' })).toBeEnabled()
     await page.getByRole('button', { name: 'Next' }).click()
-    await expect(page.getByRole('button', { name: 'XOR' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'XOR', exact: true })).toBeVisible()
   })
 
   test('keeps navigation available after a bounded execution failure', async ({ page }) => {

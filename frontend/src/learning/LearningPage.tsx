@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState, type PropsWithChildren } from 'react'
 import { Button, Callout, H2, H3, InputGroup, Spinner } from '@blueprintjs/core'
+import styled from '@emotion/styled'
 import { useApolloClient } from '@apollo/client/react'
 import { Link, Route, Switch, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -16,7 +17,39 @@ import {
 } from 'lesson_runtime'
 import { hex, type AlphabetPolicyValue, type AlphabetTextValue, type CryptoValue, type Diagnostic } from 'crypto_graph'
 import { RenderHost, visualizerCatalog } from '../visualizers'
+import { learningColors } from '../ui/learning'
 import { loadLessonDocuments, useLearningCatalog } from './data'
+
+const LearningFrame = styled.main`
+  box-sizing: border-box;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding: 24px 24px 96px;
+
+  .learning-prose {
+    margin-inline: auto;
+    max-width: 60rem;
+  }
+
+  .learning-trace {
+    border: 1px solid ${learningColors.border};
+    border-radius: 4px;
+    box-sizing: border-box;
+    margin-block: 16px;
+    min-width: 0;
+    overflow-x: auto;
+    padding: 12px;
+    width: 100%;
+  }
+
+  @media (max-width: 520px) {
+    padding-inline: 16px;
+  }
+`
+
+const PageFrame: React.FC<PropsWithChildren> = ({ children }) => (
+  <LearningFrame data-learning-page>{children}</LearningFrame>
+)
 
 type LessonRoute = { lessonId: string }
 type LoadState =
@@ -105,7 +138,7 @@ const LessonCatalog: React.FC = () => {
   const catalog = useLearningCatalog()
   if (catalog.loading) return <Spinner aria-label={t('learning.loadingCatalog')} />
   if (catalog.error) return <Callout intent="danger">{t('learning.catalogError')}</Callout>
-  return <section>
+  return <div className="learning-prose">
     <H2>{t('learning.title')}</H2>
     {catalog.categories?.map((category) => {
       const name = category.names.find((item) => item.language === i18n.language)?.text
@@ -113,10 +146,10 @@ const LessonCatalog: React.FC = () => {
         ?? category.id
       return <section key={category.id}>
         <H3>{name}</H3>
-        <ul>{category.lessons.map((lesson) => <li key={lesson.id}><Link to={`/learning/${lesson.id}`}>{lesson.title ?? `${t('learning.titleUnavailable')} (${lesson.id})`}</Link></li>)}</ul>
+        <ul>{category.lessons.map((lesson) => <li key={lesson.id}><Link to={`/learning/${lesson.id}`}>{lesson.title?.trim() || `${t('learning.titleUnavailable')} (${lesson.id})`}</Link></li>)}</ul>
       </section>
     })}
-  </section>
+  </div>
 }
 
 const LessonView: React.FC = () => {
@@ -241,14 +274,22 @@ const LessonView: React.FC = () => {
     else setLoad({ status: 'ready', state: result.value })
   }
 
-  return <section>
-    <nav aria-label={t('learning.breadcrumb')}>
+  const title = catalogLesson?.title?.trim() || `${t('learning.titleUnavailable')} (${lessonId})`
+  const category = catalog.categories?.find((item) => item.lessons.some((lesson) => lesson.id === lessonId))
+  const categoryName = category?.names.find((item) => item.language === i18n.language)?.text
+    ?? category?.names.find((item) => item.language === 'en-US')?.text
+    ?? category?.id
+
+  return <>
+    <nav className="learning-prose" aria-label={t('learning.breadcrumb')}>
       <Link to="/learning">{t('learning.backToCatalog')}</Link>
-      {' / '}{catalogLesson?.title ?? `${t('learning.titleUnavailable')} (${lessonId})`}
+      {categoryName ? ` / ${categoryName}` : ''} / {title}
     </nav>
-    <H2>{locale.title}</H2>
-    <p>{locale.summary}</p>
-    {step.prose && <Markdown source={rewriteLessonAssets(locale.texts[step.prose] ?? '', lessonId)} />}
+    <div className="learning-prose">
+      <H2>{locale.title}</H2>
+      <p>{locale.summary}</p>
+      {step.prose && <Markdown source={rewriteLessonAssets(locale.texts[step.prose] ?? '', lessonId)} />}
+    </div>
     {step.bitFlip && state.bitFlips[step.id] && <fieldset>
       <legend>{state.locale === 'zh-CN' ? '单比特变化' : 'One-bit change'}</legend>
       <label htmlFor={`${step.id}-source`}>{state.locale === 'zh-CN' ? '变化来源' : 'Change source'}</label>{' '}
@@ -304,7 +345,7 @@ const LessonView: React.FC = () => {
       <thead><tr><th>{t('learning.output')}</th><th>{t('learning.value')}</th></tr></thead>
       <tbody>{Object.entries(state.snapshots[step.id].outputs).map(([name, value]) => <tr key={name}><th>{name}</th><td>{valueText(value)}</td></tr>)}</tbody>
     </table>}
-    {(step.visualizer || step.execute) && (state.comparisons[step.id] || state.snapshots[step.id]) && <div ref={setVisualizerSurface}>
+    {(step.visualizer || step.execute) && (state.comparisons[step.id] || state.snapshots[step.id]) && <div className="learning-trace" ref={setVisualizerSurface}>
       <RenderHost
         comparison={state.comparisons[step.id]}
         dimensions={visualizerDimensions}
@@ -348,7 +389,7 @@ const LessonView: React.FC = () => {
       <Button disabled={state.stepIndex === 0} onClick={() => void current.previous().then((previous) => setLoad({ status: 'ready', state: previous }))}>{t('learning.previous')}</Button>
       <Button onClick={() => void next()}>{t('learning.next')}</Button>
     </p>
-  </section>
+  </>
 }
 
 export const LearningPage: React.FC = () => {
@@ -358,8 +399,10 @@ export const LearningPage: React.FC = () => {
     document.title = t('nav.learning')
     return () => { document.title = title }
   }, [t])
-  return <Switch>
-    <Route exact path="/learning/:lessonId" component={LessonView} />
-    <Route exact path="/learning" component={LessonCatalog} />
-  </Switch>
+  return <PageFrame>
+    <Switch>
+      <Route exact path="/learning/:lessonId" component={LessonView} />
+      <Route exact path="/learning" component={LessonCatalog} />
+    </Switch>
+  </PageFrame>
 }
