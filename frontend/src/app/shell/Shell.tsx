@@ -143,22 +143,26 @@ const NavigationActions = styled(Unselectable)`
 
 `
 
-// Temporary fixture slot for #95 P0-A5/A6; production callers retain the existing navigation.
-export const Shell: React.FC<PropsWithChildren<{ learningPrototype?: React.ReactNode }>> = ({ children, learningPrototype }) => {
+// Temporary fixture slots for #95/#116; production callers retain the existing behavior.
+export const Shell: React.FC<PropsWithChildren<{
+  learningPrototype?: React.ReactNode
+  themePrototype?: { dark: boolean; toggle: () => void }
+}>> = ({ children, learningPrototype, themePrototype }) => {
   const { t, i18n } = useTranslation()
   // i18n.languages is list of fallback languages
   const items = i18n.languages
   // but if not using line above, seems only ugly way to do so,
   // check https://github.com/i18next/i18next/issues/1068 for discuss
   // const items = Object.keys(i18n.services.resourceStore.data)
-  const [ dark, setDark ] = useState(false)
+  const [ localDark, setDark ] = useState(false)
+  const dark = themePrototype?.dark ?? localDark
   const history = useHistory()
   const feedbackURL = import.meta.env.VITE_FEEDBACK_URL
   const handleOpenFeedback = feedbackURL ? () => window.open(feedbackURL) : () => history.push('/feedback')
 
   return <Layout className={dark ? Classes.DARK : undefined}>
     <Header>
-      <NavMenu className={Classes.DARK}>
+      <NavMenu className={!themePrototype || dark ? Classes.DARK : undefined}>
         <PrimaryNavigation align={Alignment.LEFT}>
           <Unselectable>
             <NavbarHeading><CompactAction minimal large icon={IconNames.HOME} text={t('nav.home')} aria-label={t('nav.homeAction')} onClick={() => history.push('/')}/></NavbarHeading>
@@ -179,7 +183,7 @@ export const Shell: React.FC<PropsWithChildren<{ learningPrototype?: React.React
             text={dark ? t('light') : t('dark')}
             aria-label={dark ? t('light') : t('dark')}
             icon={dark ? 'flash' : 'moon'}
-            onClick={() => {setDark(!dark)}}
+            onClick={themePrototype?.toggle ?? (() => setDark(!dark))}
           />
           <NavbarDivider />
           <Select<string>

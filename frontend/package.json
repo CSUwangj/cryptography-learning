@@ -41,6 +41,7 @@
     "demos": "vite --config vite.demos.config.mts",
     "prototype:aes192": "vite --config vite.demos.config.mts --host 127.0.0.1 --port 4180",
     "prototype:learning-shell": "vite --config vite.demos.config.mts --host 127.0.0.1 --port 4181",
+    "prototype:ui-optimization": "vite --config vite.demos.config.mts --host 127.0.0.1 --port 4182",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

@@ -8,11 +8,15 @@ import { KeyExpansionPrototype } from './KeyExpansionPrototype'
 
 const Aes192OverlayPrototype = lazy(() => import('../src/visualizers/prototype').then((module) => ({ default: module.Aes192OverlayPrototype })))
 const LearningShellPrototype = lazy(() => import('../src/app/prototype').then((module) => ({ default: module.LearningShellPrototype })))
+const UiOptimizationPrototype = lazy(() => import('../src/app/prototype').then((module) => ({ default: module.UiOptimizationPrototype })))
 
 const Demos: React.FC = () => {
   const [locale, setLocale] = useState<'en-US' | 'zh-CN'>('en-US')
   if (import.meta.env.DEV && new URLSearchParams(window.location.search).get('prototype') === 'shell') {
     return <Suspense fallback={<div role="status" aria-busy="true" />}><LearningShellPrototype /></Suspense>
+  }
+  if (import.meta.env.DEV && new URLSearchParams(window.location.search).get('prototype') === 'ui-optimization') {
+    return <Suspense fallback={<div role="status" aria-busy="true" />}><UiOptimizationPrototype /></Suspense>
   }
   if (import.meta.env.DEV && window.location.pathname === '/testaescipher' && new URLSearchParams(window.location.search).get('prototype') === 'overlay') {
     return <Suspense fallback={<div role="status" aria-busy="true" />}><Aes192OverlayPrototype /></Suspense>
