@@ -12,6 +12,9 @@
   completes a Lab.
 - **Learning** — The top-level experience in which students study explanatory,
   visual cryptography content.
+- **Learning Catalog** — The complete collection of Lesson categories and Lessons
+  available from Learning. It is a destination within Learning, not a Lesson
+  category or a separate top-level experience.
 - **Learning Navigation** — The student-facing hierarchy of Lesson categories
   and Lessons, identified to readers by their localized names.
 - **Lesson** — One Learning item that composes cryptographic operations,
@@ -111,6 +114,13 @@
   Labs, and Completion Records. Completion Records is a distinct destination,
   not a Lab or Lab category.
   _Avoid:_ Practice menu
+
+## Interface language
+
+- **Application UI Icon** — An icon selected by the application to communicate a
+  fixed navigation, action, status, or control-state meaning. It is distinct from
+  author-selected content icons, branding, teaching notation, and graphics drawn
+  by a UI library.
 
 ## Agent workflow
 
