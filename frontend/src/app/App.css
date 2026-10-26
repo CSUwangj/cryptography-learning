@@ -20,6 +20,20 @@
   --learning-incomplete: #e5e7eb;
   --learning-lane: #ecfdf5;
   --learning-lane-border: #059669;
+  --completion-text: #26302c;
+  --completion-muted: #59635d;
+  --completion-border: #c9ccc6;
+  --completion-rule: #59635d;
+  --completion-surface: #ffffff;
+  --completion-header: #eae7df;
+  --completion-row: #f8f7f3;
+  --completion-recorded: #e2f1e8;
+  --completion-recorded-text: #1b6243;
+  --completion-accent: #77ad91;
+  --completion-export: #26302c;
+  --completion-export-hover: #3c4a44;
+  --completion-export-disabled: #d5d8d3;
+  --completion-export-disabled-text: #6b726d;
 }
 
 body.bp6-dark {
@@ -39,6 +53,20 @@ body.bp6-dark {
   --learning-incomplete: #394b59;
   --learning-lane: #1f4d3b;
   --learning-lane-border: #3baf7a;
+  --completion-text: #f5f8fa;
+  --completion-muted: #a7b6c2;
+  --completion-border: #5c7080;
+  --completion-rule: #a7b6c2;
+  --completion-surface: #293742;
+  --completion-header: #394b59;
+  --completion-row: #23313a;
+  --completion-recorded: #1f4d3b;
+  --completion-recorded-text: #a7f3d0;
+  --completion-accent: #3baf7a;
+  --completion-export: #5c7080;
+  --completion-export-hover: #71889a;
+  --completion-export-disabled: #394b59;
+  --completion-export-disabled-text: #a7b6c2;
 }
 
 .app {

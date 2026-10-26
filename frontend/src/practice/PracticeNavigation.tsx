@@ -1,100 +1,13 @@
 import React, { useState } from 'react'
 import { useQuery } from '@apollo/client/react'
-import {
-  Breadcrumb,
-  Button,
-  H4,
-  PopoverNext,
-  PopupKind,
-  Spinner,
-} from '@blueprintjs/core'
-import { IconNames } from '@blueprintjs/icons'
-import styled from '@emotion/styled'
 import { useTranslation } from 'react-i18next'
 import { matchPath, useHistory, useLocation } from 'react-router-dom'
 import { COMPLETION_PATTERN } from 'completion_board'
+import { applicationIcons, CategoryItemNavigation } from 'ui'
 import { PracticesDocument } from '../transport/generated/graphql'
 import type { PracticeMenuCategory } from './domain'
 import { mapPracticeMenu } from './map'
 import { LAB_PATTERN, labPath, type LabRouteParams } from './routes'
-
-const Panel = styled.div`
-  background: var(--app-surface);
-  color: var(--app-text);
-  box-sizing: border-box;
-  display: grid;
-  gap: 16px;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  max-width: calc(100vw - 16px);
-  min-width: min(32rem, calc(100vw - 16px));
-  padding: 16px;
-
-  @media (max-width: 520px) {
-    min-width: calc(100vw - 16px);
-  }
-`
-
-const Column = styled.div`
-  min-width: 0;
-`
-
-const ColumnHeading = styled(H4)`
-  margin: 0 0 8px;
-`
-
-const NavigationButton = styled(Button)`
-  && {
-    color: var(--app-text);
-    display: block;
-    min-height: 36px;
-    overflow-wrap: anywhere;
-    text-align: left;
-    width: 100%;
-  }
-`
-
-const CompletionButton = styled(NavigationButton)`
-  && {
-    border-top: 1px solid var(--app-border);
-    margin-top: 8px;
-    padding-top: 12px;
-  }
-`
-
-const NavigationState = styled.div`
-  align-items: center;
-  display: flex;
-  gap: 8px;
-  min-height: 72px;
-`
-
-const Trigger = styled(Button)`
-  && {
-    min-width: 0;
-    overflow: hidden;
-    width: 100%;
-
-    .bp6-button-text {
-      display: block;
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-  }
-`
-
-const TriggerContainer = styled.div`
-  display: flex;
-  flex: 1 1 0;
-  min-width: 0;
-
-  .bp6-popover-target {
-    display: block;
-    min-width: 0;
-    width: 100%;
-  }
-`
 
 const breadcrumbFor = (
   pathname: string,
@@ -109,115 +22,42 @@ const breadcrumbFor = (
     const lab = category?.labs.find(({ id }) => id === labId)
     return [practiceLabel, category?.name ?? categoryId, lab?.name ?? labId]
   }
-
-  if (matchPath(pathname, { exact: true, path: COMPLETION_PATTERN })) {
-    return [practiceLabel, completionLabel]
-  }
-
+  if (matchPath(pathname, { exact: true, path: COMPLETION_PATTERN })) return [practiceLabel, completionLabel]
   return [practiceLabel]
 }
 
-type PracticeNavigationProps = {
-  className?: string
-}
+type PracticeNavigationProps = { className?: string }
 
 export const PracticeNavigation: React.FC<PracticeNavigationProps> = ({ className }) => {
   const { t, i18n } = useTranslation()
   const history = useHistory()
   const location = useLocation()
   const [isOpen, setIsOpen] = useState(false)
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>()
-  const isLabRoute = Boolean(matchPath(location.pathname, { exact: true, path: LAB_PATTERN }))
-  const { data, error, loading } = useQuery(PracticesDocument, { skip: !isOpen && !isLabRoute })
+  const labMatch = matchPath<LabRouteParams>(location.pathname, { exact: true, path: LAB_PATTERN })
+  const { data, error, loading } = useQuery(PracticesDocument, { skip: !isOpen && !labMatch })
   const categories = data ? mapPracticeMenu(data, i18n.language) : []
-  const breadcrumb = breadcrumbFor(
-    location.pathname,
-    categories,
-    t('nav.practice'),
-    t('nav.completion'),
-  )
-  const breadcrumbLabel = breadcrumb.join(' > ')
+  const currentCategory = labMatch ? categories.find(({ id }) => id === labMatch.params.category) : undefined
+  const breadcrumb = breadcrumbFor(location.pathname, categories, t('nav.practice'), t('nav.completion'))
+  const categoryItems = categories.map((category) => ({ id: category.id, name: category.name, items: category.labs }))
 
-  const openLab = (categoryId: string, labId: string) => {
-    setIsOpen(false)
-    history.push(labPath({ category: categoryId, lab: labId }))
-  }
-
-  const openCompletion = () => {
-    setIsOpen(false)
-    history.push('/completion')
-  }
-
-  const selectedCategory = categories.find(({ id }) => id === selectedCategoryId)
-  const categoryContent = loading ? (
-    <NavigationState role="status" aria-busy="true" aria-label={t('practiceNavigation.loading')}>
-      <Spinner size={20} />
-      {t('practiceNavigation.loading')}
-    </NavigationState>
-  ) : error ? (
-    <NavigationState role="alert">{t('practiceNavigation.error')}</NavigationState>
-  ) : (
-    categories.map((category) => (
-      <NavigationButton
-        key={category.id}
-        active={category.id === selectedCategoryId}
-        onClick={() => setSelectedCategoryId(category.id)}
-        text={category.name}
-      />
-    ))
-  )
-  const labsContent = selectedCategory ? (
-    selectedCategory.labs.map((lab) => (
-      <NavigationButton
-        key={lab.id}
-        onClick={() => openLab(selectedCategory.id, lab.id)}
-        text={lab.name}
-      />
-    ))
-  ) : !loading && !error ? (
-    <NavigationState>{t('practiceNavigation.selectCategory')}</NavigationState>
-  ) : null
-  const content = (
-    <Panel role="dialog" aria-label={t('practiceNavigation.label')}>
-      <Column>
-        <ColumnHeading>{t('practiceNavigation.categories')}</ColumnHeading>
-        {categoryContent}
-        <CompletionButton
-          icon={IconNames.TH}
-          onClick={openCompletion}
-          text={t('nav.completion')}
-        />
-      </Column>
-      <Column>
-        <ColumnHeading>{t('practiceNavigation.labs')}</ColumnHeading>
-        {labsContent}
-      </Column>
-    </Panel>
-  )
-
-  return <TriggerContainer className={className} data-practice-navigation data-navigation-expanded={breadcrumb.length > 1 || undefined}>
-    <PopoverNext
-      content={content}
-      isOpen={isOpen}
-      onInteraction={setIsOpen}
-      placement="bottom-start"
-      popupKind={PopupKind.DIALOG}
-      transitionDuration={0}
-    >
-      <Trigger
-        minimal
-        large
-        icon={IconNames.FLAG}
-        aria-label={breadcrumbLabel}
-        title={breadcrumbLabel}
-      >
-        <span aria-hidden="true">
-          {breadcrumb.map((segment, index) => <React.Fragment key={`${index}:${segment}`}>
-            {index > 0 && ' > '}
-            <Breadcrumb text={segment} current={index === breadcrumb.length - 1} />
-          </React.Fragment>)}
-        </span>
-      </Trigger>
-    </PopoverNext>
-  </TriggerContainer>
+  return <CategoryItemNavigation
+    className={className}
+    dataAttribute="practice"
+    ariaLabel={t('practiceNavigation.label')}
+    categoriesLabel={t('practiceNavigation.categories')}
+    itemsLabel={t('practiceNavigation.labs')}
+    selectCategoryLabel={t('practiceNavigation.selectCategory')}
+    loadingLabel={t('practiceNavigation.loading')}
+    errorLabel={t('practiceNavigation.error')}
+    categories={categoryItems}
+    currentCategoryId={currentCategory?.id}
+    currentItemId={labMatch?.params.lab}
+    breadcrumb={breadcrumb}
+    triggerIcon={applicationIcons.navigation.practice}
+    loading={loading}
+    error={error !== undefined}
+    action={{ icon: applicationIcons.action.completionRecords, label: t('nav.completion'), onClick: () => history.push('/completion') }}
+    onOpenChange={setIsOpen}
+    onItemSelect={(categoryId, itemId) => history.push(labPath({ category: categoryId, lab: itemId }))}
+  />
 }

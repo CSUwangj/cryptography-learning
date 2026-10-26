@@ -5,7 +5,6 @@ import {
   Breadcrumb, Breadcrumbs, Button, Card, Classes, Colors, H2, H4, Icon,
   MenuItem, Navbar, OverlaysProvider, PopoverNext, PopupKind,
 } from '@blueprintjs/core'
-import { IconNames } from '@blueprintjs/icons'
 import { Select } from '@blueprintjs/select'
 import { I18nextProvider, useTranslation } from 'react-i18next'
 import { BrowserRouter, Redirect, Route, Switch, useHistory, useLocation } from 'react-router-dom'
@@ -13,7 +12,7 @@ import { of } from 'rxjs'
 
 import { LearningPage } from 'learning'
 import { PracticePage } from 'practice'
-import { contentWidth } from 'ui'
+import { applicationIcons, contentWidth } from 'ui'
 import { HomePage } from '../src/app/home/HomePage'
 import { FeedbackPage } from '../src/app/feedback/FeedbackPage'
 import { Shell } from '../src/app/shell/Shell'
@@ -152,14 +151,14 @@ const NavigationMenu: React.FC<{ surface: Surface; locale: Locale; pathname: str
       content={<div className="ui-catalog-panel" role="dialog" aria-label={t(`${surface}Navigation.label`)}>
         <div><H4>{t(`${surface}Navigation.categories`)}</H4>
           <Button fill alignText="left" active={selected} onClick={() => setSelected(true)}>{item.category}</Button>
-          <Button className="ui-catalog-index" fill minimal alignText="left" icon="th" onClick={() => navigate(surface === 'learning' ? '/learning' : '/completion')}>{t(surface === 'learning' ? 'learning.title' : 'nav.completion')}</Button>
+          <Button className="ui-catalog-index" fill minimal alignText="left" icon={surface === 'learning' ? applicationIcons.action.learningCatalog : applicationIcons.action.completionRecords} onClick={() => navigate(surface === 'learning' ? '/learning' : '/completion')}>{t(surface === 'learning' ? 'learning.title' : 'nav.completion')}</Button>
         </div>
         <div><H4>{t(surface === 'learning' ? 'learningNavigation.lessons' : 'practiceNavigation.labs')}</H4>
           {selected ? <Button fill alignText="left" active={pathname === item.path} onClick={() => navigate(item.path)}>{item.title}</Button> : <p className={Classes.TEXT_MUTED}>{t(`${surface}Navigation.selectCategory`)}</p>}
         </div>
       </div>}
     >
-      <Button minimal active={active} intent={active ? 'primary' : undefined} alignText="left" icon={surface === 'learning' ? IconNames.SEARCH : IconNames.FLAG} aria-label={parts.join(' > ')} title={parts.join(' > ')}>
+      <Button minimal active={active} intent={active ? 'primary' : undefined} alignText="left" icon={surface === 'learning' ? applicationIcons.navigation.learning : applicationIcons.navigation.practice} aria-label={parts.join(' > ')} title={parts.join(' > ')}>
         {!iconOnly && <span className="ui-trigger-path" aria-hidden="true">
           {parts.map((text, index) => <span className={parts.length === 3 && index === 1 ? 'ui-trigger-segment ui-category-segment' : 'ui-trigger-segment'} key={index}>
             {index > 0 && <Icon icon="chevron-right" size={12} />}
@@ -337,15 +336,15 @@ const PrototypeApp: React.FC<{ i18n: PrototypeI18n }> = ({ i18n }) => {
     return () => window.removeEventListener('keydown', onKey)
   })
 
-  const home = <Button className="ui-home" minimal icon="home" aria-label={t('nav.homeAction')} title={t('nav.homeAction')} onClick={() => go('/')} />
+  const home = <Button className="ui-home" minimal icon={applicationIcons.navigation.home} aria-label={t('nav.homeAction')} title={t('nav.homeAction')} onClick={() => go('/')} />
   const navigation = <div className="ui-primary-actions">{(['learning', 'practice'] as const).map((entry) => <NavigationMenu key={entry} surface={entry} locale={locale} pathname={location.pathname} go={go} fullPath={(variant === 'C' || variant === 'D') && entry === surface} iconOnly={variant === 'C' && entry !== surface} />)}</div>
   const utilities = <div className="ui-utilities">
-    <Button className="ui-feedback" minimal icon="envelope" text={variant === 'D' ? t('nav.feedback') : undefined} aria-label={t('nav.feedback')} title={t('nav.feedback')} onClick={() => go('/feedback')} />
-    <Button minimal icon={theme === 'dark' ? 'flash' : 'moon'} aria-label={t(theme === 'dark' ? 'light' : 'dark')} title={t(theme === 'dark' ? 'light' : 'dark')} onClick={toggleTheme} />
+    <Button className="ui-feedback" minimal icon={applicationIcons.navigation.feedback} text={variant === 'D' ? t('nav.feedback') : undefined} aria-label={t('nav.feedback')} title={t('nav.feedback')} onClick={() => go('/feedback')} />
+    <Button minimal icon={theme === 'dark' ? applicationIcons.state.lightTheme : applicationIcons.state.darkTheme} aria-label={t(theme === 'dark' ? 'light' : 'dark')} title={t(theme === 'dark' ? 'light' : 'dark')} onClick={toggleTheme} />
     <Select<Locale> filterable={false} items={['en-US', 'zh-CN']}
       itemRenderer={(item, { handleClick, modifiers }) => <MenuItem key={item} text={t(`i18n.${item}`)} active={modifiers.active} onClick={handleClick} roleStructure="listoption" />}
       onItemSelect={(value) => { void i18n.changeLanguage(value) }}
-    ><Button minimal icon="translate" aria-label={t('nav.language')} title={t('nav.language')} /></Select>
+    ><Button minimal icon={applicationIcons.navigation.language} aria-label={t('nav.language')} title={t('nav.language')} /></Select>
   </div>
 
   // Home keeps its real layout and controls while sharing the prototype theme.

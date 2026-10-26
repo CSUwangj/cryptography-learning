@@ -3,6 +3,7 @@ import classNames from 'classnames'
 import { Classes, Intent, IconName, MaybeElement, Icon, IconSize, H4 } from '@blueprintjs/core'
 import styled from '@emotion/styled'
 import { getIconName } from './getIconName'
+import { applicationIcons } from 'ui'
 
 const TransitionDiv = styled.div`
   margin-top: 20px;
@@ -44,7 +45,7 @@ export const Callout: React.FC<PropsWithChildren<CalloutProps>> = ({alwaysOpen, 
     { [Classes.CALLOUT_ICON]: iconName != null },
   )
   const [ isOpen, setOpen ] = useState(false)
-  const toggleIcon = useMemo(() => isOpen ? 'caret-down' : 'caret-right', [isOpen])
+  const toggleIcon = useMemo(() => isOpen ? applicationIcons.control.expanded : applicationIcons.control.collapsed, [isOpen])
 
   return <TransitionDiv className={classes}>
     {iconName && <Icon icon={iconName} size={IconSize.LARGE} />}

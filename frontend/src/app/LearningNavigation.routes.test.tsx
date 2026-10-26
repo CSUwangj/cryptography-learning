@@ -70,4 +70,26 @@ describe('Learning Navigation routes (#104)', () => {
     expect(history.location.pathname).toBe('/learning/aes-128')
     expect(screen.queryByRole('dialog', { name: 'Learning Navigation' })).not.toBeInTheDocument()
   })
+
+  it('reopens on the current lesson category and clears browsing without a current lesson', async () => {
+    await i18n.changeLanguage('en-US')
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify(catalogResponse), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))))
+
+    const history = renderAt('/learning/xor')
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Learning > Foundations > Exclusive OR' }))
+    const navigation = await screen.findByRole('dialog', { name: 'Learning Navigation' })
+    expect(within(navigation).getByRole('button', { name: 'Foundations' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(navigation).getByRole('button', { name: 'Exclusive OR' })).toHaveAttribute('aria-pressed', 'true')
+
+    await user.click(within(navigation).getByRole('button', { name: 'Block ciphers' }))
+    await user.click(screen.getByRole('button', { name: 'Learning > Foundations > Exclusive OR' }))
+    history.push('/learning')
+    await user.click(await screen.findByRole('button', { name: 'Learning' }))
+    const reopened = await screen.findByRole('dialog', { name: 'Learning Navigation' })
+    expect(reopened).toHaveTextContent('Select a Lesson category')
+  })
 })

@@ -2,6 +2,7 @@ import React, { useEffect, useCallback, Fragment, useState } from 'react'
 import { CombinedGraphQLErrors, ServerError } from '@apollo/client'
 import { Alert, Intent } from '@blueprintjs/core'
 import { useToggle } from './useToggle'
+import { applicationIcons } from './icons'
 
 enum Errors {
   CriticalErrorHappened = 'CRITICAL_ERROR_HAPPENED',
@@ -90,7 +91,7 @@ export const ShowError: React.FC<{
 
   return noBorder ? err : <Alert 
     isOpen={visible} 
-    icon='ban-circle'
+    icon={applicationIcons.state.danger}
     intent={Intent.DANGER}
     onClose={onClose}
     cancelButtonText='Retry'

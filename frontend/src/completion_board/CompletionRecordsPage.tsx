@@ -1,11 +1,10 @@
 import React from 'react'
 import { CombinedGraphQLErrors } from '@apollo/client'
 import { Button, Intent, Tooltip } from '@blueprintjs/core'
-import { IconNames } from '@blueprintjs/icons'
 import styled from '@emotion/styled'
 import { useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { NotFound } from 'ui'
+import { applicationIcons, NotFound } from 'ui'
 import { useCompletionBoardQuery } from './data'
 import { mapCompletionBoard } from './map'
 import type { CompletionRecordsMatrix } from './domain'
@@ -55,7 +54,7 @@ const formatCompletionTime = (value: string, language: string): string =>
 
 const Register = styled.section`
   box-sizing: border-box;
-  color: #26302c;
+  color: var(--completion-text);
   margin: 0 auto;
   max-width: 1100px;
   padding: 40px clamp(16px, 4vw, 48px) 56px;
@@ -63,8 +62,8 @@ const Register = styled.section`
 `
 
 const Metadata = styled.p`
-  border-bottom: 1px solid #a8aca7;
-  color: #59635d;
+  border-bottom: 1px solid var(--completion-border);
+  color: var(--completion-muted);
   font-size: 0.8125rem;
   margin: 0;
   overflow-wrap: anywhere;
@@ -83,22 +82,22 @@ const Heading = styled.h1`
 `
 
 const Notice = styled.p`
-  color: #59635d;
+  color: var(--completion-muted);
   line-height: 1.5;
   margin: 0;
   max-width: 42rem;
 `
 
 const DoubleRule = styled.div`
-  border-bottom: 3px double #59635d;
+  border-bottom: 3px double var(--completion-rule);
   margin: 26px 0 20px;
 `
 
 const Totals = styled.dl`
   display: contents;
 
-  div { border-left: 2px solid #77ad91; padding-left: 10px; }
-  dt { color: #59635d; font-size: 0.8125rem; }
+  div { border-left: 2px solid var(--completion-accent); padding-left: 10px; }
+  dt { color: var(--completion-muted); font-size: 0.8125rem; }
   dd { font-family: Georgia, 'Times New Roman', serif; font-size: 2rem; margin: 3px 0 0; }
 `
 
@@ -119,22 +118,22 @@ const Summary = styled.div`
 const ExportButton = styled(Button)`
   && {
     align-self: stretch;
-    background: #26302c;
-    border: 1px solid #26302c;
+    background: var(--completion-export);
+    border: 1px solid var(--completion-export);
     box-shadow: none;
     color: #fff;
     min-height: 44px;
   }
 
   &&:hover:not(:disabled) {
-    background: #3c4a44;
-    border-color: #3c4a44;
+    background: var(--completion-export-hover);
+    border-color: var(--completion-export-hover);
   }
 
   &&:disabled {
-    background: #d5d8d3;
-    border-color: #d5d8d3;
-    color: #6b726d;
+    background: var(--completion-export-disabled);
+    border-color: var(--completion-export-disabled);
+    color: var(--completion-export-disabled-text);
   }
 
   @media (max-width: 480px) {
@@ -155,13 +154,13 @@ const Matrix = styled.table`
 
   col:first-of-type { width: 168px; }
   col:not(:first-of-type) { width: 120px; }
-  th, td { border: 1px solid #c9ccc6; box-sizing: border-box; overflow-wrap: anywhere; padding: 11px 14px; text-align: center; }
-  thead th { background: #eae7df; font-weight: 600; }
-  tbody th { background: #f8f7f3; font-weight: 500; text-align: left; }
+  th, td { border: 1px solid var(--completion-border); box-sizing: border-box; overflow-wrap: anywhere; padding: 11px 14px; text-align: center; }
+  thead th { background: var(--completion-header); font-weight: 600; }
+  tbody th { background: var(--completion-row); font-weight: 500; text-align: left; }
   th:first-of-type { left: 0; position: sticky; z-index: 1; }
   thead th:first-of-type { z-index: 2; }
-  td { background: #fff; }
-  td:has([aria-label]) { background: #e2f1e8; color: #1b6243; font-weight: 700; }
+  td { background: var(--completion-surface); }
+  td:has([aria-label]) { background: var(--completion-recorded); color: var(--completion-recorded-text); font-weight: 700; }
 `
 
 const MatrixTable: React.FC<{ matrix: CompletionRecordsMatrix }> = ({
@@ -201,12 +200,12 @@ const MatrixTable: React.FC<{ matrix: CompletionRecordsMatrix }> = ({
                         })}
                       >
                         <span tabIndex={0} aria-label={t('completion.cellRecorded')}>
-                          ✓
+                          {applicationIcons.status.recorded}
                         </span>
                       </Tooltip>
                     ) : (
                       <>
-                        <span aria-hidden="true">—</span>
+                        <span aria-hidden="true">{applicationIcons.status.notRecorded}</span>
                         <span style={visuallyHidden}>{t('completion.cellNotRecorded')}</span>
                       </>
                     )}
@@ -258,7 +257,7 @@ const CompletionRecordsLayout: React.FC<{
         <ExportButton
           aria-label={t('completion.exportCsv')}
           disabled={!canExport}
-          icon={IconNames.DOWNLOAD}
+          icon={applicationIcons.action.download}
           intent={Intent.NONE}
           onClick={onExport}
           text={t('completion.exportCsv')}

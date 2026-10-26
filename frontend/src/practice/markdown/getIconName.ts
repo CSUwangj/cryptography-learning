@@ -1,4 +1,5 @@
 import { IconName, Intent, MaybeElement } from "@blueprintjs/core"
+import { applicationIcons } from 'ui'
 
 export const getIconName = (icon?: IconName | MaybeElement, intent?: Intent): IconName | MaybeElement => {
   // 1. no icon
@@ -12,13 +13,13 @@ export const getIconName = (icon?: IconName | MaybeElement, intent?: Intent): Ic
   // 3. default intent icon
   switch (intent) {
   case Intent.DANGER:
-    return "error"
+    return applicationIcons.state.error
   case Intent.PRIMARY:
-    return "info-sign"
+    return applicationIcons.state.primary
   case Intent.WARNING:
-    return "warning-sign"
+    return applicationIcons.state.warning
   case Intent.SUCCESS:
-    return "tick"
+    return applicationIcons.state.success
   default:
     return undefined
   }

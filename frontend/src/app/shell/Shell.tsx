@@ -14,9 +14,8 @@ import { Unselectable } from '../Unselectable'
 import { Select, type ItemModifiers } from '@blueprintjs/select'
 import { useHistory } from 'react-router-dom'
 import { Body, Footer, Header, Layout } from '../Layout'
-import { navbarHeight } from 'ui'
+import { applicationIcons, navbarHeight } from 'ui'
 import styled from '@emotion/styled'
-import { IconNames } from '@blueprintjs/icons'
 import { PracticeNavigation } from 'practice'
 
 const LearningNavigation = lazy(() => import('learning').then(({ LearningNavigation: Page }) => ({ default: Page })))
@@ -193,14 +192,14 @@ export const Shell: React.FC<PropsWithChildren> = ({ children }) => {
       <NavMenu className={dark ? Classes.DARK : undefined}>
         <PrimaryNavigation align={Alignment.LEFT}>
             <Unselectable data-home-navigation>
-            <NavbarHeading><CompactAction data-icon-only minimal large icon={IconNames.HOME} text={t('nav.home')} aria-label={t('nav.homeAction')} title={t('nav.homeAction')} onClick={() => history.push('/')}/></NavbarHeading>
+            <NavbarHeading><CompactAction data-icon-only minimal large icon={applicationIcons.navigation.home} text={t('nav.home')} aria-label={t('nav.homeAction')} title={t('nav.homeAction')} onClick={() => history.push('/')}/></NavbarHeading>
           </Unselectable>
           <NavbarDivider />
           <NavigationActions>
-            {/* <Button minimal large icon={IconNames.HELP} text={t('nav.tutorial')} onClick={() => history.push('/tutorial')} /> */}
-            <Suspense fallback={<CompactAction data-learning minimal large icon={IconNames.SEARCH} text={t('nav.learning')} aria-label={t('nav.learning')} onClick={() => history.push('/learning')} />}><LearningNavigation /></Suspense>
+            {/* Tutorial navigation is intentionally unavailable. */}
+            <Suspense fallback={<CompactAction data-learning minimal large icon={applicationIcons.navigation.learning} text={t('nav.learning')} aria-label={t('nav.learning')} onClick={() => history.push('/learning')} />}><LearningNavigation /></Suspense>
             <PracticeNavigation />
-            <CompactAction data-feedback-navigation minimal large icon={IconNames.ENVELOPE} text={t('nav.feedback')} aria-label={t('nav.feedback')} title={t('nav.feedback')} onClick={handleOpenFeedback} />
+            <CompactAction data-feedback-navigation minimal large icon={applicationIcons.navigation.feedback} text={t('nav.feedback')} aria-label={t('nav.feedback')} title={t('nav.feedback')} onClick={handleOpenFeedback} />
           </NavigationActions>
         </PrimaryNavigation>
         <UtilityNavigation align={Alignment.RIGHT}>
@@ -212,7 +211,7 @@ export const Shell: React.FC<PropsWithChildren> = ({ children }) => {
             text={dark ? t('light') : t('dark')}
             aria-label={dark ? t('light') : t('dark')}
             title={dark ? t('light') : t('dark')}
-            icon={dark ? 'flash' : 'moon'}
+            icon={dark ? applicationIcons.state.lightTheme : applicationIcons.state.darkTheme}
             onClick={toggleTheme}
           />
           <NavbarDivider />
@@ -222,7 +221,7 @@ export const Shell: React.FC<PropsWithChildren> = ({ children }) => {
             itemRenderer={(s, {handleClick, modifiers}) => <I18nRender s={s} handleClick={handleClick} modifiers={modifiers} />}
             onItemSelect={(i) => {i18n.changeLanguage(i)}}
           >
-            <CompactAction data-icon-only minimal large icon={IconNames.TRANSLATE} text={t('i18n.'+i18n.language)} aria-label={t('nav.language')} title={t('nav.language')} />
+            <CompactAction data-icon-only minimal large icon={applicationIcons.navigation.language} text={t('i18n.'+i18n.language)} aria-label={t('nav.language')} title={t('nav.language')} />
           </Select>
         </UtilityNavigation>
       </NavMenu>
