@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState, type PropsWithChildren } from 'react'
-import { Button, Callout, H2, H3, InputGroup, Spinner } from '@blueprintjs/core'
+import { Breadcrumb, Breadcrumbs, Button, Callout, Card, H2, H3, InputGroup, Spinner } from '@blueprintjs/core'
 import styled from '@emotion/styled'
 import { useApolloClient } from '@apollo/client/react'
-import { Link, Route, Switch, useParams } from 'react-router-dom'
+import { Link, Route, Switch, useHistory, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Markdown } from 'practice'
 import { NotFound } from 'ui'
@@ -20,11 +20,15 @@ import { RenderHost, visualizerCatalog } from '../visualizers'
 import { learningColors } from '../ui/learning'
 import { loadLessonDocuments, useLearningCatalog } from './data'
 
-const LearningFrame = styled.main`
+const LearningFrame = styled(Card)`
+  border-radius: 0;
   box-sizing: border-box;
+  margin: 24px auto;
+  max-width: 1000px;
   min-width: 0;
   overflow-wrap: anywhere;
-  padding: 24px 24px 96px;
+  padding: 24px 28px;
+  width: 100%;
 
   .learning-prose {
     margin-inline: auto;
@@ -43,7 +47,8 @@ const LearningFrame = styled.main`
   }
 
   @media (max-width: 520px) {
-    padding-inline: 16px;
+    margin-block: 0;
+    padding: 16px 12px;
   }
 `
 
@@ -155,6 +160,7 @@ const LessonCatalog: React.FC = () => {
 const LessonView: React.FC = () => {
   const { lessonId } = useParams<LessonRoute>()
   const { i18n, t } = useTranslation()
+  const history = useHistory()
   const catalog = useLearningCatalog()
   const catalogLesson = catalog.categories?.flatMap((category) => category.lessons).find((lesson) => lesson.id === lessonId)
   const client = useApolloClient()
@@ -282,8 +288,19 @@ const LessonView: React.FC = () => {
 
   return <>
     <nav className="learning-prose" aria-label={t('learning.breadcrumb')}>
-      <Link to="/learning">{t('learning.backToCatalog')}</Link>
-      {categoryName ? ` / ${categoryName}` : ''} / {title}
+      <Breadcrumbs
+        items={[
+          { text: t('learning.backToCatalog'), href: '/learning', onClick: (event) => {
+            if (event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+              event.preventDefault()
+              history.push('/learning')
+            }
+          } },
+          ...(categoryName ? [{ text: categoryName }] : []),
+          { text: title },
+        ]}
+        currentBreadcrumbRenderer={(props) => <span aria-current="page"><Breadcrumb {...props} current /></span>}
+      />
     </nav>
     <div className="learning-prose">
       <H2>{locale.title}</H2>

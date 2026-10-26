@@ -2,17 +2,17 @@
 import React, { useEffect, useState } from 'react'
 import { ApolloClient, ApolloLink, InMemoryCache } from '@apollo/client'
 import { ApolloProvider } from '@apollo/client/react'
-import { Button, H2, H3, H4, OverlaysProvider, PopoverNext, PopupKind } from '@blueprintjs/core'
+import { H2, H3, OverlaysProvider } from '@blueprintjs/core'
 import styled from '@emotion/styled'
 import { I18nextProvider, useTranslation } from 'react-i18next'
 import { BrowserRouter, Link, matchPath, useHistory, useLocation } from 'react-router-dom'
 import { of } from 'rxjs'
 import { Markdown } from 'practice'
-import { learningColors, LearningPresentationView, type LearningPresentation } from '../../ui/learning'
-import productionI18n from '../i18n'
-import { Shell } from './Shell'
-import '../App.css'
-import '../../index.css'
+import { learningColors, LearningPresentationView, type LearningPresentation } from '../src/ui/learning'
+import productionI18n from '../src/app/i18n'
+import { Shell } from '../src/app/shell/Shell'
+import '../src/app/App.css'
+import '../src/index.css'
 
 type Locale = 'en-US' | 'zh-CN'
 const categories = [
@@ -58,15 +58,6 @@ const copy = {
 
 const Frame = styled.div`
   height: 100%;
-  @media (max-width: 1100px) {
-    .bp6-navbar-heading .bp6-button-text { display: none; }
-  }
-  @media (max-width: 768px) {
-    .bp6-navbar button.bp6-button { min-width: 36px; padding-inline: 8px; }
-    .bp6-navbar button:not([data-learning-prototype]) .bp6-button-text { display: none; }
-    .bp6-navbar .bp6-navbar-divider { display: none; }
-    .bp6-navbar .bp6-navbar-heading { margin-right: 4px; }
-  }
 `
 const Content = styled.main<{ $desktop: number; $narrow: number; $measure: number }>`
   box-sizing: border-box;
@@ -83,27 +74,6 @@ const Content = styled.main<{ $desktop: number; $narrow: number; $measure: numbe
     padding: 12px;
   }
   @media (max-width: 520px) { padding: 16px ${({ $narrow }) => $narrow}px 96px; }
-`
-const TriggerContainer = styled.div`
-  flex: 1 1 auto;
-  min-width: 36px;
-  max-width: 42rem;
-  .bp6-popover-target { display: block; width: 100%; min-width: 0; }
-  button { width: 100%; min-width: 0; }
-  .bp6-button-text { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-  @media (max-width: 520px) { .category { display: none; } }
-`
-const Panel = styled.div`
-  background: #fff;
-  box-sizing: border-box;
-  width: min(42rem, calc(100vw - 16px));
-  max-height: calc(100dvh - 80px);
-  overflow-y: auto;
-  padding: 16px;
-  .columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
-  h4 { margin: 0 0 8px; }
-  button { display: block; width: 100%; min-height: 36px; text-align: left; overflow-wrap: anywhere; }
-  .catalog { border-top: 1px solid #d8dee6; margin-top: 8px; padding-top: 12px; }
 `
 const SpacingControls = styled.details`
   position: fixed;
@@ -124,20 +94,17 @@ function LearningPreview() {
   const { i18n, t } = useTranslation()
   const locale: Locale = i18n.language === 'zh-CN' ? 'zh-CN' : 'en-US'
   const text = copy[locale]
-  const location = useLocation()
   const history = useHistory()
-  const [open, setOpen] = useState(false)
-  const [selectedCategory, setSelectedCategory] = useState<string>()
+  const location = useLocation()
   const [desktop, setDesktop] = useState(24)
   const [narrow, setNarrow] = useState(16)
   const [measure, setMeasure] = useState(60)
   const lessonId = matchPath<{ lessonId: string }>(location.pathname, { path: '/learning/:lessonId', exact: true })?.params.lessonId
   const category = categories.find((item) => item.lessons.some((lesson) => lesson.id === lessonId))
   const lesson = category?.lessons.find((item) => item.id === lessonId)
-  const selected = categories.find((item) => item.id === selectedCategory)
   const isLearning = location.pathname.startsWith('/learning')
   const path = (pathname: string) => ({ pathname, search: `?prototype=shell&lang=${locale}` })
-  const go = (pathname: string) => { setOpen(false); history.push(path(pathname)) }
+  const breadcrumb = [t('nav.learning'), category?.names[locale], lesson?.titles[locale]].filter(Boolean).join(' > ')
 
   useEffect(() => {
     const params = new URLSearchParams(location.search)
@@ -166,33 +133,8 @@ function LearningPreview() {
       })),
     }],
   }
-  const breadcrumb = [t('nav.learning'), category?.names[locale], lesson?.titles[locale]].filter(Boolean).join(' > ')
-  const learningNavigation = <TriggerContainer>
-    <PopoverNext
-      isOpen={open}
-      onInteraction={(next) => { setOpen(next); if (next) setSelectedCategory(category?.id) }}
-      placement="bottom-start" popupKind={PopupKind.DIALOG} transitionDuration={0} inheritDarkTheme={false}
-      content={<Panel role="dialog" aria-label={text.navigation}>
-        <div className="columns">
-          <div><H4>{text.categories}</H4>
-            {categories.map((item) => <Button key={item.id} active={selectedCategory === item.id} onClick={() => setSelectedCategory(item.id)}>{item.names[locale]}</Button>)}
-            <Button className="catalog" icon="th" onClick={() => go('/learning')}>{text.catalog}</Button>
-          </div>
-          <div><H4>{text.lessons}</H4>
-            {selected ? selected.lessons.map((item) => <Button key={item.id} active={lessonId === item.id} onClick={() => go(`/learning/${item.id}`)}>{item.titles[locale]}</Button>) : <p>{text.selectCategory}</p>}
-          </div>
-        </div>
-      </Panel>}
-    >
-      <Button data-learning-prototype minimal large icon="search" aria-label={breadcrumb} title={breadcrumb}>
-        {t('nav.learning')}{category && <span className="category">{' > '}{category.names[locale]}</span>}{lesson && ` > ${lesson.titles[locale]}`}
-      </Button>
-    </PopoverNext>
-  </TriggerContainer>
-
   return <Frame data-prototype="learning-shell">
-    <Shell learningPrototype={learningNavigation}>
-      <Content $desktop={desktop} $narrow={narrow} $measure={measure}>
+    <Content $desktop={desktop} $narrow={narrow} $measure={measure}>
         {lesson ? <>
           <nav className="breadcrumb prose" aria-label={breadcrumb}><Link to={path('/learning')}>{t('nav.learning')}</Link>{' > '}{category?.names[locale]}{' > '}<span aria-current="page">{lesson.titles[locale]}</span></nav>
           <div className="prose"><H2>{lesson.titles[locale]}</H2><Markdown source={text.prose} /></div>
@@ -209,8 +151,8 @@ function LearningPreview() {
           <H2>{t(location.pathname === '/' ? 'nav.home' : location.pathname === '/feedback' ? 'nav.feedback' : location.pathname === '/completion' ? 'nav.completion' : 'nav.practice')}</H2>
           <Link to={path('/learning')}>{text.catalog}</Link>
         </div>}
-      </Content>
-      <SpacingControls>
+    </Content>
+    <SpacingControls>
         <summary>{text.spacing}: {desktop}/{narrow}px · {measure}rem</summary>
         {[
           { label: text.desktop, value: desktop, set: setDesktop, min: 0, max: 64 },
@@ -220,8 +162,7 @@ function LearningPreview() {
           <label key={label}>{label}<input type="number" min={min} max={max} value={value} onChange={(event) => {
             if (event.target.value && event.target.validity.valid) set(event.target.valueAsNumber)
           }} /></label>)}
-      </SpacingControls>
-    </Shell>
+    </SpacingControls>
   </Frame>
 }
 
@@ -230,10 +171,19 @@ export function LearningShellPrototype() {
     lng: new URLSearchParams(window.location.search).get('lang') === 'zh-CN' ? 'zh-CN' : 'en-US',
     detection: { caches: [] }, debug: false,
   }))
-  // The real Practice menu receives a local catalog; this preview never contacts a backend.
+  // Retained preview callers use the production Shell and local catalog fixtures only.
   const [client] = useState(() => new ApolloClient({
     cache: new InMemoryCache(),
-    link: new ApolloLink(() => of({ data: { practice: { __typename: 'Practice', labCategories: [{
+    link: new ApolloLink((operation) => of({ data: {
+      learning: { lessonCategories: categories.map((category) => ({
+        id: category.id,
+        name: Object.entries(category.names).map(([lang, text]) => ({ lang, text })),
+        lessons: category.lessons.map((lesson) => ({
+          id: lesson.id,
+          title: lesson.titles[operation.variables.language === 'zh-CN' ? 'zh-CN' : 'en-US'],
+        })),
+      })) },
+      practice: { __typename: 'Practice', labCategories: [{
       __typename: 'LabCategory', id: 'classical', name: [
         { __typename: 'Translation', lang: 'en-US', text: 'Classical cryptography' },
         { __typename: 'Translation', lang: 'zh-CN', text: '古典密码' },
@@ -245,6 +195,6 @@ export function LearningShellPrototype() {
     }] } } })),
   }))
   return <I18nextProvider i18n={i18n}><BrowserRouter><OverlaysProvider><ApolloProvider client={client}>
-    <LearningPreview />
+    <Shell><LearningPreview /></Shell>
   </ApolloProvider></OverlaysProvider></BrowserRouter></I18nextProvider>
 }

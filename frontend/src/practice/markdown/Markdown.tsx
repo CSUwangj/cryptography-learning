@@ -1,6 +1,7 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import SyntaxHighlighter from 'react-syntax-highlighter'
+import { atomOneDark, atomOneLight } from 'react-syntax-highlighter/dist/esm/styles/hljs'
 import RemarkMathPlugin from 'remark-math'
 import TeX from '@matejmazur/react-katex'
 import AdmonitionsPlugin from "remark-containers"
@@ -60,7 +61,16 @@ const Link: React.FC<React.PropsWithChildren<{ href?: string }>> = ({ children, 
     : <a href={href}>{children}</a>
 
 const CodeBlock: React.FC<CodeBlockProps> = ({ value, language }) => {
-  return <><SyntaxHighlighter language={language}>
+  const [dark, setDark] = useState(() => typeof document !== 'undefined' && document.body.classList.contains('bp6-dark'))
+  useEffect(() => {
+    const body = document.body
+    const update = () => setDark(body.classList.contains('bp6-dark'))
+    const observer = new MutationObserver(update)
+    observer.observe(body, { attributes: true, attributeFilter: ['class'] })
+    return () => observer.disconnect()
+  }, [])
+
+  return <><SyntaxHighlighter language={language} style={dark ? atomOneDark : atomOneLight} customStyle={{ background: 'var(--app-surface)', color: 'var(--app-text)' }}>
     {value}
   </SyntaxHighlighter></>
 }

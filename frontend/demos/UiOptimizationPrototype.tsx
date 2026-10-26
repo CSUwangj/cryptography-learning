@@ -14,13 +14,13 @@ import { of } from 'rxjs'
 import { LearningPage } from 'learning'
 import { PracticePage } from 'practice'
 import { contentWidth } from 'ui'
-import { HomePage } from '../home/HomePage'
-import { FeedbackPage } from '../feedback/FeedbackPage'
-import { Shell } from './Shell'
-import productionI18n from '../i18n'
+import { HomePage } from '../src/app/home/HomePage'
+import { FeedbackPage } from '../src/app/feedback/FeedbackPage'
+import { Shell } from '../src/app/shell/Shell'
+import productionI18n from '../src/app/i18n'
 import { aes256PrototypeLesson as lesson, aes256PrototypeLocales as lessonLocales } from './uiOptimizationPrototypeFixture'
-import '../App.css'
-import '../../index.css'
+import '../src/app/App.css'
+import '../src/index.css'
 
 type Locale = 'en-US' | 'zh-CN'
 type Theme = 'light' | 'dark'
@@ -351,7 +351,7 @@ const PrototypeApp: React.FC<{ i18n: PrototypeI18n }> = ({ i18n }) => {
   // Home keeps its real layout and controls while sharing the prototype theme.
   if (!surface) return <div className="ui-original-shell">
     <style>{styles}</style>
-    <Shell themePrototype={{ dark: theme === 'dark', toggle: toggleTheme }}><Switch>
+    <Shell><Switch>
       <Route exact path="/" component={HomePage} />
       <Route path="/feedback" component={FeedbackPage} />
       <Route path="/completion"><H2>{t('nav.completion')}</H2><p>{copy[locale].completion}</p></Route>

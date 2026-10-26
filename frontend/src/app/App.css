@@ -2,3 +2,51 @@
 /* @import "normalize.css"; */
 @import "@blueprintjs/core/lib/css/blueprint.css";
 @import "@blueprintjs/icons/lib/css/blueprint-icons.css";
+
+:root {
+  --app-surface: #ffffff;
+  --app-page: #f5f8fa;
+  --app-text: #182026;
+  --app-border: #d8dee6;
+  --learning-text: #17324d;
+  --learning-muted-text: #4b6075;
+  --learning-canvas: #fbfdff;
+  --learning-border: #8aa0b6;
+  --learning-related: #e0f2fe;
+  --learning-selected: #dbeafe;
+  --learning-changed: #fff3cd;
+  --learning-related-changed: #fca5a5;
+  --learning-warning: #fee2e2;
+  --learning-incomplete: #e5e7eb;
+  --learning-lane: #ecfdf5;
+  --learning-lane-border: #059669;
+}
+
+body.bp6-dark {
+  --app-surface: #293742;
+  --app-page: #202b33;
+  --app-text: #f5f8fa;
+  --app-border: #5c7080;
+  --learning-text: #f5f8fa;
+  --learning-muted-text: #a7b6c2;
+  --learning-canvas: #293742;
+  --learning-border: #5c7080;
+  --learning-related: #394b59;
+  --learning-selected: #2b5278;
+  --learning-changed: #5a4b1f;
+  --learning-related-changed: #8f3f3f;
+  --learning-warning: #7f3f3f;
+  --learning-incomplete: #394b59;
+  --learning-lane: #1f4d3b;
+  --learning-lane-border: #3baf7a;
+}
+
+.app {
+  background: var(--app-page);
+  color: var(--app-text);
+}
+
+body.bp6-dark code {
+  background-color: #394b59;
+  color: #f5f8fa;
+}

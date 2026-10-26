@@ -9,13 +9,18 @@ import { contentWidth, Div } from 'ui'
 import { ChallengeEndpoint } from './domain'
 import { LabRouteParams } from './routes'
 import { useLabDescription } from './data'
+import { PracticeBreadcrumb } from './PracticeBreadcrumb'
 
-const ScrollCard = styled(Div)`
+const ScrollCard = styled(Card)`
   box-sizing: border-box;
   margin: 0 auto;
   max-width: ${contentWidth}px;
-  padding: 10px clamp(12px, 4vw, 32px);
+  padding: 24px 28px;
   width: 100%;
+
+  @media (max-width: 520px) {
+    padding: 16px 12px;
+  }
 `
 
 const Container = styled.div`
@@ -32,10 +37,10 @@ const Container = styled.div`
     margin: 2em 0;
     padding: 10px 20px;
     position: relative;
-    background-color: rgba(255,255,255,0.05);
-    border-left: 3px solid rgba(255,255,255,0.3);
+    background-color: var(--app-surface);
+    border-left: 3px solid var(--app-border);
     box-shadow: inset 0px 0px 2px 3px rgb(0 0 0 / 13%);
-    border: rgba(255,255,255,0.3);
+    border: 1px solid var(--app-border);
   }
   img {
     height: auto;
@@ -43,11 +48,14 @@ const Container = styled.div`
   }
 `
 
-const BlockWrapper = styled(Card)`
+const BlockWrapper = styled.div`
   box-sizing: border-box;
   min-width: 0;
   margin-top: 20px;
   max-width: 100%;
+  border: 1px solid var(--app-border);
+  border-radius: 3px;
+  background: var(--app-surface);
   width: 100%;
 `
 const WSEndpointContainer = styled(BlockWrapper)`
@@ -144,6 +152,7 @@ export const LabPage: React.FC = () => {
   })
   return <ScrollCard>
     <Container>
+      <PracticeBreadcrumb segments={[t('nav.practice'), category, lab]} />
       { content }
       {
         terminals.map((endpoint, idx) => <BlockWrapper data-terminal-card key={`${endpoint.host}:${endpoint.port}:${idx}`}>

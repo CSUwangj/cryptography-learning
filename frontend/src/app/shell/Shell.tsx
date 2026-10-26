@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useState, type PropsWithChildren } from 'react'
+import React, { lazy, Suspense, useEffect, useState, type PropsWithChildren } from 'react'
 import {
   Alignment,
   Button,
@@ -54,7 +54,7 @@ const NavMenu = styled(Navbar)`
   overflow: hidden;
   padding: 0 8px;
   align-items: center;
-  background-color: #EEE;
+  background-color: var(--app-page);
   font-size: 20px;
 
   && .bp6-navbar-group {
@@ -64,51 +64,44 @@ const NavMenu = styled(Navbar)`
     min-width: 0;
   }
 
-  @media (max-width: 520px) {
+  @media (max-width: 768px) {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 4px;
     height: 56px;
     padding: 0 4px;
+
+    && .bp6-navbar-group {
+      display: contents;
+    }
+
+    [data-home-navigation], .bp6-navbar-heading {
+      display: contents;
+    }
+
+    && button.bp6-button {
+      min-width: 0;
+      padding-inline: 8px;
+      width: 100%;
+    }
+
+    button.bp6-button .bp6-button-text {
+      display: none;
+    }
 
     .bp6-navbar-divider {
       display: none;
     }
 
     .bp6-navbar-heading {
-      margin-right: 4px;
-    }
-  }
-
-  @media (max-width: 1100px) {
-    .bp6-navbar-heading .bp6-button-text {
-      display: none;
-    }
-  }
-
-  @media (max-width: 768px) {
-    .bp6-navbar button.bp6-button {
-      min-width: 36px;
-      padding-inline: 8px;
-    }
-
-    .bp6-navbar button.bp6-button .bp6-button-text {
-      display: none;
-    }
-
-    .bp6-navbar [data-learning-navigation] .bp6-button-text {
-      display: inline;
-    }
-
-    .bp6-navbar .bp6-navbar-divider {
-      display: none;
-    }
-
-    .bp6-navbar .bp6-navbar-heading {
-      margin-right: 4px;
+      margin: 0;
     }
   }
 `
 
 const PrimaryNavigation = styled(NavbarGroup)`
   flex: 1 1 auto;
+  min-width: 0;
 `
 
 const UtilityNavigation = styled(NavbarGroup)`
@@ -120,17 +113,8 @@ const CompactAction = styled(Button)`
     flex: 0 0 auto;
   }
 
-  @media (max-width: 520px) {
-    && .bp6-button-text {
-      display: none;
-    }
-  }
-`
-
-const PracticeTrigger = styled(PracticeNavigation)<{ $prototypeCompact?: boolean }>`
-  && {
-    flex: ${({ $prototypeCompact }) => $prototypeCompact ? '0 0 auto' : '1 1 auto'};
-    max-width: 42rem;
+  &&[data-icon-only] .bp6-button-text {
+    display: none;
   }
 `
 
@@ -140,50 +124,96 @@ const NavigationActions = styled(Unselectable)`
   flex: 1 1 auto;
   gap: 4px;
   min-width: 0;
+  overflow: hidden;
 
+  > [data-learning-navigation], > [data-practice-navigation] {
+    flex: 1 1 0;
+  }
+
+  &:has(> [data-navigation-expanded]) {
+    > [data-learning-navigation], > [data-practice-navigation] {
+      flex: 0 0 auto;
+    }
+
+    > [data-navigation-expanded] {
+      flex: 1 1 0;
+    }
+  }
+
+  @media (max-width: 768px) {
+    display: contents;
+  }
 `
 
-// Temporary fixture slots for #95/#116; production callers retain the existing behavior.
-export const Shell: React.FC<PropsWithChildren<{
-  learningPrototype?: React.ReactNode
-  themePrototype?: { dark: boolean; toggle: () => void }
-}>> = ({ children, learningPrototype, themePrototype }) => {
+const THEME_STORAGE_KEY = 'cryptography-learning-theme'
+type Theme = 'light' | 'dark'
+
+const readTheme = (): Theme => {
+  const saved = window.localStorage.getItem(THEME_STORAGE_KEY)
+  if (saved === 'dark' || saved === 'light') return saved
+  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+}
+
+export const Shell: React.FC<PropsWithChildren> = ({ children }) => {
   const { t, i18n } = useTranslation()
   // i18n.languages is list of fallback languages
   const items = i18n.languages
   // but if not using line above, seems only ugly way to do so,
   // check https://github.com/i18next/i18next/issues/1068 for discuss
   // const items = Object.keys(i18n.services.resourceStore.data)
-  const [ localDark, setDark ] = useState(false)
-  const dark = themePrototype?.dark ?? localDark
+  const [theme, setTheme] = useState<Theme>(readTheme)
+  const dark = theme === 'dark'
   const history = useHistory()
   const feedbackURL = import.meta.env.VITE_FEEDBACK_URL
   const handleOpenFeedback = feedbackURL ? () => window.open(feedbackURL) : () => history.push('/feedback')
 
-  return <Layout className={dark ? Classes.DARK : undefined}>
+  useEffect(() => {
+    document.body.classList.toggle(Classes.DARK, dark)
+    return () => document.body.classList.remove(Classes.DARK)
+  }, [dark])
+
+  useEffect(() => {
+    const media = window.matchMedia?.('(prefers-color-scheme: dark)')
+    if (!media) return
+    const update = () => {
+      if (!window.localStorage.getItem(THEME_STORAGE_KEY)) setTheme(media.matches ? 'dark' : 'light')
+    }
+    media.addEventListener?.('change', update)
+    return () => media.removeEventListener?.('change', update)
+  }, [])
+
+  const toggleTheme = () => {
+    const next = dark ? 'light' : 'dark'
+    window.localStorage.setItem(THEME_STORAGE_KEY, next)
+    setTheme(next)
+  }
+
+  return <Layout className={dark ? Classes.DARK : undefined} data-theme={theme}>
     <Header>
-      <NavMenu className={!themePrototype || dark ? Classes.DARK : undefined}>
+      <NavMenu className={dark ? Classes.DARK : undefined}>
         <PrimaryNavigation align={Alignment.LEFT}>
-          <Unselectable>
-            <NavbarHeading><CompactAction minimal large icon={IconNames.HOME} text={t('nav.home')} aria-label={t('nav.homeAction')} onClick={() => history.push('/')}/></NavbarHeading>
+            <Unselectable data-home-navigation>
+            <NavbarHeading><CompactAction data-icon-only minimal large icon={IconNames.HOME} text={t('nav.home')} aria-label={t('nav.homeAction')} title={t('nav.homeAction')} onClick={() => history.push('/')}/></NavbarHeading>
           </Unselectable>
           <NavbarDivider />
           <NavigationActions>
             {/* <Button minimal large icon={IconNames.HELP} text={t('nav.tutorial')} onClick={() => history.push('/tutorial')} /> */}
-            {learningPrototype ?? <Suspense fallback={<CompactAction data-learning minimal large icon={IconNames.SEARCH} text={t('nav.learning')} aria-label={t('nav.learning')} onClick={() => history.push('/learning')} />}><LearningNavigation /></Suspense>}
-            <PracticeTrigger $prototypeCompact={Boolean(learningPrototype)} />
-            <CompactAction minimal large icon={IconNames.ENVELOPE} text={t('nav.feedback')} aria-label={t('nav.feedback')} onClick={handleOpenFeedback} />
+            <Suspense fallback={<CompactAction data-learning minimal large icon={IconNames.SEARCH} text={t('nav.learning')} aria-label={t('nav.learning')} onClick={() => history.push('/learning')} />}><LearningNavigation /></Suspense>
+            <PracticeNavigation />
+            <CompactAction data-feedback-navigation minimal large icon={IconNames.ENVELOPE} text={t('nav.feedback')} aria-label={t('nav.feedback')} title={t('nav.feedback')} onClick={handleOpenFeedback} />
           </NavigationActions>
         </PrimaryNavigation>
         <UtilityNavigation align={Alignment.RIGHT}>
           <NavbarDivider />
           <CompactAction
+            data-icon-only
             minimal
             large
             text={dark ? t('light') : t('dark')}
             aria-label={dark ? t('light') : t('dark')}
+            title={dark ? t('light') : t('dark')}
             icon={dark ? 'flash' : 'moon'}
-            onClick={themePrototype?.toggle ?? (() => setDark(!dark))}
+            onClick={toggleTheme}
           />
           <NavbarDivider />
           <Select<string>
@@ -192,7 +222,7 @@ export const Shell: React.FC<PropsWithChildren<{
             itemRenderer={(s, {handleClick, modifiers}) => <I18nRender s={s} handleClick={handleClick} modifiers={modifiers} />}
             onItemSelect={(i) => {i18n.changeLanguage(i)}}
           >
-            <CompactAction minimal large icon={IconNames.TRANSLATE} text={t('i18n.'+i18n.language)} aria-label={t('nav.language')} rightIcon="double-caret-vertical" />
+            <CompactAction data-icon-only minimal large icon={IconNames.TRANSLATE} text={t('i18n.'+i18n.language)} aria-label={t('nav.language')} title={t('nav.language')} />
           </Select>
         </UtilityNavigation>
       </NavMenu>

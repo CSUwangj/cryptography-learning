@@ -1,8 +1,8 @@
 // PROTOTYPE: fixed AES-192 slice for #95 P0; values use the existing CryptoGraph engine.
 import { aesCipherGraph, aesInverseCipherGraph, aesKeyExpansionGraph, bits, compile, hex, type AuthoredGraph, type BitsValue, type CryptoValue, type WorkerExecutionSnapshot } from 'crypto_graph'
-import { relatedBitIds, type LearningPresentation, type LearningRelationship, type LearningRow } from '../ui/learning'
-import { blockCipherPresentation } from './BlockCipher'
-import { keyExpansionPresentation } from './KeyExpansion'
+import { relatedBitIds, type LearningPresentation, type LearningRelationship, type LearningRow } from '../src/ui/learning'
+import { blockCipherPresentation } from '../src/visualizers/BlockCipher'
+import { keyExpansionPresentation } from '../src/visualizers/KeyExpansion'
 
 export type PrototypeLocale = 'en-US' | 'zh-CN'
 export type PrototypeDirection = 'forward' | 'reverse'

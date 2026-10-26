@@ -25,10 +25,11 @@ import it. On this machine use Fish and `nvm use` before Node commands.
 - One candidate follows the already scoped Shell preview. No new A/B/C/D variants,
   theme presets or overlay decisions are introduced.
 - The real `Shell` owns the header, existing destinations, language selector and
-  light/dark control. A temporary `learningPrototype` slot replaces only its
-  Learning trigger. Original callers retain their existing behavior.
+  light/dark control. The preview renders that production Shell directly and
+  supplies only local Apollo catalog data; no Shell override or injection hook is
+  used. Original callers retain their existing behavior.
 - The Learning popup follows Practice's two-column category/entry interaction,
-  closes on navigation, and keeps `/learning` available as All Lessons. Opening
+  closes on navigation, and keeps `/learning` available as the full catalog. Opening
   it on a Lesson selects that Lesson's category. Header truncation retains the
   full accessible title; the page breadcrumb, heading and menu wrap the full text.
 - Fixture metadata provides two categories and four Lessons, including long

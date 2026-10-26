@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import {
+  Breadcrumb,
   Button,
   H4,
   PopoverNext,
@@ -16,7 +17,8 @@ import type { LearningCategory } from './domain'
 const LESSON_PATTERN = '/learning/:lessonId'
 
 const Panel = styled.div`
-  background: #fff;
+  background: var(--app-surface);
+  color: var(--app-text);
   box-sizing: border-box;
   display: grid;
   gap: 16px;
@@ -40,6 +42,7 @@ const ColumnHeading = styled(H4)`
 
 const NavigationButton = styled(Button)`
   && {
+    color: var(--app-text);
     display: block;
     min-height: 36px;
     overflow-wrap: anywhere;
@@ -55,34 +58,27 @@ const NavigationState = styled.div`
   min-height: 72px;
 `
 
-const Breadcrumb = styled.span`
+const BreadcrumbTrail = styled.span`
   display: flex;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
 `
 
-const BreadcrumbSegment = styled.span<{ $hiddenOnPhone?: boolean }>`
+const BreadcrumbSegment = styled.span`
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-
-  @media (max-width: 520px) {
-    display: ${({ $hiddenOnPhone }) => $hiddenOnPhone ? 'none' : 'inline'};
-  }
 `
 
-const BreadcrumbSeparator = styled.span<{ $hiddenOnPhone?: boolean }>`
+const BreadcrumbSeparator = styled.span`
   flex: 0 0 auto;
-
-  @media (max-width: 520px) {
-    display: ${({ $hiddenOnPhone }) => $hiddenOnPhone ? 'none' : 'inline'};
-  }
 `
 
 const Trigger = styled(Button)`
   && {
+    flex: 1 1 auto;
     min-width: 0;
     overflow: hidden;
     width: 100%;
@@ -96,7 +92,7 @@ const Trigger = styled(Button)`
 
 const TriggerContainer = styled.div`
   display: flex;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-width: 0;
 
   .bp6-popover-target {
@@ -184,7 +180,7 @@ export const LearningNavigation: React.FC<LearningNavigationProps> = ({ classNam
     </Panel>
   )
 
-  return <TriggerContainer className={className} data-learning-navigation>
+  return <TriggerContainer className={className} data-learning-navigation data-navigation-expanded={segments.length > 1 || undefined}>
     <PopoverNext
       content={content}
       isOpen={isOpen}
@@ -194,14 +190,16 @@ export const LearningNavigation: React.FC<LearningNavigationProps> = ({ classNam
       transitionDuration={0}
     >
       <Trigger minimal large icon={IconNames.SEARCH} aria-label={breadcrumbLabel} title={breadcrumbLabel}>
-        <Breadcrumb aria-hidden="true">
+        <BreadcrumbTrail aria-hidden="true">
           {segments.map((segment, index) => (
             <React.Fragment key={`${index}:${segment}`}>
-              {index > 0 && <BreadcrumbSeparator $hiddenOnPhone={currentCategory !== undefined && index === 1}>{' > '}</BreadcrumbSeparator>}
-              <BreadcrumbSegment $hiddenOnPhone={currentCategory !== undefined && index === 1}>{segment}</BreadcrumbSegment>
+              {index > 0 && <BreadcrumbSeparator>{' > '}</BreadcrumbSeparator>}
+              <BreadcrumbSegment>
+                <Breadcrumb text={segment} current={index === segments.length - 1} />
+              </BreadcrumbSegment>
             </React.Fragment>
           ))}
-        </Breadcrumb>
+        </BreadcrumbTrail>
       </Trigger>
     </PopoverNext>
   </TriggerContainer>

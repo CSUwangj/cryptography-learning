@@ -6,9 +6,9 @@ import { AvalancheDemo } from './AvalancheDemo'
 import { SpnDemo } from './SpnDemo'
 import { KeyExpansionPrototype } from './KeyExpansionPrototype'
 
-const Aes192OverlayPrototype = lazy(() => import('../src/visualizers/prototype').then((module) => ({ default: module.Aes192OverlayPrototype })))
-const LearningShellPrototype = lazy(() => import('../src/app/prototype').then((module) => ({ default: module.LearningShellPrototype })))
-const UiOptimizationPrototype = lazy(() => import('../src/app/prototype').then((module) => ({ default: module.UiOptimizationPrototype })))
+const Aes192OverlayPrototype = lazy(() => import('./Aes192OverlayPrototype').then((module) => ({ default: module.Aes192OverlayPrototype })))
+const LearningShellPrototype = lazy(() => import('./LearningShellPrototype').then((module) => ({ default: module.LearningShellPrototype })))
+const UiOptimizationPrototype = lazy(() => import('./UiOptimizationPrototype').then((module) => ({ default: module.UiOptimizationPrototype })))
 
 const Demos: React.FC = () => {
   const [locale, setLocale] = useState<'en-US' | 'zh-CN'>('en-US')

@@ -27,9 +27,10 @@ const Gap = styled.div`
 
 const BackContainer = styled.div`
   padding-top: 5px;
-  background-color: #47555e;
+  background-color: var(--app-surface);
+  color: var(--app-text);
   h1, h3, h5 {
-    color: #EEEEEE;
+    color: var(--app-text);
     a {
       color: #48aff0;
     }

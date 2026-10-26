@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useQuery } from '@apollo/client/react'
 import {
+  Breadcrumb,
   Button,
   H4,
   PopoverNext,
@@ -18,7 +19,8 @@ import { mapPracticeMenu } from './map'
 import { LAB_PATTERN, labPath, type LabRouteParams } from './routes'
 
 const Panel = styled.div`
-  background: #fff;
+  background: var(--app-surface);
+  color: var(--app-text);
   box-sizing: border-box;
   display: grid;
   gap: 16px;
@@ -42,6 +44,7 @@ const ColumnHeading = styled(H4)`
 
 const NavigationButton = styled(Button)`
   && {
+    color: var(--app-text);
     display: block;
     min-height: 36px;
     overflow-wrap: anywhere;
@@ -52,7 +55,7 @@ const NavigationButton = styled(Button)`
 
 const CompletionButton = styled(NavigationButton)`
   && {
-    border-top: 1px solid #d8dee6;
+    border-top: 1px solid var(--app-border);
     margin-top: 8px;
     padding-top: 12px;
   }
@@ -65,32 +68,6 @@ const NavigationState = styled.div`
   min-height: 72px;
 `
 
-const Breadcrumb = styled.span`
-  display: flex;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-`
-
-const BreadcrumbSegment = styled.span<{ $hiddenOnPhone?: boolean }>`
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-
-  @media (max-width: 520px) {
-    display: ${({ $hiddenOnPhone }) => $hiddenOnPhone ? 'none' : 'inline'};
-  }
-`
-
-const BreadcrumbSeparator = styled.span<{ $hiddenOnPhone?: boolean }>`
-  flex: 0 0 auto;
-
-  @media (max-width: 520px) {
-    display: ${({ $hiddenOnPhone }) => $hiddenOnPhone ? 'none' : 'inline'};
-  }
-`
-
 const Trigger = styled(Button)`
   && {
     min-width: 0;
@@ -98,15 +75,18 @@ const Trigger = styled(Button)`
     width: 100%;
 
     .bp6-button-text {
+      display: block;
       min-width: 0;
       overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
   }
 `
 
 const TriggerContainer = styled.div`
   display: flex;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-width: 0;
 
   .bp6-popover-target {
@@ -121,23 +101,20 @@ const breadcrumbFor = (
   categories: PracticeMenuCategory[],
   practiceLabel: string,
   completionLabel: string,
-): { segments: string[]; hidesCategoryOnPhone: boolean } => {
+): string[] => {
   const labMatch = matchPath<LabRouteParams>(pathname, { exact: true, path: LAB_PATTERN })
   if (labMatch) {
     const { category: categoryId, lab: labId } = labMatch.params
     const category = categories.find(({ id }) => id === categoryId)
     const lab = category?.labs.find(({ id }) => id === labId)
-    return {
-      segments: [practiceLabel, category?.name ?? categoryId, lab?.name ?? labId],
-      hidesCategoryOnPhone: true,
-    }
+    return [practiceLabel, category?.name ?? categoryId, lab?.name ?? labId]
   }
 
   if (matchPath(pathname, { exact: true, path: COMPLETION_PATTERN })) {
-    return { segments: [practiceLabel, completionLabel], hidesCategoryOnPhone: false }
+    return [practiceLabel, completionLabel]
   }
 
-  return { segments: [practiceLabel], hidesCategoryOnPhone: false }
+  return [practiceLabel]
 }
 
 type PracticeNavigationProps = {
@@ -159,7 +136,7 @@ export const PracticeNavigation: React.FC<PracticeNavigationProps> = ({ classNam
     t('nav.practice'),
     t('nav.completion'),
   )
-  const breadcrumbLabel = breadcrumb.segments.join(' > ')
+  const breadcrumbLabel = breadcrumb.join(' > ')
 
   const openLab = (categoryId: string, labId: string) => {
     setIsOpen(false)
@@ -218,7 +195,7 @@ export const PracticeNavigation: React.FC<PracticeNavigationProps> = ({ classNam
     </Panel>
   )
 
-  return <TriggerContainer className={className}>
+  return <TriggerContainer className={className} data-practice-navigation data-navigation-expanded={breadcrumb.length > 1 || undefined}>
     <PopoverNext
       content={content}
       isOpen={isOpen}
@@ -232,21 +209,14 @@ export const PracticeNavigation: React.FC<PracticeNavigationProps> = ({ classNam
         large
         icon={IconNames.FLAG}
         aria-label={breadcrumbLabel}
+        title={breadcrumbLabel}
       >
-        <Breadcrumb aria-hidden="true">
-          {breadcrumb.segments.map((segment, index) => (
-            <React.Fragment key={`${index}:${segment}`}>
-              {index > 0 && (
-                <BreadcrumbSeparator $hiddenOnPhone={breadcrumb.hidesCategoryOnPhone && index === 1}>
-                  {' > '}
-                </BreadcrumbSeparator>
-              )}
-              <BreadcrumbSegment $hiddenOnPhone={breadcrumb.hidesCategoryOnPhone && index === 1}>
-                {segment}
-              </BreadcrumbSegment>
-            </React.Fragment>
-          ))}
-        </Breadcrumb>
+        <span aria-hidden="true">
+          {breadcrumb.map((segment, index) => <React.Fragment key={`${index}:${segment}`}>
+            {index > 0 && ' > '}
+            <Breadcrumb text={segment} current={index === breadcrumb.length - 1} />
+          </React.Fragment>)}
+        </span>
       </Trigger>
     </PopoverNext>
   </TriggerContainer>

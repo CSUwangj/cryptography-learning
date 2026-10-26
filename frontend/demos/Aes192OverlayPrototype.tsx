@@ -3,7 +3,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { Global } from '@emotion/react'
 import styled from '@emotion/styled'
 import { Icon } from '@blueprintjs/core'
-import { ComparisonRow, LineageDiagram, TraceTable, ValueCell, type LearningRelationship } from '../ui/learning'
+import { ComparisonRow, LineageDiagram, TraceTable, ValueCell, type LearningRelationship } from '../src/ui/learning'
 import { alignedRows, bitRanges, prototypeData, range, selectedLineage, type PrototypeDirection, type PrototypeLocale, type PrototypeRow } from './aes192OverlayPrototypeData'
 
 const copy = {

@@ -3,18 +3,18 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperti
 export type LearningState = 'default' | 'changed' | 'selected' | 'related' | 'related-changed' | 'warning' | 'incomplete'
 
 export const learningColors = {
-  text: '#17324d',
-  mutedText: '#4b6075',
-  canvas: '#fbfdff',
-  border: '#8aa0b6',
-  related: '#e0f2fe',
-  selected: '#dbeafe',
-  changed: '#fff3cd',
-  relatedChanged: '#fca5a5',
-  warning: '#fee2e2',
-  incomplete: '#e5e7eb',
-  lane: '#ecfdf5',
-  laneBorder: '#059669',
+  text: 'var(--learning-text, #17324d)',
+  mutedText: 'var(--learning-muted-text, #4b6075)',
+  canvas: 'var(--learning-canvas, #fbfdff)',
+  border: 'var(--learning-border, #8aa0b6)',
+  related: 'var(--learning-related, #e0f2fe)',
+  selected: 'var(--learning-selected, #dbeafe)',
+  changed: 'var(--learning-changed, #fff3cd)',
+  relatedChanged: 'var(--learning-related-changed, #fca5a5)',
+  warning: 'var(--learning-warning, #fee2e2)',
+  incomplete: 'var(--learning-incomplete, #e5e7eb)',
+  lane: 'var(--learning-lane, #ecfdf5)',
+  laneBorder: 'var(--learning-lane-border, #059669)',
 } as const
 
 const stateStyles: Record<LearningState, CSSProperties> = {

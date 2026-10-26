@@ -149,6 +149,8 @@ test.describe('Learning Lesson (#30)', () => {
     await expect(page.getByRole('link', { name: 'Title unavailable (malformed-yaml)' })).toBeVisible()
     await page.getByRole('link', { name: 'Explore XOR' }).click()
     await expect(page.getByRole('navigation', { name: 'Lesson breadcrumb' })).toContainText('Explore XOR')
+    await expect(page.getByRole('navigation', { name: 'Lesson breadcrumb' }).locator('[aria-current="page"]')).toContainText('Explore XOR')
+    await expect(page.getByRole('navigation', { name: 'Lesson breadcrumb' }).getByRole('link', { name: 'Back to Lessons' })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Explore XOR' })).toBeVisible()
 
     await page.getByRole('button', { name: 'Next' }).click()
