@@ -1,14 +1,13 @@
-"""Exercise review handoffs against real disposable Git checkouts, without commits."""
+"""Public CLI coverage for staged handoff packets."""
 
 from pathlib import Path
 import json
+import hashlib
 import os
-import shlex
 import subprocess
 import sys
 import tempfile
 import unittest
-
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "review_handoff.py"
@@ -20,418 +19,226 @@ class ReviewHandoffTest(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.directory = Path(self.temp.name)
         self.repo = self.directory / "repo with spaces"
-        subprocess.run(
-            ["git", "clone", "--quiet", "--shared", str(ROOT), str(self.repo)],
-            check=True, capture_output=True,
-        )
-        self.base = self.git("rev-parse", "HEAD").stdout.strip()
-        self.target = "docs/agents/handoff [sample].md"
-        (self.repo / self.target).write_text("ticket implementation\n")
-        self.git("add", "--", self.target)
+        subprocess.run(["git", "clone", "--quiet", "--shared", str(ROOT), str(self.repo)], check=True)
         self.notes = self.directory / "notes.md"
-        self.notes.write_text("A1: the example is executable. Evidence: unit. No product decisions remain.\n")
-        self.packet = self.directory / "round1.json"
+        self.notes.write_text("AC1: packet contains staged scope and frozen plan.\n")
+        self.packet = self.directory / "packet.json"
 
     def git(self, *args):
-        return subprocess.run(
-            ["git", "--literal-pathspecs", "-C", str(self.repo), *args],
-            text=True, capture_output=True, check=True,
-        )
+        return subprocess.run(["git", "--literal-pathspecs", "-C", str(self.repo), *args],
+                              text=True, capture_output=True, check=True)
 
     def cli(self, *args, expected=0, env=None):
-        result = subprocess.run(
-            [sys.executable, str(SCRIPT), *map(str, args)],
-            text=True, capture_output=True, check=False, env=env,
-        )
+        result = subprocess.run([sys.executable, str(SCRIPT), *map(str, args)],
+                                text=True, capture_output=True, check=False, env=env)
         self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
         return result
 
-    def create(self, *args, expected=0):
-        paths = [self.target]
-        remaining = []
-        index = 0
-        while index < len(args):
-            if args[index] == "--paths":
-                index += 1
-                while index < len(args) and not args[index].startswith("--"):
-                    paths.append(args[index])
-                    index += 1
-            else:
-                remaining.append(args[index])
-                index += 1
-        return self.cli(
-            "create", "--repo", self.repo, "--base", self.base,
-            "--issue", "#96", "--notes", self.notes, "--output", self.packet,
-            "--check", "unit", "--paths", *dict.fromkeys(paths), *remaining, expected=expected,
-        )
+    def stage(self, name, content="fixture\n"):
+        path = self.repo / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+        self.git("add", "--", name)
 
-    def run_python(self, code, *, label="unit", expected=0):
-        return self.cli(
-            "run", self.packet, "--label", label, "--", sys.executable, "-c", code,
-            expected=expected,
-        )
+    def create(self, *extra, expected=0):
+        return self.cli("create", "--repo", self.repo, "--issue", "#118", "--notes", self.notes,
+                        "--output", self.packet, *extra, expected=expected)
 
     def data(self):
         return json.loads(self.packet.read_text())
 
-    def record_review(self, axis, status="passed", *, expected=0, snapshot=None, findings=()):
-        evidence = self.directory / f"{axis}-review.md"
-        evidence.write_text(f"Formal {axis} review: {status}. Evidence covers the recorded snapshot.\n")
-        return self.cli(
-            "review", self.packet, "--axis", axis, "--status", status,
-            "--snapshot", snapshot or self.data()["snapshot_id"],
-            "--evidence", evidence,
-            *[argument for finding in findings for argument in ("--finding", *finding)],
-            expected=expected,
+    def fake_fish(self, *, fail_first=False, interrupt=False, mutate=None):
+        bindir = self.directory / "bin"
+        bindir.mkdir(exist_ok=True)
+        counter = self.directory / "fish-count"
+        fish = bindir / "fish"
+        mutation = f"\nfrom pathlib import Path; Path({str(mutate)!r}).write_text('mutated by check\\n')" if mutate else ""
+        action = "import os; os.kill(os.getppid(), 9)" if interrupt else (
+            f"from pathlib import Path; p=Path({str(counter)!r}); n=int(p.read_text()) if p.exists() else 0; p.write_text(str(n+1)); "
+            + ("\nif n == 0: raise SystemExit(7)" if fail_first else "")
+            + mutation
         )
-
-    def test_complete_handoff_has_reproducible_diff_and_check_evidence(self):
-        self.create()
-        diff = subprocess.run(shlex.split(self.data()["diff_command"]), capture_output=True, text=True, check=True)
-        self.assertIn("+ticket implementation", diff.stdout)
-        self.run_python("from pathlib import Path; assert Path('docs/agents/handoff [sample].md').read_text() == 'ticket implementation\\n'; print('assertion passed')")
-        self.cli("verify", self.packet, "--require-passed")
-        attempt = self.data()["checks"]["unit"][0]
-        self.assertEqual(attempt["exit_code"], 0)
-        self.assertEqual(attempt["cwd"], str(self.repo))
-        self.assertIn("assertion passed", Path(attempt["log"]).read_text())
-        self.assertEqual(self.git("rev-parse", "HEAD").stdout.strip(), self.base)
-        self.assertEqual(self.git("diff", "--name-only").stdout, "")
-
-    def test_failed_and_missing_checks_cannot_pass_and_attempts_are_retained(self):
-        self.create("--check", "build")
-        self.cli("verify", self.packet)
-        self.cli("verify", self.packet, "--require-passed", expected=1)
-        failure = self.directory / "check-fails"
-        failure.touch()
-        command = f"from pathlib import Path; import sys; sys.exit(7 if Path({str(failure)!r}).exists() else 0)"
-        self.run_python(command, expected=1)
-        self.assertEqual(self.data()["checks"]["unit"][0]["exit_code"], 7)
-        self.cli("verify", self.packet, "--require-passed", expected=1)
-        failure.unlink()
-        self.run_python(command)
-        self.cli("verify", self.packet, "--require-passed", expected=1)
-        self.run_python("print('built')", label="build")
-        result = self.cli("verify", self.packet, "--require-passed")
-        self.assertEqual([a["status"] for a in self.data()["checks"]["unit"]], ["failed", "passed"])
-        self.assertIn('"attempts": 2', result.stdout)
-        self.assertIn('"previous_failed": 1', result.stdout)
-
-    def test_frontend_runtime_and_dependency_changes_require_planned_checks(self):
-        changed = []
-        for name in ("frontend/src/verification-example.ts", "frontend/package-lock.json",
-                     "frontend/schema/schema.gql", "frontend/index.html", "frontend/.nvmrc",
-                     "frontend/vite.config.mts", "frontend/tsconfig.json"):
-            with self.subTest(path=name):
-                file = self.repo / name
-                file.parent.mkdir(parents=True, exist_ok=True)
-                file.write_text((file.read_text() if file.exists() else "") + "verification fixture\n")
-                self.git("add", "--", name)
-                changed.append(name)
-                self.packet = self.directory / f"case-{len(changed)}.json"
-                result = self.create(
-                    "--paths", self.target, name,
-                    *[argument for old in changed[:-1] for argument in ("--exclude", old, "Other fixture")],
-                    expected=1,
-                )
-                self.assertIn("missing required check:", result.stderr)
-                self.assertFalse(self.packet.exists())
-
-    def test_frontend_documentation_does_not_require_runtime_suite(self):
-        documents = ("frontend/README.md", "frontend/schema/README.md", "frontend/src/README.md")
-        for name in documents:
-            (self.repo / name).write_text("Documentation-only example.\n")
-            self.git("add", "--", name)
-        self.create("--paths", self.target, *documents)
-        self.run_python("print('documentation checked')")
-        self.cli("verify", self.packet, "--require-passed")
-
-    def test_handoff_requires_selected_frontend_check_not_deferred_full_suite(self):
-        name = "frontend/src/crypto_graph/index.test.ts"
-        (self.repo / name).write_text("test fixture change\n")
-        self.git("add", "--", name)
-        self.create("--paths", name, "--check", "frontend-tests", "--check", "frontend_typecheck")
-        result = self.cli("verify", self.packet, "--require-passed", expected=1)
-        self.assertIn('"frontend-tests": "not-run"', result.stdout)
-        legacy = self.data()
-        del legacy["checks"]["frontend-tests"]
-        self.packet.write_text(json.dumps(legacy))
-        self.cli("verify", self.packet)
-        result = self.cli("verify", self.packet, "--require-passed", expected=1)
-        self.assertIn("missing required check: frontend-tests", result.stderr)
-        self.assertIn('"frontend-tests"', result.stdout)
-
-    def test_frontend_gate_executes_only_its_fixed_command_and_directory(self):
-        name = "frontend/src/crypto_graph/index.test.ts"
-        (self.repo / name).write_text("test fixture change\n")
-        self.git("add", "--", name)
-        self.create("--paths", name, "--check", "frontend-tests", "--check", "frontend_typecheck")
-        original = self.packet.read_bytes()
-        marker = self.directory / "executed.json"
-        replacement = f"from pathlib import Path; Path({str(marker)!r}).write_text('subset ran')"
-        self.run_python(replacement, label="frontend-tests", expected=1)
-        self.assertFalse(marker.exists())
-        self.assertEqual(self.packet.read_bytes(), original)
-
-        # A stand-in records the runner's dispatch without invoking the frontend suite.
-        bin_dir = self.directory / "bin"
-        bin_dir.mkdir()
-        fish = bin_dir / "fish"
-        fish.write_text(
-            f"#!{sys.executable}\nimport json, os, sys\nfrom pathlib import Path\n"
-            f"Path({str(marker)!r}).write_text(json.dumps([os.getcwd(), sys.argv[1:]]))\n"
-        )
+        fish.write_text(f"#!{sys.executable}\n{action}\n")
         fish.chmod(0o755)
-        env = {**os.environ, "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"]}
-        command = tuple(next(item["argv"] for item in self.data()["plan"]["checks"] if item["id"] == "frontend-tests"))
-        self.cli("run", self.packet, "--label", "frontend-tests", "--", *command, env=env, expected=1)
-        self.assertFalse(marker.exists())
-        self.assertEqual(self.packet.read_bytes(), original)
-        self.cli("run", self.packet, "--label", "frontend-tests", "--cwd", "frontend",
-                 "--", *command, env=env)
-        self.assertEqual(json.loads(marker.read_text())[0], str(self.repo / "frontend"))
-        self.assertIn("crypto_graph/index.test.ts", command[-1])
+        return {**os.environ, "PATH": str(bindir) + os.pathsep + os.environ["PATH"]}
 
-    def test_replacement_command_or_directory_cannot_overwrite_failed_check(self):
-        self.create()
-        command = "import sys; sys.exit(7)"
-        self.run_python(command, expected=1)
-        original = self.packet.read_bytes()
-        marker = self.directory / "subset-ran"
-        replacement = f"from pathlib import Path; Path({str(marker)!r}).touch()"
-        self.run_python(replacement, expected=1)
-        self.assertFalse(marker.exists())
-        self.assertEqual(self.packet.read_bytes(), original)
-        self.cli("run", self.packet, "--label", "unit", "--cwd", "frontend",
-                 "--", sys.executable, "-c", command, expected=1)
-        self.assertEqual(self.packet.read_bytes(), original)
-        self.cli("verify", self.packet, "--require-passed", expected=1)
+    def stage_frontend_test(self):
+        self.stage("frontend/src/crypto_graph/index.test.ts", "test('fixture', () => {})\n")
 
-    def test_legacy_changed_commands_cannot_supply_passing_evidence(self):
-        self.create("--check", "focused")
-        self.run_python("import sys; sys.exit(7)", expected=1)
-        self.run_python("print('subset passed')", label="focused")
-        legacy = self.data()
-        legacy["checks"]["unit"].extend(legacy["checks"].pop("focused"))
-        self.packet.write_text(json.dumps(legacy))
-        self.cli("verify", self.packet)
-        result = self.cli("verify", self.packet, "--require-passed", expected=1)
-        self.assertIn("command or working directory changed", result.stderr)
+    def test_create_discovers_staged_scope_and_requires_exclusions(self):
+        self.stage("docs/agents/target.md")
+        self.stage("prototype.txt")
+        (self.repo / "draft.txt").write_text("untracked\n")
+        result = self.create(expected=1)
+        self.assertIn("classify every non-target change", result.stderr)
+        self.create("--exclude", "prototype.txt", "prototype", "--exclude", "draft.txt", "draft")
+        data = self.data()
+        self.assertEqual(data["paths"], ["docs/agents/target.md"])
+        self.assertEqual(data["excluded"], {"prototype.txt": "prototype", "draft.txt": "draft"})
+        self.assertEqual(data["plan"]["kind"], "docs-only")
+        self.assertIn("Snapshot ID:", self.cli("verify", self.packet).stdout)
 
-    def test_passing_checks_do_not_imply_completed_reviews(self):
-        self.create()
-        self.run_python("print('checks passed')")
-        result = self.cli("verify", self.packet, "--require-passed")
-        self.assertIn('Formal review status: {"spec": "pending", "standards": "pending"}', result.stdout)
-        result = self.cli("verify", self.packet, "--require-passed", "--require-reviewed", expected=1)
-        self.assertIn("both formal-review axes must pass", result.stderr)
+    def test_default_output_is_external_and_printed(self):
+        self.stage("docs/agents/target.md")
+        result = self.cli("create", "--repo", self.repo, "--issue", "#118", "--notes", self.notes)
+        line = next(line for line in result.stdout.splitlines() if line.startswith("Created "))
+        output = Path(line.split("Created ", 1)[1].split(";", 1)[0])
+        self.assertTrue(output.is_file())
+        self.assertFalse(output.is_relative_to(self.repo))
+        self.assertIn("Snapshot ID:", result.stdout)
 
-    def test_formal_reviews_are_separate_from_checks_and_keep_each_axis_history(self):
+    def test_run_docs_only_plan_succeeds_and_rejects_caller_configuration(self):
+        self.stage("docs/agents/target.md")
         self.create()
-        self.record_review("standards")
-        self.cli("verify", self.packet, "--require-reviewed", expected=1)
-        for status in ("pending", "changes-required", "disputed"):
-            with self.subTest(status=status):
-                self.record_review("spec", status)
-                self.cli("verify", self.packet, "--require-reviewed", expected=1)
-        self.record_review("spec")
-        self.cli("verify", self.packet, "--require-reviewed")
-        self.cli("verify", self.packet, "--require-passed", "--require-reviewed", expected=1)
-        self.run_python("print('verified')")
-        self.cli("verify", self.packet, "--require-passed", "--require-reviewed")
-        self.assertEqual([r["status"] for r in self.data()["reviews"]["spec"]],
-                         ["pending", "changes-required", "disputed", "passed"])
-        self.assertIn("Formal spec review: passed", self.data()["reviews"]["spec"][-1]["evidence"])
-
-    def test_unresolved_findings_survive_pass_and_need_explicit_disposition(self):
-        self.create()
-        self.record_review("standards")
-        for status in ("open", "disputed"):
-            with self.subTest(status=status):
-                self.record_review("spec", findings=[("R1", status)])
-                result = self.cli("verify", self.packet, "--require-reviewed", expected=1)
-                self.assertIn("spec:R1", result.stderr)
-                self.record_review("spec")
-                self.cli("verify", self.packet, "--require-reviewed", expected=1)
-        # The other axis cannot clear Spec's finding with the same ID.
-        self.record_review("standards", findings=[("R1", "resolved")])
-        self.cli("verify", self.packet, "--require-reviewed", expected=1)
-        for status in ("resolved", "withdrawn", "non-blocking"):
-            with self.subTest(status=status):
-                self.record_review("spec", findings=[("R1", status)])
-                self.cli("verify", self.packet, "--require-reviewed")
-
-    def test_reviews_cannot_be_recorded_or_reused_on_another_snapshot(self):
-        self.create()
-        self.record_review("standards")
-        self.record_review("spec")
-        original = self.data()
-        original_bytes = self.packet.read_bytes()
-        (self.repo / self.target).write_text("repaired implementation\n")
-        self.git("add", "--", self.target)
-        self.record_review("spec", expected=1)
-        self.assertEqual(self.packet.read_bytes(), original_bytes)
-        self.cli("verify", self.packet, "--require-reviewed", expected=1)
-        self.packet = self.directory / "round2.json"
-        self.create()
-        self.assertNotEqual(original["snapshot_id"], self.data()["snapshot_id"])
-        result = self.record_review("spec", snapshot=original["snapshot_id"], expected=1)
-        self.assertIn("snapshot ID differs", result.stderr)
-        self.assertEqual(self.data()["reviews"]["spec"], [])
-        copied = self.data()
-        copied["reviews"] = original["reviews"]
-        self.packet.write_text(json.dumps(copied))
-        result = self.cli("verify", self.packet, "--require-reviewed", expected=1)
-        self.assertIn("snapshot ID differs", result.stderr)
-
-    def test_legacy_packets_need_explicit_review_records(self):
-        self.create()
-        self.run_python("print('checked')")
-        legacy = self.data()
-        del legacy["reviews"]
-        del legacy["snapshot_id"]
-        self.packet.write_text(json.dumps(legacy))
+        self.cli("run", self.packet)
         self.cli("verify", self.packet, "--require-passed")
-        self.cli("verify", self.packet, "--require-reviewed", expected=1)
-        result = self.cli("verify", self.packet)
-        identity = result.stdout.split("Snapshot ID: ", 1)[1].splitlines()[0]
-        self.record_review("standards", snapshot=identity)
-        self.record_review("spec", snapshot=identity)
-        self.cli("verify", self.packet, "--require-passed", "--require-reviewed")
+        self.cli("run", self.packet, "--label", "unit", expected=1)
+        self.cli("run", self.packet, "--cwd", ".", expected=2)
 
-    def test_invalid_review_records_leave_packet_unchanged(self):
+    def test_legacy_custom_command_syntax_is_rejected_without_packet_write(self):
+        self.stage_frontend_test()
         self.create()
+        label = self.data()["plan"]["checks"][0]["id"]
         original = self.packet.read_bytes()
-        for findings in ([("R1", "typo")], [(" ", "open")],
-                         [("R1", "open"), ("R1", "resolved")]):
-            with self.subTest(findings=findings):
-                self.record_review("spec", findings=findings, expected=1)
-                self.assertEqual(self.packet.read_bytes(), original)
-        empty = self.directory / "empty-review.md"
-        empty.write_text(" ")
-        result = self.cli(
-            "review", self.packet, "--axis", "spec", "--status", "passed",
-            "--snapshot", self.data()["snapshot_id"], "--evidence", empty, expected=1,
-        )
-        self.assertIn("must not be empty", result.stderr)
-        self.assertEqual(self.packet.read_bytes(), original)
-        result = self.cli(
-            "review", self.packet, "--axis", "spec", "--status", "passed",
-            "--snapshot", self.data()["snapshot_id"],
-            "--evidence", self.repo / self.target, expected=1,
-        )
-        self.assertIn("outside the reviewed worktree", result.stderr)
+        self.cli("run", self.packet, "--label", label, "--", sys.executable, "-c", "print('custom')", expected=2)
         self.assertEqual(self.packet.read_bytes(), original)
 
-    def test_unstaged_target_is_rejected(self):
-        (self.repo / self.target).write_text("unstaged fix\n")
-        self.assertIn("unstaged changes", self.create(expected=1).stderr)
-        self.assertFalse(self.packet.exists())
-
-    def test_whitespace_failure_has_actionable_diagnostics(self):
-        (self.repo / self.target).write_text("trailing whitespace \n")
-        self.git("add", "--", self.target)
-        self.assertIn("trailing whitespace", self.create(expected=1).stderr)
-
-    def test_classified_unrelated_changes_are_preserved_and_fingerprinted(self):
-        (self.repo / "prototype.txt").write_text("prototype\n")
-        self.git("add", "prototype.txt")
-        (self.repo / "prototype.txt").write_text("prototype with unstaged work\n")
-        (self.repo / "draft.txt").write_text("untracked draft\n")
-        before = self.git("status", "--porcelain").stdout
-        self.assertIn("unclassified", self.create(expected=1).stderr)
-        self.create("--exclude", "prototype.txt", "Prior prototype", "--exclude", "draft.txt", "Prior draft")
-        self.cli("verify", self.packet)
-        self.assertEqual(self.git("status", "--porcelain").stdout, before)
-        (self.repo / "draft.txt").write_text("changed untracked draft\n")
-        self.assertIn("snapshot changed", self.cli("verify", self.packet, expected=1).stderr)
-
-    def test_changed_index_or_worktree_invalidates_snapshot(self):
+    def test_non_empty_plan_runs_all_checks_keeps_failure_and_allows_label_rerun(self):
+        self.stage_frontend_test()
         self.create()
-        (self.repo / self.target).write_text("changed\n")
-        self.cli("verify", self.packet, expected=1)
-        self.git("add", "--", self.target)
-        self.assertIn("snapshot changed", self.cli("verify", self.packet, expected=1).stderr)
-        self.run_python("raise AssertionError('must not execute stale target')", expected=1)
-        self.assertEqual(self.data()["checks"]["unit"], [])
+        planned = [item["id"] for item in self.data()["plan"]["checks"]]
+        self.assertGreaterEqual(len(planned), 2)
+        env = self.fake_fish(fail_first=True)
+        self.cli("run", self.packet, env=env, expected=1)
+        data = self.data()
+        self.assertEqual([data["checks"][name][-1]["status"] for name in planned[1:]], ["passed"] * (len(planned) - 1))
+        self.assertEqual(data["checks"][planned[0]][0]["status"], "failed")
+        self.assertTrue(Path(data["checks"][planned[0]][0]["log"]).is_file())
+        self.cli("run", self.packet, "--label", planned[0], env=env)
+        self.cli("verify", self.packet, "--require-passed")
 
-    def test_changed_selection_plan_invalidates_snapshot_identity(self):
+    def test_selected_frontend_install_precedes_dependent_checks(self):
+        package = json.loads((self.repo / "frontend/package.json").read_text())
+        package["description"] = "Installation order regression fixture"
+        self.stage("frontend/package.json", json.dumps(package, indent=2) + "\n")
+        self.create()
+        env = self.fake_fish()
+        fish = self.directory / "bin/fish"
+        marker = self.directory / "frontend-installed"
+        # AGENTS.md and CI install dependencies before running frontend tools.
+        fish.write_text(
+            f"#!{sys.executable}\n"
+            "from pathlib import Path\n"
+            "import sys\n"
+            f"marker = Path({str(marker)!r})\n"
+            "if sys.argv[-1] == 'nvm use; and npm ci':\n"
+            "    marker.write_text('installed\\n')\n"
+            "elif not marker.exists():\n"
+            "    raise SystemExit('frontend consumer dispatched before npm ci: ' + sys.argv[-1])\n"
+        )
+        self.cli("run", self.packet, env=env)
+        data = self.data()
+        self.assertEqual(set(data["checks"]), {
+            "frontend_install", "frontend-tests", "frontend_build", "frontend_typecheck",
+        })
+        self.assertTrue(marker.is_file())
+        for name, attempts in data["checks"].items():
+            self.assertEqual(len(attempts), 1, name)
+            self.assertEqual(attempts[0]["status"], "passed", name)
+        self.cli("verify", self.packet, "--require-passed")
+
+    def test_extra_check_labels_cannot_satisfy_verify(self):
+        self.stage("docs/agents/target.md")
+        self.create()
+        data = self.data()
+        evil_log = self.directory / "evil.log"
+        evil_log.write_text("evil\n")
+        data["checks"]["evil"] = [{"command": ["true"], "cwd": str(self.repo), "status": "passed", "log": str(evil_log), "log_sha256": hashlib.sha256(evil_log.read_bytes()).hexdigest()}]
+        self.packet.write_text(json.dumps(data))
+        result = self.cli("verify", self.packet, "--require-passed", expected=1)
+        self.assertIn("unexpected check: evil", result.stderr)
+
+    def test_snapshot_and_log_integrity_regressions_remain_guarded(self):
+        self.stage_frontend_test()
+        self.create()
+        env = self.fake_fish()
+        self.cli("run", self.packet, env=env)
+        attempt = self.data()["checks"]["frontend-tests"][0]
+        Path(attempt["log"]).write_text("tampered\n")
+        self.assertIn("log changed", self.cli("verify", self.packet, expected=1).stderr)
+        Path(attempt["log"]).unlink()
+        self.assertIn("missing check log", self.cli("verify", self.packet, expected=1).stderr)
+        self.stage("frontend/src/crypto_graph/index.test.ts", "changed fixture\n")
+        self.assertIn("snapshot changed", self.cli("verify", self.packet, expected=1).stderr)
+
+    def test_interrupted_runner_records_unavailable_attempt(self):
+        self.stage_frontend_test()
+        self.create()
+        self.cli("run", self.packet, env=self.fake_fish(interrupt=True), expected=-9)
+        attempt = self.data()["checks"]["frontend-tests"][0]
+        self.assertEqual(attempt["status"], "unavailable")
+        self.assertIsNone(attempt["exit_code"])
+
+    def test_check_mutating_target_is_unavailable_and_invalidates_packet(self):
+        self.stage_frontend_test()
+        self.create()
+        target = self.repo / "frontend/src/crypto_graph/index.test.ts"
+        self.cli("run", self.packet, env=self.fake_fish(mutate=target), expected=1)
+        attempt = self.data()["checks"]["frontend-tests"][0]
+        self.assertEqual(attempt["status"], "unavailable")
+        self.assertEqual(attempt["exit_code"], 0)
+        result = self.cli("verify", self.packet, expected=1)
+        self.assertIn("target files have unstaged changes", result.stderr)
+
+    def test_mutating_check_stops_before_starting_later_checks(self):
+        self.stage_frontend_test()
+        self.create()
+        target = self.repo / "frontend/src/crypto_graph/index.test.ts"
+        self.cli("run", self.packet, env=self.fake_fish(mutate=target), expected=1)
+        data = self.data()
+        planned = [item["id"] for item in data["plan"]["checks"]]
+        self.assertGreaterEqual(len(planned), 2)
+        self.assertEqual(len(data["checks"][planned[0]]), 1)
+        self.assertEqual(data["checks"][planned[0]][0]["status"], "unavailable")
+        self.assertTrue(all(not data["checks"][label] for label in planned[1:]))
+        result = self.cli("verify", self.packet, expected=1)
+        self.assertIn("target files have unstaged changes", result.stderr)
+
+    def test_frozen_plan_change_requires_new_packet(self):
+        self.stage("docs/agents/target.md")
         self.create()
         data = self.data()
         data["plan"]["checks"].append({"id": "invented", "cwd": ".", "argv": ["true"], "reasons": ["test"]})
         self.packet.write_text(json.dumps(data))
-        self.assertIn("handoff plan or identity changed", self.cli("verify", self.packet, expected=1).stderr)
+        result = self.cli("verify", self.packet, expected=1)
+        self.assertIn("handoff plan or identity changed", result.stderr)
 
-    def test_rejects_wrong_base_empty_diff_and_unclassified_new_files(self):
-        self.cli(
-            "create", "--repo", self.repo, "--base", "HEAD~1", "--issue", "#96",
-            "--notes", self.notes, "--output", self.packet, "--paths", self.target,
-            "--check", "unit", expected=1,
-        )
-        self.cli(
-            "create", "--repo", self.repo, "--base", self.base, "--issue", "#96",
-            "--notes", self.notes, "--output", self.packet, "--paths", "AGENTS.md",
-            "--check", "unit", expected=1,
-        )
+    def test_formal_review_records_against_snapshot(self):
+        self.stage("docs/agents/target.md")
         self.create()
-        (self.repo / "forgotten-test.txt").write_text("required but not staged\n")
-        self.cli("verify", self.packet, expected=1)
+        evidence = self.directory / "review.md"
+        evidence.write_text("Formal review passed.\n")
+        snapshot = self.data()["snapshot_id"]
+        self.cli("review", self.packet, "--axis", "standards", "--status", "passed",
+                 "--snapshot", snapshot, "--evidence", evidence)
+        self.cli("review", self.packet, "--axis", "spec", "--status", "passed",
+                 "--snapshot", snapshot, "--evidence", evidence)
+        self.cli("verify", self.packet, "--require-passed", "--require-reviewed")
 
-    def test_check_that_edits_snapshot_is_not_passing_evidence(self):
+    def test_review_findings_and_snapshot_reuse_are_blocked(self):
+        self.stage("docs/agents/target.md")
         self.create()
-        self.run_python("from pathlib import Path; Path('docs/agents/handoff [sample].md').write_text('changed by check')", expected=1)
-        attempt = self.data()["checks"]["unit"][0]
-        self.assertEqual(attempt["exit_code"], 0)
-        self.assertEqual(attempt["status"], "unavailable")
-        self.cli("verify", self.packet, "--require-passed", expected=1)
-
-    def test_missing_command_is_unavailable_and_log_tampering_is_rejected(self):
-        self.create()
-        command = self.directory / "check-command"
-        self.cli("run", self.packet, "--label", "unit", "--", command, expected=1)
-        self.assertEqual(self.data()["checks"]["unit"][0]["status"], "unavailable")
-        self.cli("verify", self.packet, "--require-passed", expected=1)
-        command.write_text(f"#!{sys.executable}\nprint('finished')\n")
-        command.chmod(0o755)
-        self.cli("run", self.packet, "--label", "unit", "--", command)
-        log = Path(self.data()["checks"]["unit"][-1]["log"])
-        log.write_text("different log\n")
-        self.assertIn("log changed", self.cli("verify", self.packet, expected=1).stderr)
-        log.unlink()
-        self.assertIn("missing check log", self.cli("verify", self.packet, expected=1).stderr)
-
-    def test_interrupted_runner_leaves_an_unavailable_result(self):
-        self.create()
-        self.run_python("import os, signal; print('startup', flush=True); os.kill(os.getppid(), signal.SIGKILL)", expected=-9)
-        self.assertEqual(self.data()["checks"]["unit"][0]["status"], "unavailable")
-        self.assertIsNone(self.data()["checks"]["unit"][0]["exit_code"])
-        self.cli("verify", self.packet)
-        self.cli("verify", self.packet, "--require-passed", expected=1)
-
-    def test_paths_are_literal_even_with_shell_and_git_metacharacters(self):
-        name = "docs/agents/$(touch injected); [glob].md"
-        (self.repo / name).write_text("literal file\n")
-        self.git("add", "--", name)
-        self.create("--paths", self.target, name)
-        diff = subprocess.run(shlex.split(self.data()["diff_command"]), capture_output=True, text=True, check=True)
-        self.assertIn("+literal file", diff.stdout)
-        self.cli("verify", self.packet)
-        self.assertFalse((self.repo / "injected").exists())
-
-    def test_deletion_and_rename_are_exact_staged_paths(self):
-        self.git("mv", "CHANGELOG.md", "renamed changelog.md")
-        self.create("--paths", self.target, "CHANGELOG.md", "renamed changelog.md")
-        self.cli("verify", self.packet)
-
-    def test_artifacts_are_external_and_existing_packets_are_preserved(self):
-        self.create()
-        original = self.packet.read_bytes()
-        self.create(expected=1)
-        self.assertEqual(self.packet.read_bytes(), original)
-        self.cli("verify", self.directory / "missing.json", expected=1)
-        self.packet = self.repo / "handoff.json"
-        self.create(expected=1)
-        self.assertFalse(self.packet.exists())
+        evidence = self.directory / "review.md"
+        evidence.write_text("Formal review found R1.\n")
+        snapshot = self.data()["snapshot_id"]
+        self.cli("review", self.packet, "--axis", "standards", "--status", "passed",
+                 "--snapshot", snapshot, "--evidence", evidence)
+        self.cli("review", self.packet, "--axis", "spec", "--status", "passed",
+                 "--snapshot", snapshot, "--evidence", evidence, "--finding", "R1", "open")
+        self.cli("verify", self.packet, "--require-reviewed", expected=1)
+        self.stage("docs/agents/target.md", "revised\n")
+        self.cli("review", self.packet, "--axis", "spec", "--status", "passed",
+                 "--snapshot", snapshot, "--evidence", evidence, expected=1)
 
 
 if __name__ == "__main__":

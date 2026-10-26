@@ -218,7 +218,7 @@ def plan_paths(paths, repo=ROOT):
                 add("frontend_typecheck", "frontend", ["npm", "run", "typecheck"], f"unknown root executable path fallback: {path}")
                 add("frontend_build", "frontend", ["npm", "run", "build"], f"unknown root executable path fallback: {path}")
 
-    plan = {"kind": "checks" if checks else "docs-only", "paths": paths, "checks": sorted(checks.values(), key=lambda item: item["id"])}
+    plan = {"kind": "checks" if checks else "docs-only", "paths": paths, "checks": sorted(checks.values(), key=lambda item: (item["id"] != "frontend_install", item["id"]))}
     return plan
 
 

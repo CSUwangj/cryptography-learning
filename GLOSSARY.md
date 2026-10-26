@@ -112,6 +112,12 @@
   not a Lab or Lab category.
   _Avoid:_ Practice menu
 
+## Agent workflow
+
+- **Handoff Packet** — The external JSON record that freezes one staged review snapshot, its Check Plan, check evidence, and formal review records.
+- **Check Plan** — The executable checks selected by the repository planner for a Handoff Packet, including each command, working directory, environment, and selection reason.
+- **Excluded Change** — A staged, unstaged, untracked, or otherwise observed path outside the ticket target, classified with an explicit reason during packet creation.
+
 ## Completion
 
 - **Student ID** — The identifier a student supplies for a Completion Claim.

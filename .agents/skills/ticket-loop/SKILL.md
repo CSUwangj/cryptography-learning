@@ -183,10 +183,11 @@ grant permissions or turn an unavailable check into a pass. Schedule dependency
 installation outside review and browser runs so it cannot mutate their environment.
 
 Run focused checks during development. Stage the candidate ticket files and
-capture a packet with every applicable acceptance check before pre-review;
-unfinished checks remain `not-run`. Use the handoff document's reserved
-`frontend-tests` gate for frontend runtime/dependency changes. Focused tests
-are the immediate evidence; the full suite runs in the nightly workflow. Keep
+run `review_handoff.py create --issue ISSUE --notes NOTES`; it discovers scope
+and freezes every applicable check before pre-review. Unfinished checks remain
+`not-run`. The planner selects applicable checks; the packet records their
+frozen commands and working directories. Focused tests are the immediate
+evidence; the full suite runs in the nightly workflow. Keep
 command and cwd fixed across attempts and record
 diagnostic variants separately. Stop editing while reviewers inspect that snapshot.
 Only the currently assigned implementer edits ticket files. The coordinator

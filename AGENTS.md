@@ -47,12 +47,11 @@ Run the smallest checks that cover the change, and report any checks not run:
 - Deployable behavior: `./baseline/run.sh` (requires Docker)
 
 Register every applicable issue and repository check before final verification;
-unrun checks remain `not-run`. Inspect `python3 scripts/test_plan.py local --repo .`
-to select immediate checks; the handoff and push workflow share this mapping.
-Broad frontend configuration changes can select the full Vitest suite, while
-feature changes use the selected tests. Documentation-only changes use relevant
-documentation checks. The helper's concrete path coverage and commands are in
-[`docs/agents/review-handoff.md`](docs/agents/review-handoff.md).
+unrun checks remain `not-run`. Create a handoff packet with `scripts/review_handoff.py`; it discovers staged scope and
+selects checks from the internal planner. CI continues to invoke `scripts/test_plan.py`
+directly, and AI-facing instructions do not duplicate its mapping.
+Planner owns path-to-check coverage in `scripts/test_plan.py`; the handoff guide
+documents the public interface and evidence rules.
 
 Keep each acceptance check's command and working directory fixed across attempts.
 Record changed test selections or parallelism as separate diagnostic evidence;

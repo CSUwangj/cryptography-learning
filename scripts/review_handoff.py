@@ -13,6 +13,7 @@ import re
 import shlex
 import subprocess
 import sys
+import tempfile
 
 import test_plan
 
@@ -85,6 +86,25 @@ def snapshot(repo: Path, base: str, targets: list[str], excluded: dict) -> dict:
     }
 
 
+def discover_scope(repo: Path, base: str, excluded: dict) -> tuple[list[str], dict]:
+    """Discover staged targets and require an explicit reason for every other change."""
+    diff = ("diff", "--no-ext-diff", "--no-textconv", "--no-renames")
+    staged = paths(git(repo, *diff, "--cached", base, "--name-only", "-z"))
+    unstaged = paths(git(repo, *diff, "--name-only", "-z"))
+    untracked = paths(git(repo, "ls-files", "--others", "--exclude-standard", "-z"))
+    targets = sorted(set(staged) - set(excluded))
+    outside = (set(staged) | set(unstaged) | set(untracked)) - set(targets)
+    if not targets:
+        raise ValueError("no staged target paths; stage the intended changes first")
+    if outside != set(excluded) or any(not reason.strip() for reason in excluded.values()):
+        raise ValueError(
+            "classify every non-target change with --exclude PATH REASON; "
+            f"unclassified={sorted(outside - set(excluded))}, "
+            f"invalid exclusions={sorted(set(excluded) - outside)}"
+        )
+    return targets, snapshot(repo, base, targets, excluded)
+
+
 def save(file: Path, data: dict, *, new: bool = False) -> None:
     with file.open("x" if new else "w", encoding="utf-8") as stream:
         json.dump(data, stream, indent=2, ensure_ascii=True)
@@ -121,8 +141,21 @@ def check_identity(data: dict, name: str) -> tuple[list[str], str] | None:
 
 
 def check_contract_errors(data: dict) -> list[str]:
-    errors = [f"missing required check: {name}"
-              for name in sorted(required_checks(packet_plan(data)["paths"], Path(data["repo"])) - data["checks"].keys())]
+    current_plan = test_plan.plan_paths(data["paths"], Path(data["repo"]))
+    planned_ids = {item["id"] for item in packet_plan(data)["checks"]}
+    errors = []
+    if current_plan != packet_plan(data):
+        errors.append("check plan changed; create a new handoff")
+    errors.extend(
+        f"missing required check: {name}"
+        for name in sorted(item["id"] for item in current_plan["checks"])
+        if name not in data["checks"]
+    )
+    errors.extend(
+        f"unexpected check: {name}"
+        for name in sorted(data["checks"])
+        if name not in planned_ids
+    )
     for name, attempts in data["checks"].items():
         identity = check_identity(data, name)
         if any((attempt["command"], attempt["cwd"]) != identity for attempt in attempts):
@@ -132,24 +165,22 @@ def check_contract_errors(data: dict) -> list[str]:
 
 def create(args: argparse.Namespace) -> int:
     repo = Path(git(args.repo.resolve(), "rev-parse", "--show-toplevel").decode().strip()).resolve()
-    base = git(repo, "rev-parse", "--verify", f"{args.base}^{{commit}}").decode().strip()
-    targets = sorted(set(args.paths))
-    if len(targets) != len(args.paths):
-        raise ValueError("target paths must be unique")
+    base = git(repo, "rev-parse", "--verify", "HEAD^{commit}").decode().strip()
     excluded = dict(args.exclude)
     if len(excluded) != len(args.exclude):
         raise ValueError("exclusion paths must be unique")
-    if len(set(args.check)) != len(args.check):
-        raise ValueError("check names must be unique")
-    all_paths = targets
-    plan = test_plan.plan_paths(all_paths, repo)
-    missing = required_checks(all_paths, repo) - set(args.check)
-    if missing:
-        raise ValueError("missing required check: " + ", ".join(sorted(missing)))
     notes = args.notes.read_text(encoding="utf-8").strip()
     if not args.issue.strip() or not notes:
         raise ValueError("issue and acceptance/evidence notes are required")
-    output = args.output.resolve()
+    targets, frozen_snapshot = discover_scope(repo, base, excluded)
+    plan = test_plan.plan_paths(targets, repo)
+    if args.output:
+        output = args.output.resolve()
+    else:
+        descriptor, name = tempfile.mkstemp(prefix="review-handoff-", suffix=".json")
+        os.close(descriptor)
+        os.unlink(name)
+        output = Path(name).resolve()
     outside_repo(output, repo)
     data = {
         "schema": 1,
@@ -164,8 +195,8 @@ def create(args: argparse.Namespace) -> int:
             "git", "--literal-pathspecs", "-C", str(repo), "diff", "--cached",
             "--no-ext-diff", "--no-textconv", "--no-renames", base, "--", *targets,
         ]),
-        "snapshot": snapshot(repo, base, targets, excluded),
-        "checks": {name: [] for name in args.check},
+        "snapshot": frozen_snapshot,
+        "checks": {item["id"]: [] for item in plan["checks"]},
         "reviews": {axis: [] for axis in REVIEW_AXES},
     }
     data["snapshot_id"] = snapshot_id(data)
@@ -188,6 +219,8 @@ def verify_snapshot(data: dict) -> None:
     current = snapshot(Path(data["repo"]), data["base"], data["paths"], data["excluded"])
     if current != data["snapshot"]:
         raise ValueError("review snapshot changed; create a new handoff and recheck affected evidence")
+    if test_plan.plan_paths(data["paths"], Path(data["repo"])) != packet_plan(data):
+        raise ValueError("check plan changed; create a new handoff")
 
 
 def verify_logs(data: dict) -> None:
@@ -258,7 +291,7 @@ def verify(args: argparse.Namespace) -> int:
     print("Unresolved findings: " + json.dumps(unresolved, sort_keys=True))
     if args.require_passed and errors:
         raise ValueError("; ".join(errors))
-    if args.require_passed and (not results or any(s != "passed" for s in results.values())):
+    if args.require_passed and any(s != "passed" for s in results.values()):
         raise ValueError("not all planned checks passed; snapshot validity is not acceptance")
     if args.require_reviewed and any(s != "passed" for s in reviews.values()):
         raise ValueError("both formal-review axes must pass on this snapshot")
@@ -302,30 +335,17 @@ def record_review(args: argparse.Namespace) -> int:
     return 0
 
 
-def run_check(args: argparse.Namespace) -> int:
-    file = args.packet.resolve()
-    data = load(file)
-    verify_snapshot(data)
-    verify_logs(data)
-    if args.label not in data["checks"]:
-        raise ValueError("check name was not declared at create time")
-    command = args.command[1:] if args.command[:1] == ["--"] else args.command
-    if not command:
-        raise ValueError("run requires a command after --")
+def execute_check(file: Path, data: dict, label: str) -> dict:
+    planned = next((item for item in packet_plan(data)["checks"] if item["id"] == label), None)
+    if planned is None:
+        raise ValueError("check is not selected by the frozen plan: " + label)
+    command = planned["argv"]
     repo = Path(data["repo"])
-    cwd = (repo / args.cwd).resolve()
+    cwd = (repo / planned["cwd"]).resolve()
     if not cwd.is_relative_to(repo) or not cwd.is_dir():
-        raise ValueError("check cwd must be a directory inside the reviewed worktree")
-    attempts = data["checks"][args.label]
-    planned = next((item for item in packet_plan(data)["checks"] if item["id"] == args.label), {})
-    identity = check_identity(data, args.label)
-    if identity is not None and (command, str(cwd)) != identity:
-        raise ValueError(
-            f"{args.label}: command or working directory changed; "
-            f"expected cwd={identity[1]}, command={shlex.join(identity[0])}; "
-            "use separate diagnostic evidence"
-        )
-    log = file.with_name(f"{file.stem}-{args.label}-{len(attempts) + 1}.log")
+        raise ValueError("planned check cwd must be a directory inside the reviewed worktree")
+    attempts = data["checks"][label]
+    log = file.with_name(f"{file.stem}-{label}-{len(attempts) + 1}.log")
     attempt = {
         "command": command,
         "cwd": str(cwd),
@@ -338,7 +358,7 @@ def run_check(args: argparse.Namespace) -> int:
     with log.open("xb") as stream:
         attempts.append(attempt)
         save(file, data)
-        print(f"Running {args.label}; log: {log}", flush=True)
+        print(f"Running {label}; log: {log}", flush=True)
         try:
             local_command = command
             if Path(command[0]).name in {"npm", "npx", "node"}:
@@ -358,7 +378,23 @@ def run_check(args: argparse.Namespace) -> int:
         attempt.update(status="unavailable", reason=f"Snapshot verification after check: {error}")
     save(file, data)
     print(json.dumps(attempt, indent=2))
-    return 0 if attempt["status"] == "passed" else 1
+    return attempt
+
+
+def run_check(args: argparse.Namespace) -> int:
+    file = args.packet.resolve()
+    data = load(file)
+    verify_snapshot(data)
+    verify_logs(data)
+    labels = [args.label] if args.label else [item["id"] for item in packet_plan(data)["checks"]]
+    results = []
+    for label in labels:
+        if results:
+            verify_snapshot(data)
+        results.append(execute_check(file, data, label))
+    save(file, data)
+    print(json.dumps(results, indent=2))
+    return 0 if all(attempt["status"] == "passed" for attempt in results) else 1
 
 
 def check_name(value: str) -> str:
@@ -370,20 +406,16 @@ def check_name(value: str) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="action", required=True)
-    creator = commands.add_parser("create", help="record a staged target; refuse to overwrite a handoff")
+    creator = commands.add_parser("create", help="discover staged targets and freeze their check plan")
     creator.add_argument("--repo", type=Path, default=Path.cwd())
-    creator.add_argument("--base", required=True)
     creator.add_argument("--issue", required=True)
     creator.add_argument("--notes", type=Path, required=True)
-    creator.add_argument("--output", type=Path, required=True)
-    creator.add_argument("--paths", nargs="+", required=True)
+    creator.add_argument("--output", type=Path)
     creator.add_argument("--exclude", nargs=2, action="append", default=[], metavar=("PATH", "REASON"))
-    creator.add_argument("--check", type=check_name, action="append", required=True)
     creator.set_defaults(handler=create)
-    runner = commands.add_parser("run", help="capture one check and its exit code; retain previous attempts")
+    runner = commands.add_parser("run", help="run the frozen check plan; retain previous attempts")
     runner.add_argument("packet", type=Path)
-    runner.add_argument("--label", type=check_name, required=True)
-    runner.add_argument("--cwd", type=Path, default=Path("."))
+    runner.add_argument("--label", type=check_name, help=argparse.SUPPRESS)
     runner.set_defaults(handler=run_check)
     reviewer = commands.add_parser("review", help="record one formal-review axis against its reviewed snapshot")
     reviewer.add_argument("packet", type=Path)
@@ -399,13 +431,7 @@ def main() -> int:
     verifier.add_argument("--require-passed", action="store_true")
     verifier.add_argument("--require-reviewed", action="store_true", help="require both formal-review axes to pass with no unresolved findings")
     verifier.set_defaults(handler=verify)
-    argv = sys.argv[1:]
-    command = []
-    if argv[:1] == ["run"] and "--" in argv:
-        separator = argv.index("--")
-        command, argv = argv[separator + 1:], argv[:separator]
-    args = parser.parse_args(argv)
-    args.command = command
+    args = parser.parse_args()
     try:
         return args.handler(args)
     except (OSError, ValueError, KeyError, TypeError) as error:

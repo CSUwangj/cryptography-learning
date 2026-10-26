@@ -33,81 +33,28 @@ staged change. Recheck affected evidence after changing that snapshot.
 
 Use `scripts/review_handoff.py` for the single-ticket loop. It uses Python's
 standard library and does not stage, commit, change branches, or contact a
-service. The caller remains responsible for authorizing each check command.
-Read `python3 scripts/review_handoff.py --help` for the available subcommands.
+service. Prepare English notes outside the checkout; the packet embeds them.
 
-Prepare an English notes file outside the checkout. Include the approved issue
-and decision links, acceptance-to-check mapping, non-goals and accepted risks,
-ordinary implementation assumptions, selected role/model/provider/execution
-routes and any unverified runtime identity, remaining product decisions (or none),
-finding IDs/dispositions, and checks not run with their reasons. The script
-embeds those notes; it does not judge their completeness or requirement authority.
-
-For `ticket-loop`, also record the resolved skill paths, test interfaces and
-coverage limits, review stage/axis and repair progress. Carry the selected model
-mapping into nested reviews and record any escalation diagnosis or repair
-takeover. Pre-review pass is not formal acceptance; a review context that edits
-the ticket cannot supply its independent formal verdict.
-
-For an error-prone restriction, use this compact entry in the existing
-acceptance-to-check mapping: `source/decision -> constrained object and scope ->
-allowed example -> rejected example -> check/result`. For example, the
-[#96 decision](https://github.com/CSUWangj/cryptography-learning/issues/96#issuecomment-6255143506)
-constrains each v2 operation to one output port: two single-port output nodes
-exporting two graph values are allowed; one operation with multiple output ports
-is rejected. A graph-wide output-node count tests a different restriction.
-Retain superseded finding IDs and link the replacing decision; historical tests
-or review agreement do not turn an interpretation into authority.
-
-After staging the final ticket files, create a packet. Replace the example
-paths, issue, base, and check names with the actual task. `--base` must resolve
-to the current HEAD: this helper handles staged changes, not committed ranges.
-Each `--paths` entry is an exact repository-relative file, including both paths
-of a rename. Register every applicable issue and repository acceptance check
-using `--check` before final verification, including checks not yet runnable.
-Focused tests are the immediate checks for changed paths. The complete suite is a
-nightly check and remains available through manual dispatch. Keep diagnostic
-variants in separate external logs linked from the notes; they do not replace
-acceptance checks.
-
-Inspect `python3 scripts/test_plan.py local --repo .`; the same mappings drive
-push CI. The plan records check IDs, argv/cwd and selection reasons. Declare every
-selected ID with `--check`. `frontend-tests` runs the selected Vitest files with
-one worker and rejects an empty match. Broad frontend configuration changes can
-select all Vitest tests. The image planner uses `image_smoke` for ordinary image,
-Docker, startup, `baseline/content/**`, and `baseline/tests/**` changes; direct
-`frontend/e2e/web-tier.spec.ts` and the preserved fixture/terminal mappings retain
-served-image browser acceptance. Browser coverage for smoke-selected changes is
-deferred to nightly, with the accepted risk that a browser regression introduced
-by image or baseline inputs may wait until that next run. `baseline/content/**`
-is runtime input even when Markdown; unrelated excluded changes remain a review responsibility.
-A required check with an approved verification gap stays declared and incomplete;
-use the existing exception procedure instead of omitting it.
-Client schema changes also select `backend_schema` for the web-server SDL parity test.
-Focused checks are the immediate gate for the changed paths; the full suite is a
-nightly verification and remains available through manual dispatch.
+After staging intended ticket files, create a packet. The script discovers staged
+paths, derives and freezes the check plan, and requires `--exclude PATH REASON`
+for every unrelated staged, unstaged, untracked, or excluded change. `--output`
+is optional; the script prints its external temporary path and snapshot ID.
 
 ```sh
-python3 scripts/review_handoff.py create \
-  --repo . --base BASE_SHA --issue '#96' \
-  --notes /tmp/issue96-notes.md --output /tmp/issue96-round1.json \
-  --check frontend-install --check frontend-tests --check frontend_typecheck \
-  --paths frontend/src/practice/map.test.ts
-
-python3 scripts/review_handoff.py run /tmp/issue96-round1.json \
-  --label frontend-install --cwd frontend -- fish -lc 'nvm use; and npm ci'
-
-python3 scripts/review_handoff.py run /tmp/issue96-round1.json \
-  --label frontend_typecheck --cwd frontend -- npm run typecheck
-
-python3 scripts/review_handoff.py run /tmp/issue96-round1.json \
-  --label frontend-tests --cwd frontend -- npm test -- --maxWorkers=1 --passWithNoTests=false src/practice/map.test.ts
-
-python3 scripts/review_handoff.py verify /tmp/issue96-round1.json
-python3 scripts/review_handoff.py verify /tmp/issue96-round1.json --require-passed
+python3 scripts/review_handoff.py create --issue '#96' --notes /tmp/issue96-notes.md
+python3 scripts/review_handoff.py run /tmp/review-handoff-...json
+python3 scripts/review_handoff.py verify /tmp/review-handoff-...json --require-passed --require-reviewed
 ```
 
-Run the other declared checks through `run` with the repository's pinned tools.
+`run` executes every frozen check sequentially and retains logs and attempts.
+The hidden `--label CHECK_ID` form reruns one planned check with its frozen
+command and working directory. Caller-defined paths, checks, commands, and
+working directories are rejected; fix the planner and create a new packet.
+Use `review` to record formal review evidence with explicit snapshot, status,
+and evidence arguments. Final verification requires both `--require-passed`
+and `--require-reviewed`.
+
+
 Serialize all `run` and `review` writes to one packet; concurrent writes can
 overwrite each other's records. Reviewers can inspect code in parallel while
 the coordinator records their returned reports sequentially.
@@ -129,10 +76,9 @@ when needed to make environment-dependent evidence interpretable.
   are retained. A failed command is `failed`; a command with no recorded
   completion, failed launch or changed snapshot is `unavailable`. A check with
   no attempt is `not-run`. Only exit zero on the recorded snapshot is `passed`.
-- Planner-selected labels accept only their planned argv and cwd, even on their first
-  attempt. Local npm/npx/node commands run through Fish+nvm. Other labels bind command
-  and cwd on their first attempt. A changed command or cwd is rejected before execution
-  and does not replace earlier evidence.
+- Planner-selected labels accept only their frozen argv and cwd. Local npm/npx/node
+  commands run through Fish+nvm. Caller-supplied commands and working directories are
+  rejected before execution and cannot replace earlier evidence.
   Inspect the actual selected tests; fixed command text does not prove coverage or
   freeze environment variables, installed dependencies or external services.
 - `verify` checks snapshot and log identity. `--require-passed` also requires
