@@ -87,6 +87,28 @@ class ReviewHandoffTest(unittest.TestCase):
         self.assertFalse(output.is_relative_to(self.repo))
         self.assertIn("Snapshot ID:", result.stdout)
 
+    def test_packet_preserves_planner_omissions(self):
+        self.stage("frontend/demos/UiOptimizationPrototype.tsx")
+        self.create()
+        data = self.data()
+        self.assertEqual(data["omissions"], data["plan"]["omissions"])
+        self.assertEqual(data["omissions"][0]["status"], "not-run")
+        self.assertEqual(data["omissions"][0]["id"], "demo_browser")
+
+    def test_legacy_schema_one_packet_without_omissions_remains_readable(self):
+        self.stage("docs/agents/target.md")
+        self.create()
+        data = self.data()
+        data["plan"].pop("omissions")
+        data.pop("omissions")
+        identity = {key: data[key] for key in ("repo", "base", "issue", "paths", "excluded", "snapshot")}
+        identity["plan"] = data["plan"]
+        data["snapshot_id"] = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
+        self.packet.write_text(json.dumps(data))
+
+        result = self.cli("verify", self.packet, "--require-passed")
+        self.assertIn("Intentional omissions: []", result.stdout)
+
     def test_run_docs_only_plan_succeeds_and_rejects_caller_configuration(self):
         self.stage("docs/agents/target.md")
         self.create()

@@ -11,6 +11,16 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# Maintainers add exact throwaway prototype paths here. Shared production and
+# broad demo directories must remain outside this registry.
+PROTOTYPE_ONLY_PATHS = frozenset({
+    "frontend/demos/UiOptimizationPrototype.tsx",
+    "frontend/demos/LearningShellPrototype.tsx",
+    "frontend/demos/Aes192OverlayPrototype.tsx",
+    "frontend/demos/aes192OverlayPrototypeData.ts",
+    "frontend/demos/uiOptimizationPrototypeFixture.ts",
+})
+
 
 def check(identifier, cwd, argv, reason):
     item = {"id": identifier, "cwd": cwd, "argv": argv, "reasons": [reason]}
@@ -44,6 +54,8 @@ def plan_paths(paths, repo=ROOT):
         raise ValueError("no changed paths; refusing an accidental empty check plan")
     repo = Path(repo).resolve()
     checks = {}
+    prototype_paths = set(paths) & PROTOTYPE_ONLY_PATHS
+    omissions = []
 
     def add(identifier, cwd, argv, reason):
         item = checks.get(identifier)
@@ -76,12 +88,17 @@ def plan_paths(paths, repo=ROOT):
         if path.startswith("baseline/content/"):
             image_check("smoke", "mounted content is runtime fixture data")
             continue
-        if path.startswith("frontend/demos/") or path.startswith("frontend/src/lesson_runtime/fixture/"):
+        if (
+            path.startswith("frontend/src/lesson_runtime/fixture/")
+            or (path.startswith("frontend/demos/") and not path.endswith(".md"))
+        ):
             frontend(["frontend/src/lesson_runtime/index.test.ts", "frontend/src/visualizers/index.test.ts", "frontend/src/visualizers/migration.test.tsx"], reason="runtime demo or fixture consumers changed")
-            if path.startswith("frontend/demos/"):
+            if path.startswith("frontend/demos/") and path not in prototype_paths:
                 add("demo_browser", "frontend", ["npx", "playwright", "test", "--project=chromium", "e2e/visualizers.spec.ts", "e2e/aes-cipher-demo.spec.ts"], "runtime demos have Vite browser consumers")
                 if path.endswith((".ts", ".tsx")):
                     add("frontend_typecheck", "frontend", ["npm", "run", "typecheck"], "TypeScript demo changed")
+            elif path.startswith("frontend/src/lesson_runtime/fixture/"):
+                add("demo_browser", "frontend", ["npx", "playwright", "test", "--project=chromium", "e2e/visualizers.spec.ts", "e2e/aes-cipher-demo.spec.ts"], "real Lesson fixtures have Vite browser consumers")
             continue
         if path.endswith(".md"):
             continue
@@ -125,6 +142,12 @@ def plan_paths(paths, repo=ROOT):
                 add("frontend_codegen", "frontend", ["npm", "run", "gen"], "GraphQL schema/codegen contract changed")
                 add("frontend_typecheck", "frontend", ["npm", "run", "typecheck"], "GraphQL client contract changed")
             elif path.startswith("frontend/src/"):
+                if (
+                    path not in prototype_paths
+                    and not path.endswith((".test.ts", ".test.tsx"))
+                    and path.startswith(("frontend/src/visualizers/", "frontend/src/lesson_runtime/"))
+                ):
+                    add("demo_browser", "frontend", ["npx", "playwright", "test", "--project=chromium", "e2e/visualizers.spec.ts", "e2e/aes-cipher-demo.spec.ts"], "real lesson runtime or visualizer behavior changed")
                 parts = path.split("/")
                 mod = parts[2] if len(parts) > 3 else ""
                 if not mod:
@@ -218,7 +241,18 @@ def plan_paths(paths, repo=ROOT):
                 add("frontend_typecheck", "frontend", ["npm", "run", "typecheck"], f"unknown root executable path fallback: {path}")
                 add("frontend_build", "frontend", ["npm", "run", "build"], f"unknown root executable path fallback: {path}")
 
-    plan = {"kind": "checks" if checks else "docs-only", "paths": paths, "checks": sorted(checks.values(), key=lambda item: (item["id"] != "frontend_install", item["id"]))}
+    if prototype_paths and "demo_browser" not in checks:
+        omissions.append({
+            "id": "demo_browser",
+            "status": "not-run",
+            "reason": "registered UI prototype does not change the real demo contract",
+        })
+    plan = {
+        "kind": "checks" if checks else "docs-only",
+        "paths": paths,
+        "checks": sorted(checks.values(), key=lambda item: (item["id"] != "frontend_install", item["id"])),
+        "omissions": omissions,
+    }
     return plan
 
 
@@ -249,7 +283,7 @@ def plan_range(repo, before, after):
         index += count
         records.append((status, *names))
     if not records:
-        return {"kind": "docs-only", "paths": [], "checks": []}
+        return {"kind": "docs-only", "paths": [], "checks": [], "omissions": []}
     return plan_records(records, repo=repo)
 
 

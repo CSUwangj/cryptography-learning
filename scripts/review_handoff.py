@@ -129,7 +129,8 @@ def required_checks(targets: list[str], repo: Path) -> set[str]:
 
 
 def packet_plan(data: dict) -> dict:
-    return data.get("plan") or test_plan.plan_paths(data["paths"], Path(data["repo"]))
+    plan = data.get("plan") or test_plan.plan_paths(data["paths"], Path(data["repo"]))
+    return {**plan, "omissions": plan.get("omissions", [])}
 
 
 def check_identity(data: dict, name: str) -> tuple[list[str], str] | None:
@@ -190,6 +191,7 @@ def create(args: argparse.Namespace) -> int:
         "paths": targets,
         "excluded": excluded,
         "plan": plan,
+        "omissions": plan.get("omissions", []),
         "notes": notes,
         "diff_command": shlex.join([
             "git", "--literal-pathspecs", "-C", str(repo), "diff", "--cached",
@@ -283,6 +285,7 @@ def verify(args: argparse.Namespace) -> int:
         | (required_checks(packet_plan(data)["paths"], Path(data["repo"])) - results.keys())
     )
     print("Incomplete checks: " + json.dumps(incomplete))
+    print("Intentional omissions: " + json.dumps(packet_plan(data).get("omissions", [])))
     errors = check_contract_errors(data)
     print("Check contract errors: " + json.dumps(errors))
     reviews, findings = review_statuses(data)

@@ -24,16 +24,15 @@
   interface removes duplication from callers.
 - Do not create catch-all `common`, `shared`, or `utils` modules.
 
-## Conditional UI workflow guidance
+## UI prototypes
 
-- When using the `prototype` skill for a UI question, inspect the target route,
-  existing components, and local visual conventions first. Keep the prototype
-  anchored to those real seams: reuse existing components and content unless
-  they are the subject being explored, and mark deliberate stand-ins or
-  departures. Carry validated interaction and layout decisions into production;
-  do not treat prototype code as production architecture.
-- When changing frontend UI, inspect existing Blueprint.js usage in the affected
-  module before choosing custom markup or CSS. Prefer the Blueprint 6
-  components, classes, and theme behavior already used by the app. Custom
-  surface and text colors must follow the active light/dark theme; check both
-  themes for visual changes.
+Before prototyping a UI question, follow the first-pass checklist in
+[`demos/UI_OPTIMIZATION_PROTOTYPE.md`](demos/UI_OPTIMIZATION_PROTOTYPE.md#first-pass-checklist).
+Reuse real components and content unless they are the subject being explored,
+mark deliberate stand-ins or departures, and carry confirmed interactions into
+production without treating prototype code as production architecture.
+
+When changing any frontend UI, including prototypes, inspect the affected
+module's Blueprint 6 usage and prefer its components, classes, and theme
+behavior. Custom surface and text colors must follow the active theme, and
+visual changes must be checked in both light and dark themes.

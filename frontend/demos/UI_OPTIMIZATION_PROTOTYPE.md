@@ -111,6 +111,24 @@ redesigned card or switcher; its Learning menu returned to D. No page errors occ
 The previous round below covers the original A/B/C alternatives, not acceptance
 of the combined D preview.
 
+## First-pass checklist
+
+Before starting a UI prototype, record the following for the specific question:
+
+- **Target route:** identify the real production route being examined.
+- **Production reuse:** name its production components and the representative
+  fixture or content the preview will reuse.
+- **Stand-ins and departures:** list any replaced component, fake data, or
+  behavior that differs from production.
+- **Fixed boundaries:** cover Home layout, page breadcrumb, long content, and
+  narrow-screen behavior where they apply; record what stays fixed.
+- **Blueprint and theme:** identify the Blueprint surfaces and inspect the
+  active light and dark themes for custom colors and component behavior.
+
+Record confirmed interactions and rejected alternatives with their reasons
+before dependent production work begins. Prototype-only browser omissions do
+not waive any production acceptance checks.
+
 The earlier Practice preview reproduced an undefined `.map` error and a blank
 page: Apollo could not match fragment types in the untyped fixture. The corrected
 fixture renders the real Practice page.

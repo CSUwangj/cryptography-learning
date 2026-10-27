@@ -27,7 +27,7 @@ class TestPlanTest(unittest.TestCase):
 
     def test_successful_empty_range_is_docs_only(self):
         plan = test_plan.plan_range(ROOT, "HEAD", "HEAD")
-        self.assertEqual(plan, {"kind": "docs-only", "paths": [], "checks": []})
+        self.assertEqual(plan, {"kind": "docs-only", "paths": [], "checks": [], "omissions": []})
 
     def test_range_includes_changes_from_each_commit(self):
         result = subprocess.run(
@@ -100,6 +100,73 @@ class TestPlanTest(unittest.TestCase):
         )
         self.assertIn("home-layout.spec.ts", checks["browser_home-layout"])
         self.assertIn("learning.spec.ts", checks["browser_learning"])
+
+    def test_registered_ui_prototype_records_demo_browser_omission(self):
+        for path in (
+            "frontend/demos/UiOptimizationPrototype.tsx",
+            "frontend/demos/LearningShellPrototype.tsx",
+            "frontend/demos/Aes192OverlayPrototype.tsx",
+            "frontend/demos/aes192OverlayPrototypeData.ts",
+            "frontend/demos/uiOptimizationPrototypeFixture.ts",
+        ):
+            with self.subTest(path=path):
+                plan = test_plan.plan_paths([path])
+                self.assertNotIn("demo_browser", {item["id"] for item in plan["checks"]})
+                self.assertEqual(plan["omissions"], [{
+                    "id": "demo_browser",
+                    "status": "not-run",
+                    "reason": "registered UI prototype does not change the real demo contract",
+                }])
+                self.assertIn("frontend-tests", {item["id"] for item in plan["checks"]})
+
+    def test_real_demo_and_prototype_paths_union_checks_and_suppress_omission(self):
+        real = test_plan.plan_paths(["frontend/demos/aes128CipherLesson.ts"])
+        real_ids = {item["id"] for item in real["checks"]}
+        self.assertTrue({"demo_browser", "frontend-tests", "frontend_typecheck"} <= real_ids)
+
+        mixed = test_plan.plan_paths([
+            "frontend/demos/UiOptimizationPrototype.tsx",
+            "frontend/demos/aes128CipherLesson.ts",
+        ])
+        mixed_ids = {item["id"] for item in mixed["checks"]}
+        self.assertIn("demo_browser", mixed_ids)
+        self.assertEqual(mixed["omissions"], [])
+        self.assertTrue(any("runtime demos" in reason for item in mixed["checks"] if item["id"] == "demo_browser" for reason in item["reasons"]))
+
+    def test_prototype_and_real_visualizer_change_select_demo_browser(self):
+        plan = test_plan.plan_paths([
+            "frontend/demos/UiOptimizationPrototype.tsx",
+            "frontend/src/visualizers/index.ts",
+        ])
+        self.assertIn("demo_browser", {item["id"] for item in plan["checks"]})
+        self.assertEqual(plan["omissions"], [])
+
+    def test_prototype_and_real_runtime_compiler_change_select_demo_browser(self):
+        plan = test_plan.plan_paths([
+            "frontend/demos/UiOptimizationPrototype.tsx",
+            "frontend/src/lesson_runtime/compiler.ts",
+        ])
+        self.assertIn("demo_browser", {item["id"] for item in plan["checks"]})
+        self.assertEqual(plan["omissions"], [])
+
+    def test_unregistered_demo_paths_keep_browser_coverage(self):
+        for path in (
+            "frontend/demos/aes128CipherLesson.ts",
+            "frontend/demos/KeyExpansionPrototype.tsx",
+        ):
+            with self.subTest(path=path):
+                plan = test_plan.plan_paths([path])
+                self.assertIn("demo_browser", {item["id"] for item in plan["checks"]})
+                self.assertEqual(plan["omissions"], [])
+
+    def test_prototype_documentation_does_not_select_runtime_checks(self):
+        plan = test_plan.plan_paths(["frontend/demos/UI_OPTIMIZATION_PROTOTYPE.md"])
+        self.assertEqual(plan, {
+            "kind": "docs-only",
+            "paths": ["frontend/demos/UI_OPTIMIZATION_PROTOTYPE.md"],
+            "checks": [],
+            "omissions": [],
+        })
 
     def test_image_paths_select_smoke_except_preserved_browser_acceptance(self):
         smoke_paths = (

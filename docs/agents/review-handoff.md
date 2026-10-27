@@ -39,6 +39,8 @@ After staging intended ticket files, create a packet. The script discovers stage
 paths, derives and freezes the check plan, and requires `--exclude PATH REASON`
 for every unrelated staged, unstaged, untracked, or excluded change. `--output`
 is optional; the script prints its external temporary path and snapshot ID.
+The planner's top-level `omissions` list is descriptive (`not-run` plus a reason)
+and is preserved in the packet; CI executes only entries in `checks`.
 
 ```sh
 python3 scripts/review_handoff.py create --issue '#96' --notes /tmp/issue96-notes.md
