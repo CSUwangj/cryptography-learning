@@ -1,0 +1,5 @@
+title: AES-256 v2 calculation
+summary: Verify the composed AES-256 schedule and cipher.
+texts:
+  schedule-description: Generate eight words per full batch, including a middle SubWord. The last batch generates four words without the middle SubWord and preserves the four-word tail.
+  cipher-description: Encrypt the FIPS-197 Appendix C plaintext using only the exported 128-bit round keys.

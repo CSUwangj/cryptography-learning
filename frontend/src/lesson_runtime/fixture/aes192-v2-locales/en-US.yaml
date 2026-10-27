@@ -1,0 +1,5 @@
+title: AES-192 v2 calculation
+summary: Verify the composed AES-192 schedule and cipher.
+texts:
+  schedule-description: Generate six words per batch; the last batch generates four words and preserves the two-word tail. Round key 1 joins the original key tail to the first generated words.
+  cipher-description: Encrypt the FIPS-197 Appendix C plaintext using only the exported 128-bit round keys.

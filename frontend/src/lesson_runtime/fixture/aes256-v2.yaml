@@ -1,0 +1,170 @@
+version: 2
+id: aes256-v2-kat
+default_locale: en-US
+inputs:
+  key: {type: {family: bits, size: 256}, encoding: hex, default: "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"}
+  plaintext: {type: {family: bits, size: 128}, encoding: hex, default: "0x00112233445566778899aabbccddeeff"}
+constants:
+  aes-sbox: {kind: table, entryBits: 8, value: [99,124,119,123,242,107,111,197,48,1,103,43,254,215,171,118,202,130,201,125,250,89,71,240,173,212,162,175,156,164,114,192,183,253,147,38,54,63,247,204,52,165,229,241,113,216,49,21,4,199,35,195,24,150,5,154,7,18,128,226,235,39,178,117,9,131,44,26,27,110,90,160,82,59,214,179,41,227,47,132,83,209,0,237,32,252,177,91,106,203,190,57,74,76,88,207,208,239,170,251,67,77,51,133,69,249,2,127,80,60,159,168,81,163,64,143,146,157,56,245,188,182,218,33,16,255,243,210,205,12,19,236,95,151,68,23,196,167,126,61,100,93,25,115,96,129,79,220,34,42,144,136,70,238,184,20,222,94,11,219,224,50,58,10,73,6,36,92,194,211,172,98,145,149,228,121,231,200,55,109,141,213,78,169,108,86,244,234,101,122,174,8,186,120,37,46,28,166,180,198,232,221,116,31,75,189,139,138,112,62,181,102,72,3,246,14,97,53,87,185,134,193,29,158,225,248,152,17,105,217,142,148,155,30,135,233,206,85,40,223,140,161,137,13,191,230,66,104,65,153,45,15,176,84,187,22]}
+graphs:
+  schedule:
+    nodes:
+      - {"id":"key","operation":"core.source@1","parameters":{"type":{"family":"bits","size":256}},"role":"state","unit":32}
+      - {"id":"rot-0","operation":"core.rotate-word@1","inputs":{"value":{"node":"key","port":"value"}},"parameters":{"target":7,"amount":8},"role":"state","iteration":0,"unit":32}
+      - {"id":"sub-0","operation":"core.substitute-bytes@1","inputs":{"value":{"node":"rot-0","port":"value"}},"parameters":{"sBox":{"constant":"aes-sbox"},"start":28,"count":4},"role":"state","iteration":0,"unit":32}
+      - {"id":"rcon-0","operation":"core.xor-constant@1","inputs":{"value":{"node":"sub-0","port":"value"}},"parameters":{"target":7,"constant":16777216},"role":"state","iteration":0,"unit":32}
+      - {"id":"first-half-0","operation":"aes.xor-words@1","inputs":{"state":{"node":"key","port":"value"},"temp":{"node":"rcon-0","port":"value","bits":[224,32]}},"parameters":{"start":0,"count":4},"role":"state","iteration":0,"unit":32}
+      - {"id":"middle-sub-0","operation":"core.substitute-bytes@1","inputs":{"value":{"node":"first-half-0","port":"value"}},"parameters":{"sBox":{"constant":"aes-sbox"},"start":12,"count":4},"role":"state","iteration":0,"unit":32}
+      - {"id":"batch-0","operation":"aes.xor-words@1","inputs":{"state":{"node":"first-half-0","port":"value"},"temp":{"node":"middle-sub-0","port":"value","bits":[96,32]}},"parameters":{"start":4,"count":4},"role":"state","iteration":0,"unit":32}
+      - {"id":"rot-1","operation":"core.rotate-word@1","inputs":{"value":{"node":"batch-0","port":"value"}},"parameters":{"target":7,"amount":8},"role":"state","iteration":1,"unit":32}
+      - {"id":"sub-1","operation":"core.substitute-bytes@1","inputs":{"value":{"node":"rot-1","port":"value"}},"parameters":{"sBox":{"constant":"aes-sbox"},"start":28,"count":4},"role":"state","iteration":1,"unit":32}
+      - {"id":"rcon-1","operation":"core.xor-constant@1","inputs":{"value":{"node":"sub-1","port":"value"}},"parameters":{"target":7,"constant":33554432},"role":"state","iteration":1,"unit":32}
+      - {"id":"first-half-1","operation":"aes.xor-words@1","inputs":{"state":{"node":"batch-0","port":"value"},"temp":{"node":"rcon-1","port":"value","bits":[224,32]}},"parameters":{"start":0,"count":4},"role":"state","iteration":1,"unit":32}
+      - {"id":"middle-sub-1","operation":"core.substitute-bytes@1","inputs":{"value":{"node":"first-half-1","port":"value"}},"parameters":{"sBox":{"constant":"aes-sbox"},"start":12,"count":4},"role":"state","iteration":1,"unit":32}
+      - {"id":"batch-1","operation":"aes.xor-words@1","inputs":{"state":{"node":"first-half-1","port":"value"},"temp":{"node":"middle-sub-1","port":"value","bits":[96,32]}},"parameters":{"start":4,"count":4},"role":"state","iteration":1,"unit":32}
+      - {"id":"rot-2","operation":"core.rotate-word@1","inputs":{"value":{"node":"batch-1","port":"value"}},"parameters":{"target":7,"amount":8},"role":"state","iteration":2,"unit":32}
+      - {"id":"sub-2","operation":"core.substitute-bytes@1","inputs":{"value":{"node":"rot-2","port":"value"}},"parameters":{"sBox":{"constant":"aes-sbox"},"start":28,"count":4},"role":"state","iteration":2,"unit":32}
+      - {"id":"rcon-2","operation":"core.xor-constant@1","inputs":{"value":{"node":"sub-2","port":"value"}},"parameters":{"target":7,"constant":67108864},"role":"state","iteration":2,"unit":32}
+      - {"id":"first-half-2","operation":"aes.xor-words@1","inputs":{"state":{"node":"batch-1","port":"value"},"temp":{"node":"rcon-2","port":"value","bits":[224,32]}},"parameters":{"start":0,"count":4},"role":"state","iteration":2,"unit":32}
+      - {"id":"middle-sub-2","operation":"core.substitute-bytes@1","inputs":{"value":{"node":"first-half-2","port":"value"}},"parameters":{"sBox":{"constant":"aes-sbox"},"start":12,"count":4},"role":"state","iteration":2,"unit":32}
+      - {"id":"batch-2","operation":"aes.xor-words@1","inputs":{"state":{"node":"first-half-2","port":"value"},"temp":{"node":"middle-sub-2","port":"value","bits":[96,32]}},"parameters":{"start":4,"count":4},"role":"state","iteration":2,"unit":32}
+      - {"id":"rot-3","operation":"core.rotate-word@1","inputs":{"value":{"node":"batch-2","port":"value"}},"parameters":{"target":7,"amount":8},"role":"state","iteration":3,"unit":32}
+      - {"id":"sub-3","operation":"core.substitute-bytes@1","inputs":{"value":{"node":"rot-3","port":"value"}},"parameters":{"sBox":{"constant":"aes-sbox"},"start":28,"count":4},"role":"state","iteration":3,"unit":32}
+      - {"id":"rcon-3","operation":"core.xor-constant@1","inputs":{"value":{"node":"sub-3","port":"value"}},"parameters":{"target":7,"constant":134217728},"role":"state","iteration":3,"unit":32}
+      - {"id":"first-half-3","operation":"aes.xor-words@1","inputs":{"state":{"node":"batch-2","port":"value"},"temp":{"node":"rcon-3","port":"value","bits":[224,32]}},"parameters":{"start":0,"count":4},"role":"state","iteration":3,"unit":32}
+      - {"id":"middle-sub-3","operation":"core.substitute-bytes@1","inputs":{"value":{"node":"first-half-3","port":"value"}},"parameters":{"sBox":{"constant":"aes-sbox"},"start":12,"count":4},"role":"state","iteration":3,"unit":32}
+      - {"id":"batch-3","operation":"aes.xor-words@1","inputs":{"state":{"node":"first-half-3","port":"value"},"temp":{"node":"middle-sub-3","port":"value","bits":[96,32]}},"parameters":{"start":4,"count":4},"role":"state","iteration":3,"unit":32}
+      - {"id":"rot-4","operation":"core.rotate-word@1","inputs":{"value":{"node":"batch-3","port":"value"}},"parameters":{"target":7,"amount":8},"role":"state","iteration":4,"unit":32}
+      - {"id":"sub-4","operation":"core.substitute-bytes@1","inputs":{"value":{"node":"rot-4","port":"value"}},"parameters":{"sBox":{"constant":"aes-sbox"},"start":28,"count":4},"role":"state","iteration":4,"unit":32}
+      - {"id":"rcon-4","operation":"core.xor-constant@1","inputs":{"value":{"node":"sub-4","port":"value"}},"parameters":{"target":7,"constant":268435456},"role":"state","iteration":4,"unit":32}
+      - {"id":"first-half-4","operation":"aes.xor-words@1","inputs":{"state":{"node":"batch-3","port":"value"},"temp":{"node":"rcon-4","port":"value","bits":[224,32]}},"parameters":{"start":0,"count":4},"role":"state","iteration":4,"unit":32}
+      - {"id":"middle-sub-4","operation":"core.substitute-bytes@1","inputs":{"value":{"node":"first-half-4","port":"value"}},"parameters":{"sBox":{"constant":"aes-sbox"},"start":12,"count":4},"role":"state","iteration":4,"unit":32}
+      - {"id":"batch-4","operation":"aes.xor-words@1","inputs":{"state":{"node":"first-half-4","port":"value"},"temp":{"node":"middle-sub-4","port":"value","bits":[96,32]}},"parameters":{"start":4,"count":4},"role":"state","iteration":4,"unit":32}
+      - {"id":"rot-5","operation":"core.rotate-word@1","inputs":{"value":{"node":"batch-4","port":"value"}},"parameters":{"target":7,"amount":8},"role":"state","iteration":5,"unit":32}
+      - {"id":"sub-5","operation":"core.substitute-bytes@1","inputs":{"value":{"node":"rot-5","port":"value"}},"parameters":{"sBox":{"constant":"aes-sbox"},"start":28,"count":4},"role":"state","iteration":5,"unit":32}
+      - {"id":"rcon-5","operation":"core.xor-constant@1","inputs":{"value":{"node":"sub-5","port":"value"}},"parameters":{"target":7,"constant":536870912},"role":"state","iteration":5,"unit":32}
+      - {"id":"first-half-5","operation":"aes.xor-words@1","inputs":{"state":{"node":"batch-4","port":"value"},"temp":{"node":"rcon-5","port":"value","bits":[224,32]}},"parameters":{"start":0,"count":4},"role":"state","iteration":5,"unit":32}
+      - {"id":"middle-sub-5","operation":"core.substitute-bytes@1","inputs":{"value":{"node":"first-half-5","port":"value"}},"parameters":{"sBox":{"constant":"aes-sbox"},"start":12,"count":4},"role":"state","iteration":5,"unit":32}
+      - {"id":"batch-5","operation":"aes.xor-words@1","inputs":{"state":{"node":"first-half-5","port":"value"},"temp":{"node":"middle-sub-5","port":"value","bits":[96,32]}},"parameters":{"start":4,"count":4},"role":"state","iteration":5,"unit":32}
+      - {"id":"rot-6","operation":"core.rotate-word@1","inputs":{"value":{"node":"batch-5","port":"value"}},"parameters":{"target":7,"amount":8},"role":"state","iteration":6,"unit":32}
+      - {"id":"sub-6","operation":"core.substitute-bytes@1","inputs":{"value":{"node":"rot-6","port":"value"}},"parameters":{"sBox":{"constant":"aes-sbox"},"start":28,"count":4},"role":"state","iteration":6,"unit":32}
+      - {"id":"rcon-6","operation":"core.xor-constant@1","inputs":{"value":{"node":"sub-6","port":"value"}},"parameters":{"target":7,"constant":1073741824},"role":"state","iteration":6,"unit":32}
+      - {"id":"batch-6","operation":"aes.xor-words@1","inputs":{"state":{"node":"batch-5","port":"value"},"temp":{"node":"rcon-6","port":"value","bits":[224,32]}},"parameters":{"start":0,"count":4},"role":"state","iteration":6,"unit":32}
+      - {"id":"round-key-0","operation":"core.output@1","inputs":{"value":{"node":"key","port":"value","bits":[0,128]}},"role":"round-key","round":0,"unit":32}
+      - {"id":"round-key-1","operation":"core.output@1","inputs":{"value":{"node":"key","port":"value","bits":[128,128]}},"role":"round-key","round":1,"unit":32}
+      - {"id":"round-key-2","operation":"core.output@1","inputs":{"value":{"node":"batch-0","port":"value","bits":[0,128]}},"role":"round-key","round":2,"unit":32}
+      - {"id":"round-key-3","operation":"core.output@1","inputs":{"value":{"node":"batch-0","port":"value","bits":[128,128]}},"role":"round-key","round":3,"unit":32}
+      - {"id":"round-key-4","operation":"core.output@1","inputs":{"value":{"node":"batch-1","port":"value","bits":[0,128]}},"role":"round-key","round":4,"unit":32}
+      - {"id":"round-key-5","operation":"core.output@1","inputs":{"value":{"node":"batch-1","port":"value","bits":[128,128]}},"role":"round-key","round":5,"unit":32}
+      - {"id":"round-key-6","operation":"core.output@1","inputs":{"value":{"node":"batch-2","port":"value","bits":[0,128]}},"role":"round-key","round":6,"unit":32}
+      - {"id":"round-key-7","operation":"core.output@1","inputs":{"value":{"node":"batch-2","port":"value","bits":[128,128]}},"role":"round-key","round":7,"unit":32}
+      - {"id":"round-key-8","operation":"core.output@1","inputs":{"value":{"node":"batch-3","port":"value","bits":[0,128]}},"role":"round-key","round":8,"unit":32}
+      - {"id":"round-key-9","operation":"core.output@1","inputs":{"value":{"node":"batch-3","port":"value","bits":[128,128]}},"role":"round-key","round":9,"unit":32}
+      - {"id":"round-key-10","operation":"core.output@1","inputs":{"value":{"node":"batch-4","port":"value","bits":[0,128]}},"role":"round-key","round":10,"unit":32}
+      - {"id":"round-key-11","operation":"core.output@1","inputs":{"value":{"node":"batch-4","port":"value","bits":[128,128]}},"role":"round-key","round":11,"unit":32}
+      - {"id":"round-key-12","operation":"core.output@1","inputs":{"value":{"node":"batch-5","port":"value","bits":[0,128]}},"role":"round-key","round":12,"unit":32}
+      - {"id":"round-key-13","operation":"core.output@1","inputs":{"value":{"node":"batch-5","port":"value","bits":[128,128]}},"role":"round-key","round":13,"unit":32}
+      - {"id":"round-key-14","operation":"core.output@1","inputs":{"value":{"node":"batch-6","port":"value","bits":[0,128]}},"role":"round-key","round":14,"unit":32}
+    outputs: [{"node":"round-key-0","port":"value"},{"node":"round-key-1","port":"value"},{"node":"round-key-2","port":"value"},{"node":"round-key-3","port":"value"},{"node":"round-key-4","port":"value"},{"node":"round-key-5","port":"value"},{"node":"round-key-6","port":"value"},{"node":"round-key-7","port":"value"},{"node":"round-key-8","port":"value"},{"node":"round-key-9","port":"value"},{"node":"round-key-10","port":"value"},{"node":"round-key-11","port":"value"},{"node":"round-key-12","port":"value"},{"node":"round-key-13","port":"value"},{"node":"round-key-14","port":"value"}]
+  cipher:
+    nodes:
+      - {"id":"plaintext","operation":"core.source@1","parameters":{"type":{"family":"bits","size":128}},"role":"state","round":0,"unit":8}
+      - {"id":"round-key-0","operation":"core.source@1","parameters":{"type":{"family":"bits","size":128}},"role":"round-key","round":0,"unit":32}
+      - {"id":"add-round-key-0","operation":"core.xor@1","inputs":{"left":{"node":"plaintext","port":"value"},"right":{"node":"round-key-0","port":"value"}},"role":"state","round":0,"unit":8}
+      - {"id":"sub-bytes-1","operation":"aes.sub-bytes@1","inputs":{"value":{"node":"add-round-key-0","port":"value"}},"role":"state","round":1,"unit":8}
+      - {"id":"shift-rows-1","operation":"aes.shift-rows@1","inputs":{"value":{"node":"sub-bytes-1","port":"value"}},"role":"state","round":1,"unit":8}
+      - {"id":"mix-columns-1","operation":"aes.mix-columns@1","inputs":{"value":{"node":"shift-rows-1","port":"value"}},"role":"state","round":1,"unit":8}
+      - {"id":"round-key-1","operation":"core.source@1","parameters":{"type":{"family":"bits","size":128}},"role":"round-key","round":1,"unit":32}
+      - {"id":"add-round-key-1","operation":"core.xor@1","inputs":{"left":{"node":"mix-columns-1","port":"value"},"right":{"node":"round-key-1","port":"value"}},"role":"state","round":1,"unit":8}
+      - {"id":"sub-bytes-2","operation":"aes.sub-bytes@1","inputs":{"value":{"node":"add-round-key-1","port":"value"}},"role":"state","round":2,"unit":8}
+      - {"id":"shift-rows-2","operation":"aes.shift-rows@1","inputs":{"value":{"node":"sub-bytes-2","port":"value"}},"role":"state","round":2,"unit":8}
+      - {"id":"mix-columns-2","operation":"aes.mix-columns@1","inputs":{"value":{"node":"shift-rows-2","port":"value"}},"role":"state","round":2,"unit":8}
+      - {"id":"round-key-2","operation":"core.source@1","parameters":{"type":{"family":"bits","size":128}},"role":"round-key","round":2,"unit":32}
+      - {"id":"add-round-key-2","operation":"core.xor@1","inputs":{"left":{"node":"mix-columns-2","port":"value"},"right":{"node":"round-key-2","port":"value"}},"role":"state","round":2,"unit":8}
+      - {"id":"sub-bytes-3","operation":"aes.sub-bytes@1","inputs":{"value":{"node":"add-round-key-2","port":"value"}},"role":"state","round":3,"unit":8}
+      - {"id":"shift-rows-3","operation":"aes.shift-rows@1","inputs":{"value":{"node":"sub-bytes-3","port":"value"}},"role":"state","round":3,"unit":8}
+      - {"id":"mix-columns-3","operation":"aes.mix-columns@1","inputs":{"value":{"node":"shift-rows-3","port":"value"}},"role":"state","round":3,"unit":8}
+      - {"id":"round-key-3","operation":"core.source@1","parameters":{"type":{"family":"bits","size":128}},"role":"round-key","round":3,"unit":32}
+      - {"id":"add-round-key-3","operation":"core.xor@1","inputs":{"left":{"node":"mix-columns-3","port":"value"},"right":{"node":"round-key-3","port":"value"}},"role":"state","round":3,"unit":8}
+      - {"id":"sub-bytes-4","operation":"aes.sub-bytes@1","inputs":{"value":{"node":"add-round-key-3","port":"value"}},"role":"state","round":4,"unit":8}
+      - {"id":"shift-rows-4","operation":"aes.shift-rows@1","inputs":{"value":{"node":"sub-bytes-4","port":"value"}},"role":"state","round":4,"unit":8}
+      - {"id":"mix-columns-4","operation":"aes.mix-columns@1","inputs":{"value":{"node":"shift-rows-4","port":"value"}},"role":"state","round":4,"unit":8}
+      - {"id":"round-key-4","operation":"core.source@1","parameters":{"type":{"family":"bits","size":128}},"role":"round-key","round":4,"unit":32}
+      - {"id":"add-round-key-4","operation":"core.xor@1","inputs":{"left":{"node":"mix-columns-4","port":"value"},"right":{"node":"round-key-4","port":"value"}},"role":"state","round":4,"unit":8}
+      - {"id":"sub-bytes-5","operation":"aes.sub-bytes@1","inputs":{"value":{"node":"add-round-key-4","port":"value"}},"role":"state","round":5,"unit":8}
+      - {"id":"shift-rows-5","operation":"aes.shift-rows@1","inputs":{"value":{"node":"sub-bytes-5","port":"value"}},"role":"state","round":5,"unit":8}
+      - {"id":"mix-columns-5","operation":"aes.mix-columns@1","inputs":{"value":{"node":"shift-rows-5","port":"value"}},"role":"state","round":5,"unit":8}
+      - {"id":"round-key-5","operation":"core.source@1","parameters":{"type":{"family":"bits","size":128}},"role":"round-key","round":5,"unit":32}
+      - {"id":"add-round-key-5","operation":"core.xor@1","inputs":{"left":{"node":"mix-columns-5","port":"value"},"right":{"node":"round-key-5","port":"value"}},"role":"state","round":5,"unit":8}
+      - {"id":"sub-bytes-6","operation":"aes.sub-bytes@1","inputs":{"value":{"node":"add-round-key-5","port":"value"}},"role":"state","round":6,"unit":8}
+      - {"id":"shift-rows-6","operation":"aes.shift-rows@1","inputs":{"value":{"node":"sub-bytes-6","port":"value"}},"role":"state","round":6,"unit":8}
+      - {"id":"mix-columns-6","operation":"aes.mix-columns@1","inputs":{"value":{"node":"shift-rows-6","port":"value"}},"role":"state","round":6,"unit":8}
+      - {"id":"round-key-6","operation":"core.source@1","parameters":{"type":{"family":"bits","size":128}},"role":"round-key","round":6,"unit":32}
+      - {"id":"add-round-key-6","operation":"core.xor@1","inputs":{"left":{"node":"mix-columns-6","port":"value"},"right":{"node":"round-key-6","port":"value"}},"role":"state","round":6,"unit":8}
+      - {"id":"sub-bytes-7","operation":"aes.sub-bytes@1","inputs":{"value":{"node":"add-round-key-6","port":"value"}},"role":"state","round":7,"unit":8}
+      - {"id":"shift-rows-7","operation":"aes.shift-rows@1","inputs":{"value":{"node":"sub-bytes-7","port":"value"}},"role":"state","round":7,"unit":8}
+      - {"id":"mix-columns-7","operation":"aes.mix-columns@1","inputs":{"value":{"node":"shift-rows-7","port":"value"}},"role":"state","round":7,"unit":8}
+      - {"id":"round-key-7","operation":"core.source@1","parameters":{"type":{"family":"bits","size":128}},"role":"round-key","round":7,"unit":32}
+      - {"id":"add-round-key-7","operation":"core.xor@1","inputs":{"left":{"node":"mix-columns-7","port":"value"},"right":{"node":"round-key-7","port":"value"}},"role":"state","round":7,"unit":8}
+      - {"id":"sub-bytes-8","operation":"aes.sub-bytes@1","inputs":{"value":{"node":"add-round-key-7","port":"value"}},"role":"state","round":8,"unit":8}
+      - {"id":"shift-rows-8","operation":"aes.shift-rows@1","inputs":{"value":{"node":"sub-bytes-8","port":"value"}},"role":"state","round":8,"unit":8}
+      - {"id":"mix-columns-8","operation":"aes.mix-columns@1","inputs":{"value":{"node":"shift-rows-8","port":"value"}},"role":"state","round":8,"unit":8}
+      - {"id":"round-key-8","operation":"core.source@1","parameters":{"type":{"family":"bits","size":128}},"role":"round-key","round":8,"unit":32}
+      - {"id":"add-round-key-8","operation":"core.xor@1","inputs":{"left":{"node":"mix-columns-8","port":"value"},"right":{"node":"round-key-8","port":"value"}},"role":"state","round":8,"unit":8}
+      - {"id":"sub-bytes-9","operation":"aes.sub-bytes@1","inputs":{"value":{"node":"add-round-key-8","port":"value"}},"role":"state","round":9,"unit":8}
+      - {"id":"shift-rows-9","operation":"aes.shift-rows@1","inputs":{"value":{"node":"sub-bytes-9","port":"value"}},"role":"state","round":9,"unit":8}
+      - {"id":"mix-columns-9","operation":"aes.mix-columns@1","inputs":{"value":{"node":"shift-rows-9","port":"value"}},"role":"state","round":9,"unit":8}
+      - {"id":"round-key-9","operation":"core.source@1","parameters":{"type":{"family":"bits","size":128}},"role":"round-key","round":9,"unit":32}
+      - {"id":"add-round-key-9","operation":"core.xor@1","inputs":{"left":{"node":"mix-columns-9","port":"value"},"right":{"node":"round-key-9","port":"value"}},"role":"state","round":9,"unit":8}
+      - {"id":"sub-bytes-10","operation":"aes.sub-bytes@1","inputs":{"value":{"node":"add-round-key-9","port":"value"}},"role":"state","round":10,"unit":8}
+      - {"id":"shift-rows-10","operation":"aes.shift-rows@1","inputs":{"value":{"node":"sub-bytes-10","port":"value"}},"role":"state","round":10,"unit":8}
+      - {"id":"mix-columns-10","operation":"aes.mix-columns@1","inputs":{"value":{"node":"shift-rows-10","port":"value"}},"role":"state","round":10,"unit":8}
+      - {"id":"round-key-10","operation":"core.source@1","parameters":{"type":{"family":"bits","size":128}},"role":"round-key","round":10,"unit":32}
+      - {"id":"add-round-key-10","operation":"core.xor@1","inputs":{"left":{"node":"mix-columns-10","port":"value"},"right":{"node":"round-key-10","port":"value"}},"role":"state","round":10,"unit":8}
+      - {"id":"sub-bytes-11","operation":"aes.sub-bytes@1","inputs":{"value":{"node":"add-round-key-10","port":"value"}},"role":"state","round":11,"unit":8}
+      - {"id":"shift-rows-11","operation":"aes.shift-rows@1","inputs":{"value":{"node":"sub-bytes-11","port":"value"}},"role":"state","round":11,"unit":8}
+      - {"id":"mix-columns-11","operation":"aes.mix-columns@1","inputs":{"value":{"node":"shift-rows-11","port":"value"}},"role":"state","round":11,"unit":8}
+      - {"id":"round-key-11","operation":"core.source@1","parameters":{"type":{"family":"bits","size":128}},"role":"round-key","round":11,"unit":32}
+      - {"id":"add-round-key-11","operation":"core.xor@1","inputs":{"left":{"node":"mix-columns-11","port":"value"},"right":{"node":"round-key-11","port":"value"}},"role":"state","round":11,"unit":8}
+      - {"id":"sub-bytes-12","operation":"aes.sub-bytes@1","inputs":{"value":{"node":"add-round-key-11","port":"value"}},"role":"state","round":12,"unit":8}
+      - {"id":"shift-rows-12","operation":"aes.shift-rows@1","inputs":{"value":{"node":"sub-bytes-12","port":"value"}},"role":"state","round":12,"unit":8}
+      - {"id":"mix-columns-12","operation":"aes.mix-columns@1","inputs":{"value":{"node":"shift-rows-12","port":"value"}},"role":"state","round":12,"unit":8}
+      - {"id":"round-key-12","operation":"core.source@1","parameters":{"type":{"family":"bits","size":128}},"role":"round-key","round":12,"unit":32}
+      - {"id":"add-round-key-12","operation":"core.xor@1","inputs":{"left":{"node":"mix-columns-12","port":"value"},"right":{"node":"round-key-12","port":"value"}},"role":"state","round":12,"unit":8}
+      - {"id":"sub-bytes-13","operation":"aes.sub-bytes@1","inputs":{"value":{"node":"add-round-key-12","port":"value"}},"role":"state","round":13,"unit":8}
+      - {"id":"shift-rows-13","operation":"aes.shift-rows@1","inputs":{"value":{"node":"sub-bytes-13","port":"value"}},"role":"state","round":13,"unit":8}
+      - {"id":"mix-columns-13","operation":"aes.mix-columns@1","inputs":{"value":{"node":"shift-rows-13","port":"value"}},"role":"state","round":13,"unit":8}
+      - {"id":"round-key-13","operation":"core.source@1","parameters":{"type":{"family":"bits","size":128}},"role":"round-key","round":13,"unit":32}
+      - {"id":"add-round-key-13","operation":"core.xor@1","inputs":{"left":{"node":"mix-columns-13","port":"value"},"right":{"node":"round-key-13","port":"value"}},"role":"state","round":13,"unit":8}
+      - {"id":"sub-bytes-14","operation":"aes.sub-bytes@1","inputs":{"value":{"node":"add-round-key-13","port":"value"}},"role":"state","round":14,"unit":8}
+      - {"id":"shift-rows-14","operation":"aes.shift-rows@1","inputs":{"value":{"node":"sub-bytes-14","port":"value"}},"role":"state","round":14,"unit":8}
+      - {"id":"round-key-14","operation":"core.source@1","parameters":{"type":{"family":"bits","size":128}},"role":"round-key","round":14,"unit":32}
+      - {"id":"add-round-key-14","operation":"core.xor@1","inputs":{"left":{"node":"shift-rows-14","port":"value"},"right":{"node":"round-key-14","port":"value"}},"role":"state","round":14,"unit":8}
+    outputs: [{"node":"add-round-key-14","port":"value"}]
+steps:
+  - id: schedule
+    prose: schedule-description
+    execute:
+      graph: schedule
+      bindings: {key.value: {input: key}}
+  - id: cipher
+    prose: cipher-description
+    execute:
+      graph: cipher
+      bindings:
+        plaintext.value: {input: plaintext}
+        round-key-0.value: {step: schedule, output: round-key-0.value}
+        round-key-1.value: {step: schedule, output: round-key-1.value}
+        round-key-2.value: {step: schedule, output: round-key-2.value}
+        round-key-3.value: {step: schedule, output: round-key-3.value}
+        round-key-4.value: {step: schedule, output: round-key-4.value}
+        round-key-5.value: {step: schedule, output: round-key-5.value}
+        round-key-6.value: {step: schedule, output: round-key-6.value}
+        round-key-7.value: {step: schedule, output: round-key-7.value}
+        round-key-8.value: {step: schedule, output: round-key-8.value}
+        round-key-9.value: {step: schedule, output: round-key-9.value}
+        round-key-10.value: {step: schedule, output: round-key-10.value}
+        round-key-11.value: {step: schedule, output: round-key-11.value}
+        round-key-12.value: {step: schedule, output: round-key-12.value}
+        round-key-13.value: {step: schedule, output: round-key-13.value}
+        round-key-14.value: {step: schedule, output: round-key-14.value}

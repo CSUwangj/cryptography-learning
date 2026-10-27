@@ -1,0 +1,5 @@
+title: AES-192 v2 计算
+summary: 验证组合 AES-192 密钥编排与加密。
+texts:
+  schedule-description: 每批生成六个字；最后一批生成四个字并保留末尾两个字。第 1 轮密钥将原始密钥末尾与首批生成的字拼接。
+  cipher-description: 仅使用导出的 128 位轮密钥，加密 FIPS-197 附录 C 的明文。

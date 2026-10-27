@@ -1,0 +1,5 @@
+title: AES-256 v2 计算
+summary: 验证组合 AES-256 密钥编排与加密。
+texts:
+  schedule-description: 每个完整批次生成八个字，包含中段字替换。最后一批生成四个字，不执行中段字替换，并保留末尾四个字。
+  cipher-description: 仅使用导出的 128 位轮密钥，加密 FIPS-197 附录 C 的明文。
