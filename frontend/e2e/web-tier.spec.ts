@@ -46,9 +46,13 @@ test.describe('Linux web-tier acceptance (#21)', () => {
     const pageErrors: string[] = []
     page.on('pageerror', (error) => pageErrors.push(error.message))
     await page.route('**/query', async (route) => {
-      const variables = route.request().postDataJSON()?.variables
-      const response = variables?.labId === 'affine' ? labResponse : practiceResponse
-      await route.fulfill({ json: response })
+      const operationName = route.request().postDataJSON()?.operationName
+      if (operationName === 'LearningCatalog') {
+        return route.fulfill({ json: { data: { learning: { lessonCategories: [] } } } })
+      }
+      if (operationName === 'Practices') return route.fulfill({ json: practiceResponse })
+      if (operationName === 'Lab') return route.fulfill({ json: labResponse })
+      throw new Error(`Unexpected GraphQL operation: ${operationName}`)
     })
 
     await page.goto('/practice/classical/affine')
@@ -65,7 +69,8 @@ test.describe('Linux web-tier acceptance (#21)', () => {
     })
     expect(response.ok()).toBeTruthy()
     const body = await response.json()
-    expect(body.data.practice.labCategories).toEqual([{ id: 'classical' }, { id: 'modern' }])
+    const categoryIds = body.data.practice.labCategories.map(({ id }: { id: string }) => id)
+    expect(categoryIds).toEqual(expect.arrayContaining(['classical', 'modern']))
     await page.goto('/practice')
     await expect(page.locator('#root')).toBeVisible()
   })

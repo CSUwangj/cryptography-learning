@@ -92,14 +92,28 @@ class TestPlanTest(unittest.TestCase):
         plan = test_plan.plan_paths([
             "frontend/e2e/home-layout.spec.ts",
             "frontend/e2e/learning.spec.ts",
+            "frontend/e2e/aes-cipher-demo.spec.ts",
+            "frontend/e2e/visualizers.spec.ts",
         ])
         checks = {item["id"]: item["argv"] for item in plan["checks"]}
         self.assertEqual(
-            {"browser_home-layout", "browser_learning"},
+            {
+                "browser_home-layout", "browser_learning", "image_acceptance",
+                "browser_aes-cipher-demo", "browser_visualizers", "browser_parallel_regressions",
+            },
             set(checks),
         )
         self.assertIn("home-layout.spec.ts", checks["browser_home-layout"])
         self.assertIn("learning.spec.ts", checks["browser_learning"])
+        self.assertEqual(
+            checks["browser_parallel_regressions"],
+            [
+                "npx", "playwright", "test", "--project=chromium", "--workers=2",
+                "e2e/home-layout.spec.ts", "e2e/learning.spec.ts",
+                "e2e/visualizers.spec.ts", "--grep",
+                "stacks features on phones|loads catalog and deep link|selects Preserve or Strict|renders an accessible continuous comparison|marks retained snapshots|executes an initial comparison|Shared AES presentation",
+            ],
+        )
 
     def test_registered_ui_prototype_records_demo_browser_omission(self):
         for path in (
@@ -132,6 +146,10 @@ class TestPlanTest(unittest.TestCase):
         self.assertIn("demo_browser", mixed_ids)
         self.assertEqual(mixed["omissions"], [])
         self.assertTrue(any("runtime demos" in reason for item in mixed["checks"] if item["id"] == "demo_browser" for reason in item["reasons"]))
+
+        component = test_plan.plan_paths(["frontend/demos/AesCipherDemo.tsx"])
+        selected = next(item["argv"] for item in component["checks"] if item["id"] == "frontend-tests")
+        self.assertIn("demos/AesCipherDemo.test.tsx", selected)
 
     def test_prototype_and_real_visualizer_change_select_demo_browser(self):
         plan = test_plan.plan_paths([
@@ -188,6 +206,7 @@ class TestPlanTest(unittest.TestCase):
             "baseline/fixtures/graphql/catalog.json": "image_acceptance",
             "baseline/terminal/ws_protocol.py": "image_acceptance",
             "frontend/e2e/web-tier.spec.ts": "image_acceptance",
+            "frontend/e2e/learning.spec.ts": "image_acceptance",
         }
         for path, identifier in preserved.items():
             with self.subTest(path=path):
@@ -231,6 +250,11 @@ class TestPlanTest(unittest.TestCase):
         unknown = test_plan.plan_paths(["frontend/e2e/new-helper.ts"])
         self.assertIn("frontend-tests", {item["id"] for item in unknown["checks"]})
         self.assertNotIn("browser_new-helper.ts", {item["id"] for item in unknown["checks"]})
+        aes_fixture = test_plan.plan_paths(["frontend/e2e/aes-learning-fixture.tsx"])
+        self.assertEqual(
+            {item["id"] for item in aes_fixture["checks"]},
+            {"browser_aes-cipher-demo", "browser_visualizers"},
+        )
 
     def test_dependency_edges_and_toolchain_fallbacks(self):
         cases = {
@@ -244,6 +268,7 @@ class TestPlanTest(unittest.TestCase):
             "baseline/tests/test_http_spa.py": {"image_smoke"},
             "baseline/terminal/ws_protocol.py": {"image_acceptance"},
             "frontend/demos/example.ts": {"frontend-tests", "demo_browser"},
+            "frontend/demos/AesCipherDemo.tsx": {"frontend-tests", "frontend_typecheck", "demo_browser"},
             "frontend/e2e/web-tier.spec.ts": {"image_acceptance"},
             "frontend/e2e/completion-records.spec.ts": {"completion_acceptance"},
             "frontend/e2e/crypto-graph-worker.spec.ts": {"browser_crypto-graph-worker"},

@@ -51,57 +51,6 @@ texts: {plaintext: 明文, shift: 位移, policy: 策略}
 }
 
 test.describe('Learning Lesson (#30)', () => {
-  test('served AES binds round keys and opens and closes encryption schedule', async ({ page }, testInfo) => {
-    test.skip(!process.env.PLAYWRIGHT_BASE_URL, 'requires mounted served Lessons')
-    test.slow()
-    await page.addInitScript(() => localStorage.setItem('i18nextLng', 'en-US'))
-    await page.goto('/learning/aes-128-demo')
-    await expect(page.getByRole('heading', { name: 'AES-128 cipher' })).toBeVisible()
-    await expect(page.getByRole('textbox').nth(0)).toHaveValue('000102030405060708090a0b0c0d0e0f')
-    await expect(page.getByRole('textbox').nth(1)).toHaveValue('00112233445566778899aabbccddeeff')
-    await page.getByRole('button', { name: 'Next', exact: true }).click()
-    await expect(page.locator('section[aria-label="AES-128 key expansion"]')).toBeVisible()
-    await page.getByRole('button', { name: 'Next', exact: true }).click()
-    const cipher = page.locator('section[aria-label="AES-128 encryption"]')
-    await expect(cipher).toBeVisible()
-    await expect(page.getByRole('cell', { name: '0x69c4e0d86a7b0430d8cdb78070b4c55a (bits<128>)', exact: true })).toBeVisible()
-    await expect(cipher.locator('tr[data-row-id="cipher-1-mix-columns"] th')).toHaveText('MixColumns 1')
-    await page.evaluate(() => window.scrollTo(0, 0))
-    await page.screenshot({ path: testInfo.outputPath('served-aes-encryption.png') })
-    await cipher.locator('button[aria-label^="Round key 0:"]').click()
-    const overlay = cipher.locator('[role="region"][aria-label="Key expansion"]')
-    await expect(overlay).toBeVisible()
-    await overlay.locator('button', { hasText: 'Close key expansion' }).scrollIntoViewIfNeeded()
-    await page.screenshot({ path: testInfo.outputPath('served-aes-overlay-open.png') })
-    await overlay.locator('button', { hasText: 'Close key expansion' }).click()
-    await expect(overlay).toBeHidden()
-    await page.evaluate(() => window.scrollTo(0, 0))
-    await page.screenshot({ path: testInfo.outputPath('served-aes-overlay-closed.png') })
-  })
-
-  test('served comparison aligns checkpoints and selects a differing bit', async ({ page }, testInfo) => {
-    test.skip(!process.env.PLAYWRIGHT_BASE_URL, 'requires mounted served Lessons')
-    test.slow()
-    await page.addInitScript(() => localStorage.setItem('i18nextLng', 'en-US'))
-    await page.goto('/learning/aes-128-comparison-demo')
-    await expect(page.getByRole('heading', { name: 'AES-128 comparison and avalanche' })).toBeVisible({ timeout: 60_000 })
-    const summary = page.getByRole('table', { name: 'Comparison summary', exact: true })
-    await expect(summary).toBeVisible()
-    await expect(summary).toContainText('0x69c4e0d86a7b0430d8cdb78070b4c55a')
-    const input = summary.locator('tr[data-row-id="plaintext"]')
-    await expect(input).toContainText('0x00112233445566778899aabbccddeeff')
-    await expect(input).toContainText('0x80112233445566778899aabbccddeeff')
-    await expect(input.locator('td').nth(2)).toHaveText('1')
-    const output = summary.locator('tr[data-row-id="cipher-10-add-round-key"]')
-    await expect(output.locator('td').nth(0)).toHaveText('0x69c4e0d86a7b0430d8cdb78070b4c55a')
-    await expect(output.locator('td').nth(1)).not.toHaveText('0x69c4e0d86a7b0430d8cdb78070b4c55a')
-    expect(Number(await output.locator('td').nth(2).innerText())).toBeGreaterThan(1)
-    const bit = page.locator('button[aria-label="plaintext, Bit 0: 0|1, different"]')
-    await bit.click()
-    await expect(bit).toHaveAttribute('aria-pressed', 'true')
-    await page.screenshot({ path: testInfo.outputPath('served-comparison-selection.png') })
-  })
-
   test('loads catalog and deep link, retains input, and executes the XOR Step', async ({ page }) => {
     const progressRequests: string[] = []
     page.on('request', (request) => {
@@ -158,6 +107,7 @@ test.describe('Learning Lesson (#30)', () => {
     await expect(input).toHaveValue('0x0f0f')
     await page.getByRole('button', { name: 'Next' }).click()
     await expect(page.getByText('0x0ff0 (bits<16>)')).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Execution trace' })).toContainText('0x0ff0')
     await expect(page.getByText('Correct output.')).toBeVisible()
     await page.getByRole('button', { name: 'Next' }).click()
     await page.getByRole('button', { name: 'XOR', exact: true }).click()
@@ -182,7 +132,14 @@ test.describe('Learning Lesson (#30)', () => {
   test('selects Preserve or Strict policy in Learning', async ({ page }) => {
     test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses the synthetic Lesson fixture')
     await page.route('**/query', async (route) => {
-      const variables = route.request().postDataJSON()?.variables
+      const request = route.request().postDataJSON()
+      if (request?.operationName === 'LearningCatalog') {
+        return route.fulfill({ json: { data: { learning: { lessonCategories: [] } } } })
+      }
+      if (request?.operationName !== 'LessonDocuments') {
+        throw new Error(`Unexpected Learning GraphQL operation: ${request?.operationName}`)
+      }
+      const variables = request.variables
       await route.fulfill({
         json: {
           data: {
@@ -236,7 +193,14 @@ test.describe('Learning Lesson (#30)', () => {
       Object.defineProperty(window, 'Worker', { value: WorkerStub })
     })
     await page.route('**/query', async (route) => {
-      const variables = route.request().postDataJSON()?.variables
+      const request = route.request().postDataJSON()
+      if (request?.operationName === 'LearningCatalog') {
+        return route.fulfill({ json: { data: { learning: { lessonCategories: [] } } } })
+      }
+      if (request?.operationName !== 'LessonDocuments') {
+        throw new Error(`Unexpected Learning GraphQL operation: ${request?.operationName}`)
+      }
+      const variables = request.variables
       await route.fulfill({
         json: {
           data: {
@@ -262,7 +226,14 @@ test.describe('Learning Lesson (#30)', () => {
     test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses the synthetic Lesson fixture')
     const boundedLesson = lesson.replace('steps:\n', 'limits: {inputBytes: 1}\nsteps:\n')
     await page.route('**/query', async (route) => {
-      const variables = route.request().postDataJSON()?.variables
+      const request = route.request().postDataJSON()
+      if (request?.operationName === 'LearningCatalog') {
+        return route.fulfill({ json: { data: { learning: { lessonCategories: [] } } } })
+      }
+      if (request?.operationName !== 'LessonDocuments') {
+        throw new Error(`Unexpected Learning GraphQL operation: ${request?.operationName}`)
+      }
+      const variables = request.variables
       await route.fulfill({
         json: {
           data: {

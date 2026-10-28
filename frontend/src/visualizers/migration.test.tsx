@@ -253,10 +253,15 @@ describe('AES comparison and per-bit avalanche (#86)', () => {
       complete: true,
       changedBits: 1,
     })
+    const plaintextCheckpoint = plaintext.checkpoints.find((checkpoint) => checkpoint.path === 'plaintext')
+    expect(plaintextCheckpoint?.complete && hex(plaintextCheckpoint.left)).toBe('0x00112233445566778899aabbccddeeff')
+    expect(plaintextCheckpoint?.complete && hex(plaintextCheckpoint.right)).toBe('0x80112233445566778899aabbccddeeff')
     expect(plaintext.checkpoints.every((checkpoint) => checkpoint.complete)).toBe(true)
     const final = [...plaintext.checkpoints].reverse().find((checkpoint) =>
       checkpoint.path.endsWith('-add-round-key') && checkpoint.complete)
     expect(final && final.complete && final.changedBits > 1).toBe(true)
+    expect(final?.complete && hex(final.left)).toBe('0x69c4e0d86a7b0430d8cdb78070b4c55a')
+    expect(final?.complete && hex(final.right)).not.toBe('0x69c4e0d86a7b0430d8cdb78070b4c55a')
 
     await session.value.next()
     const key = session.value.state().comparisons['compare-key']

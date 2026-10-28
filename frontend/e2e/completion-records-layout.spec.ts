@@ -28,7 +28,16 @@ test.describe('Completion Records Academic Register (#54)', () => {
   test('keeps report contained on desktop and narrow mobile while matrix scrolls locally', async ({
     page,
   }, testInfo) => {
-    await page.route('**/query', (route) => route.fulfill({ json: board }))
+    await page.route('**/query', async (route) => {
+      const operationName = route.request().postDataJSON()?.operationName
+      if (operationName === 'LearningCatalog') {
+        return route.fulfill({ json: { data: { learning: { lessonCategories: [] } } } })
+      }
+      if (operationName !== 'CompletionBoard') {
+        throw new Error(`Unexpected GraphQL operation: ${operationName}`)
+      }
+      return route.fulfill({ json: board })
+    })
 
     await page.setViewportSize({ width: 1280, height: 900 })
     await page.goto('/completion')

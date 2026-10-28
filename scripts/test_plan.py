@@ -92,13 +92,13 @@ def plan_paths(paths, repo=ROOT):
             path.startswith("frontend/src/lesson_runtime/fixture/")
             or (path.startswith("frontend/demos/") and not path.endswith(".md"))
         ):
-            frontend(["frontend/src/lesson_runtime/index.test.ts", "frontend/src/visualizers/index.test.ts", "frontend/src/visualizers/migration.test.tsx"], reason="runtime demo or fixture consumers changed")
+            frontend(["frontend/src/lesson_runtime/index.test.ts", "frontend/src/visualizers/index.test.ts", "frontend/src/visualizers/migration.test.tsx", "frontend/demos/AesCipherDemo.test.tsx"], reason="runtime demo or fixture consumers changed")
             if path.startswith("frontend/demos/") and path not in prototype_paths:
-                add("demo_browser", "frontend", ["npx", "playwright", "test", "--project=chromium", "e2e/visualizers.spec.ts", "e2e/aes-cipher-demo.spec.ts"], "runtime demos have Vite browser consumers")
+                add("demo_browser", "frontend", ["npx", "playwright", "test", "--project=chromium", "e2e/visualizers.spec.ts"], "runtime demos have Vite browser consumers")
                 if path.endswith((".ts", ".tsx")):
                     add("frontend_typecheck", "frontend", ["npm", "run", "typecheck"], "TypeScript demo changed")
             elif path.startswith("frontend/src/lesson_runtime/fixture/"):
-                add("demo_browser", "frontend", ["npx", "playwright", "test", "--project=chromium", "e2e/visualizers.spec.ts", "e2e/aes-cipher-demo.spec.ts"], "real Lesson fixtures have Vite browser consumers")
+                add("demo_browser", "frontend", ["npx", "playwright", "test", "--project=chromium", "e2e/visualizers.spec.ts"], "real Lesson fixtures have Vite browser consumers")
             continue
         if path.endswith(".md"):
             continue
@@ -147,7 +147,7 @@ def plan_paths(paths, repo=ROOT):
                     and not path.endswith((".test.ts", ".test.tsx"))
                     and path.startswith(("frontend/src/visualizers/", "frontend/src/lesson_runtime/"))
                 ):
-                    add("demo_browser", "frontend", ["npx", "playwright", "test", "--project=chromium", "e2e/visualizers.spec.ts", "e2e/aes-cipher-demo.spec.ts"], "real lesson runtime or visualizer behavior changed")
+                    add("demo_browser", "frontend", ["npx", "playwright", "test", "--project=chromium", "e2e/visualizers.spec.ts"], "real lesson runtime or visualizer behavior changed")
                 parts = path.split("/")
                 mod = parts[2] if len(parts) > 3 else ""
                 if not mod:
@@ -196,7 +196,10 @@ def plan_paths(paths, repo=ROOT):
                     add("frontend_typecheck", "frontend", ["npm", "run", "typecheck"], "frontend TypeScript changed")
             elif path.startswith("frontend/e2e/"):
                 spec = Path(path).name
-                if path.endswith("v2-default-trace-browser.tsx"):
+                if spec == "aes-learning-fixture.tsx":
+                    add("browser_aes-cipher-demo", "frontend", ["npx", "playwright", "test", "--project=chromium", "e2e/aes-cipher-demo.spec.ts"], "AES fixture helper has long-width browser consumer")
+                    add("browser_visualizers", "frontend", ["npx", "playwright", "test", "--project=chromium", "e2e/visualizers.spec.ts"], "AES fixture helper has overlay browser consumer")
+                elif path.endswith("v2-default-trace-browser.tsx"):
                     add("browser_crypto-graph-worker", "frontend", ["npx", "playwright", "test", "--project=chromium", "crypto-graph-worker.spec.ts"], "browser Worker helper changed")
                 elif path.endswith("fixtures/browser_terminal_fixture.py"):
                     add("browser_terminal", "frontend", ["npx", "playwright", "test", "--project=chromium", "terminal.spec.ts"], "terminal browser fixture changed")
@@ -210,6 +213,25 @@ def plan_paths(paths, repo=ROOT):
                     add("frontend_build", "frontend", ["npm", "run", "build"], "unknown browser helper; broad frontend fallback")
                 else:
                     add(f"browser_{spec.removesuffix('.spec.ts')}", "frontend", ["npx", "playwright", "test", "--project=chromium", spec], "Vite-compatible browser test changed")
+                    if spec in {
+                        "aes-cipher-demo.spec.ts",
+                        "home-layout.spec.ts",
+                        "learning.spec.ts",
+                        "visualizers.spec.ts",
+                    }:
+                        add(
+                            "browser_parallel_regressions",
+                            "frontend",
+                            [
+                                "npx", "playwright", "test", "--project=chromium", "--workers=2",
+                                "e2e/home-layout.spec.ts", "e2e/learning.spec.ts",
+                                "e2e/visualizers.spec.ts", "--grep",
+                                "stacks features on phones|loads catalog and deep link|selects Preserve or Strict|renders an accessible continuous comparison|marks retained snapshots|executes an initial comparison|Shared AES presentation",
+                            ],
+                            "shared browser execution paths require a two-worker contention regression",
+                        )
+                    if spec == "learning.spec.ts":
+                        add("image_acceptance", ".", ["./acceptance/run.sh", "cryptography-learning-web-tier:ci", "--mode", "pr"], "served Learning behavior changed")
             else:
                 frontend(paths, full=True, reason="unknown frontend executable path; broad fallback")
                 add("frontend_typecheck", "frontend", ["npm", "run", "typecheck"], "unknown frontend executable path; broad fallback")

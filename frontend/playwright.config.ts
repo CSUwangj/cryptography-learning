@@ -4,6 +4,7 @@ export default defineConfig({
   testDir: './e2e',
   timeout: 60_000,
   fullyParallel: false,
+  workers: 1,
   // A GitHub-hosted runner can transiently replace its network while a
   // container restarts. Retry once in CI so a one-off ERR_NETWORK_CHANGED
   // asset fetch cannot reject an otherwise verified release candidate.

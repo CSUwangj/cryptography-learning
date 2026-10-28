@@ -112,6 +112,7 @@ test.describe('Home layout (#59)', () => {
       await page.goto('/')
 
       await expectLogoContained(page, viewport.width)
+      const home = page.getByRole('img', { name: 'Big Logo' }).locator('..')
       const blocks = features.map(({ title }) => featureBlock(page, title))
       const boxes = []
       for (const [index, feature] of features.entries()) {
@@ -133,7 +134,7 @@ test.describe('Home layout (#59)', () => {
           expect(detailBox.y + detailBox.height).toBeLessThanOrEqual(blockBox.y + blockBox.height)
         }
       }
-      const visibleHomeGeometry = await page.locator('#root').evaluate((root) =>
+      const visibleHomeGeometry = await home.evaluate((root) =>
         Array.from(root.querySelectorAll('h1, h3, h5, button')).flatMap((element) => {
           const style = getComputedStyle(element)
           const rect = element.getBoundingClientRect()
@@ -169,7 +170,7 @@ test.describe('Home layout (#59)', () => {
       }
       const visibleHomeElementBoxes = visibleHomeGeometry.map(({ clipped: _clipped, ...box }) => box)
       expectNoRectangleOverlap(visibleHomeElementBoxes)
-      const combinedGeometry = await page.locator('#root').evaluate((root) => {
+      const combinedGeometry = await home.evaluate((root) => {
         const elements = Array.from(root.querySelectorAll('h1, h3, h5, button, a')).filter((element) => {
           const style = getComputedStyle(element)
           const rect = element.getBoundingClientRect()

@@ -1,6 +1,6 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { aesKeyExpansionDemoDocuments } from '../demos/aesKeyExpansionLesson'
-import { aesCipherDemoDocuments } from '../demos/aes128CipherLesson'
+import { aesOverlayFixturePresentation } from './aes-learning-fixture'
 
 const lesson = `version: 1
 id: avalanche
@@ -82,14 +82,74 @@ const expectGraphLayout = async (page: import('@playwright/test').Page, title: s
 const expectTraceValue = async (page: import('@playwright/test').Page, title: string, value: string) =>
   expect(page.getByRole('region', { name: title }).getByRole('cell').filter({ hasText: value }).first()).toBeVisible()
 
+const mockLessonDocuments = async (
+  page: Page,
+  documentFor: (language: keyof typeof locales) => { lesson: string; locale: string | null },
+) => {
+  await page.route('**/query', async (route) => {
+    const request = route.request().postDataJSON()
+    if (request?.operationName === 'LearningCatalog') {
+      return route.fulfill({ json: { data: { learning: { lessonCategories: [] } } } })
+    }
+    if (request?.operationName !== 'LessonDocuments') {
+      throw new Error(`Unexpected Learning GraphQL operation: ${request?.operationName}`)
+    }
+    const language = request.variables?.language === 'zh-CN' ? 'zh-CN' : 'en-US'
+    return route.fulfill({ json: { data: { lessonDocuments: documentFor(language) } } })
+  })
+}
+
 test.describe('Avalanche Visualizer (#32)', () => {
   test('renders an accessible continuous comparison and preserves selection on resize', async ({ page }) => {
     test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses the synthetic Lesson fixture')
     await page.emulateMedia({ reducedMotion: 'reduce' })
-    await page.route('**/query', async (route) => {
-      const language = route.request().postDataJSON()?.variables?.language as keyof typeof locales
-      await route.fulfill({ json: { data: { lessonDocuments: { lesson, locale: locales[language] ?? null } } } })
+    await page.addInitScript(() => {
+      const bits = (bytes: number[]) => ({ type: { family: 'bits', size: 16 }, bytes: Uint8Array.from(bytes) })
+      const value = (left: number[], right: number[], mask: number[]) => ({
+        complete: true,
+        left: bits(left),
+        right: bits(right),
+        mask: bits(mask),
+        changedBits: 8,
+        ratio: 0.5,
+      })
+      const left = [0x0f, 0x0f]
+      const right = [0x00, 0xff]
+      const mask = [0x0f, 0xf0]
+      class WorkerStub {
+        private listeners: Array<(event: MessageEvent<unknown>) => void> = []
+
+        addEventListener(type: string, listener: (event: MessageEvent<unknown>) => void): void {
+          if (type === 'message') this.listeners.push(listener)
+        }
+
+        postMessage(request: { requestId: string }): void {
+          queueMicrotask(() => this.listeners.forEach((listener) => listener({ data: {
+            requestId: request.requestId,
+            kind: 'comparison',
+            comparison: {
+              traceLevel: 'detail',
+              truncated: false,
+              executions: {
+                baseline: { trace: [], outputs: {}, traceStatus: { truncated: false, retained: 0, dropped: 0 } },
+                changed: { trace: [], outputs: {}, traceStatus: { truncated: false, retained: 0, dropped: 0 } },
+              },
+              checkpoints: [
+                { path: 'plaintext', stage: 'input', ...value(left, right, mask) },
+                { path: 'key-mix', stage: 'key-mix', ...value([0, 0], [0x0f, 0xf0], mask) },
+                { path: 'substitute', stage: 'substitute', ...value([0, 0], [0x0f, 0xf0], mask) },
+                { path: 'permute', stage: 'permute', ...value([0, 0], [0x0f, 0xf0], mask) },
+                { path: 'output', stage: 'output', ...value([0, 0], [0x0f, 0xf0], mask) },
+              ],
+            },
+          } } as MessageEvent<unknown>)))
+        }
+
+        terminate(): void {}
+      }
+      Object.defineProperty(window, 'Worker', { configurable: true, value: WorkerStub })
     })
+    await mockLessonDocuments(page, (language) => ({ lesson, locale: locales[language] ?? null }))
 
     await page.goto('/learning/avalanche')
     await expect(page.getByRole('heading', { name: 'Continuous avalanche comparison' })).toBeVisible()
@@ -114,13 +174,43 @@ test.describe('Avalanche Visualizer (#32)', () => {
 
   test('marks retained snapshots as incomplete instead of discarding them', async ({ page }) => {
     test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses the synthetic Lesson fixture')
-    await page.route('**/query', async (route) => {
-      const language = route.request().postDataJSON()?.variables?.language as keyof typeof locales
-      await route.fulfill({ json: { data: { lessonDocuments: {
-        lesson: lesson.replace('inputs:\n', 'limits: {traceEvents: 14}\ninputs:\n'),
-        locale: locales[language] ?? null,
-      } } } })
+    await page.addInitScript(() => {
+      const bits = (bytes: number[]) => ({ type: { family: 'bits', size: 16 }, bytes: Uint8Array.from(bytes) })
+      class WorkerStub {
+        private listeners: Array<(event: MessageEvent<unknown>) => void> = []
+
+        addEventListener(type: string, listener: (event: MessageEvent<unknown>) => void): void {
+          if (type === 'message') this.listeners.push(listener)
+        }
+
+        postMessage(request: { requestId: string }): void {
+          queueMicrotask(() => this.listeners.forEach((listener) => listener({ data: {
+            requestId: request.requestId,
+            kind: 'comparison',
+            comparison: {
+              traceLevel: 'detail',
+              truncated: true,
+              executions: {
+                baseline: {
+                  trace: [{ path: 'plaintext', level: 'detail', stage: 'input', value: bits([0x0f, 0x0f]) }],
+                  outputs: {},
+                  traceStatus: { truncated: true, retained: 1, dropped: 1 },
+                },
+                changed: { trace: [], outputs: {}, traceStatus: { truncated: true, retained: 0, dropped: 2 } },
+              },
+              checkpoints: [{ path: 'plaintext', stage: 'input', complete: false }],
+            },
+          } } as MessageEvent<unknown>)))
+        }
+
+        terminate(): void {}
+      }
+      Object.defineProperty(window, 'Worker', { configurable: true, value: WorkerStub })
     })
+    await mockLessonDocuments(page, (language) => ({
+      lesson: lesson.replace('inputs:\n', 'limits: {traceEvents: 14}\ninputs:\n'),
+      locale: locales[language] ?? null,
+    }))
 
     await page.goto('/learning/avalanche')
     await expect(page.getByRole('status').filter({ hasText: 'Trace is incomplete. Raw retained values remain visible; paired differences and lineage stop at the gap.' })).toBeVisible()
@@ -154,13 +244,10 @@ test.describe('Avalanche Visualizer (#32)', () => {
       }
       Object.defineProperty(window, 'Worker', { value: WorkerStub })
     })
-    await page.route('**/query', async (route) => {
-      const language = route.request().postDataJSON()?.variables?.language as keyof typeof locales
-      await route.fulfill({ json: { data: { lessonDocuments: {
-        lesson: lesson.replace('steps:\n', 'steps:\n  - id: intro\n    prose: intro\n'),
-        locale: (locales[language] ?? locales['en-US']).replace('texts: {}', 'texts:\n  intro: Intro'),
-      } } } })
-    })
+    await mockLessonDocuments(page, (language) => ({
+      lesson: lesson.replace('steps:\n', 'steps:\n  - id: intro\n    prose: intro\n'),
+      locale: (locales[language] ?? locales['en-US']).replace('texts: {}', 'texts:\n  intro: Intro'),
+    }))
 
     await page.goto('/learning/avalanche')
     await page.getByRole('button', { name: 'Next' }).click()
@@ -171,13 +258,38 @@ test.describe('Avalanche Visualizer (#32)', () => {
 
   test('executes an initial comparison before advancing', async ({ page }) => {
     test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses the synthetic Lesson fixture')
-    await page.route('**/query', async (route) => {
-      const language = route.request().postDataJSON()?.variables?.language as keyof typeof locales
-      await route.fulfill({ json: { data: { lessonDocuments: {
-        lesson: `${lesson}  - id: prose\n    prose: prose\n`,
-        locale: (locales[language] ?? locales['en-US']).replace('texts: {}', 'texts:\n  prose: Done'),
-      } } } })
+    await page.addInitScript(() => {
+      class WorkerStub {
+        private listeners: Array<(event: MessageEvent<unknown>) => void> = []
+
+        addEventListener(type: string, listener: (event: MessageEvent<unknown>) => void): void {
+          if (type === 'message') this.listeners.push(listener)
+        }
+
+        postMessage(request: { requestId: string }): void {
+          queueMicrotask(() => this.listeners.forEach((listener) => listener({ data: {
+            requestId: request.requestId,
+            kind: 'comparison',
+            comparison: {
+              traceLevel: 'detail',
+              truncated: false,
+              executions: {
+                baseline: { trace: [], outputs: {}, traceStatus: { truncated: false, retained: 0, dropped: 0 } },
+                changed: { trace: [], outputs: {}, traceStatus: { truncated: false, retained: 0, dropped: 0 } },
+              },
+              checkpoints: [],
+            },
+          } } as MessageEvent<unknown>)))
+        }
+
+        terminate(): void {}
+      }
+      Object.defineProperty(window, 'Worker', { configurable: true, value: WorkerStub })
     })
+    await mockLessonDocuments(page, (language) => ({
+      lesson: `${lesson}  - id: prose\n    prose: prose\n`,
+      locale: (locales[language] ?? locales['en-US']).replace('texts: {}', 'texts:\n  prose: Done'),
+    }))
 
     await page.goto('/learning/avalanche')
     await expect(page.getByRole('heading', { name: 'Continuous avalanche comparison' })).toBeVisible()
@@ -199,10 +311,7 @@ test.describe('Teaching SPN Visualizer (#33)', () => {
   test('uses one synthetic Lesson for both descriptors', async ({ page }) => {
     test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses the synthetic Lesson fixture')
     await page.addInitScript(() => localStorage.setItem('i18nextLng', 'en-US'))
-    await page.route('**/query', async (route) => {
-      const language = route.request().postDataJSON()?.variables?.language as keyof typeof locales
-      await route.fulfill({ json: { data: { lessonDocuments: { lesson: `${lesson}${executionStep}`, locale: locales[language] ?? null } } } })
-    })
+    await mockLessonDocuments(page, (language) => ({ lesson: `${lesson}${executionStep}`, locale: locales[language] ?? null }))
 
     await page.goto('/learning/avalanche')
     await expect(page.getByRole('heading', { name: 'Continuous avalanche comparison' })).toBeVisible()
@@ -213,13 +322,10 @@ test.describe('Teaching SPN Visualizer (#33)', () => {
   test('marks truncated execution traces and isolates renderer failures', async ({ page }) => {
     test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses the synthetic Lesson fixture')
     await page.addInitScript(() => localStorage.setItem('i18nextLng', 'en-US'))
-    await page.route('**/query', async (route) => {
-      const language = route.request().postDataJSON()?.variables?.language as keyof typeof locales
-      await route.fulfill({ json: { data: { lessonDocuments: {
-        lesson: executionLesson('limits: {traceEvents: 2}\n'),
-        locale: locales[language] ?? null,
-      } } } })
-    })
+    await mockLessonDocuments(page, (language) => ({
+      lesson: executionLesson('limits: {traceEvents: 2}\n'),
+      locale: locales[language] ?? null,
+    }))
 
     await page.goto('/learning/spn')
     await page.getByRole('button', { name: 'Next' }).click()
@@ -253,13 +359,10 @@ test.describe('Teaching SPN Visualizer (#33)', () => {
       Object.defineProperty(window, 'Worker', { value: WorkerStub })
       localStorage.setItem('i18nextLng', 'en-US')
     })
-    await page.route('**/query', async (route) => {
-      const language = route.request().postDataJSON()?.variables?.language as keyof typeof locales
-      await route.fulfill({ json: { data: { lessonDocuments: {
-        lesson: `${executionLesson()}  - id: prose\n    prose: prose\n`,
-        locale: (locales[language] ?? locales['en-US']).replace('texts: {}', 'texts:\n  prose: Done'),
-      } } } })
-    })
+    await mockLessonDocuments(page, (language) => ({
+      lesson: `${executionLesson()}  - id: prose\n    prose: prose\n`,
+      locale: (locales[language] ?? locales['en-US']).replace('texts: {}', 'texts:\n  prose: Done'),
+    }))
 
     await page.goto('/learning/spn')
     await expect(page.getByRole('heading', { name: 'Visualizer unavailable' })).toBeVisible()
@@ -273,12 +376,10 @@ test.describe('Teaching key schedule through the generic key-expansion mode (#93
   test('renders full-state Nk=2 schedule rows with its teaching boundary, no word log or overlay', async ({ page }) => {
     test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses the synthetic Lesson fixture')
     await page.addInitScript(() => localStorage.setItem('i18nextLng', 'en-US'))
-    await page.route('**/query', async (route) => {
-      await route.fulfill({ json: { data: { lessonDocuments: {
-        lesson: aesKeyExpansionDemoDocuments.lesson,
-        locale: aesKeyExpansionDemoDocuments.locales['en-US'],
-      } } } })
-    })
+    await mockLessonDocuments(page, () => ({
+      lesson: aesKeyExpansionDemoDocuments.lesson,
+      locale: aesKeyExpansionDemoDocuments.locales['en-US'],
+    }))
 
     await page.goto('/learning/aes-key-expansion')
     await expect(page.getByRole('heading', { name: 'AES-style teaching key schedule', level: 2 })).toBeVisible()
@@ -293,88 +394,33 @@ test.describe('Teaching key schedule through the generic key-expansion mode (#93
   })
 })
 
-test.describe('Full-state AES cipher detail and key-schedule overlay (#91, #92)', () => {
-  // Full-state views hold tens of thousands of lineage lines; role queries over that DOM time out,
-  // so these tests locate elements by their accessible-name attributes and stable row ids.
-  const routeLesson = async (page: import('@playwright/test').Page, documents: ReturnType<typeof aesCipherDemoDocuments>) => {
-    await page.addInitScript(() => localStorage.setItem('i18nextLng', 'en-US'))
-    await page.route('**/query', async (route) => {
-      await route.fulfill({ json: { data: { lessonDocuments: { lesson: documents.lesson, locale: documents.locales['en-US'] } } } })
+test.describe('Shared AES presentation fixtures (#121)', () => {
+  test('opens, aligns, switches, and closes a tiny anchored schedule lane', async ({ page }) => {
+    test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses the synthetic renderer fixture')
+    await page.goto('/')
+    await page.evaluate(async () => {
+      const fixture = await import('/e2e/aes-learning-fixture.tsx')
+      const root = fixture.mountAesFixture(fixture.aesOverlayFixturePresentation)
+      ;(window as Window & { __aesFixture?: { unmount: () => void } }).__aesFixture = root
     })
-  }
-  const view = (page: import('@playwright/test').Page, title: string) => page.locator(`section[aria-label="${title}"]`)
-  const chip = (section: import('@playwright/test').Locator, round: number) => section.locator(`button[aria-label^="Round key ${round}:"]`)
-
-  test('opens the 256-bit schedule over the encryption trace with visible lineage and temporary rows', async ({ page }) => {
-    test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses the synthetic Lesson fixture')
-    test.slow()
-    await routeLesson(page, aesCipherDemoDocuments(256))
-    await page.goto('/learning/aes-256')
-    await page.getByRole('button', { name: 'Next' }).click() // enter-input -> expand-key
-    await expect(view(page, 'AES-256 key expansion')).toBeVisible({ timeout: 60_000 })
-    await page.getByRole('button', { name: 'Next' }).click() // expand-key -> encrypt
-    const section = view(page, 'AES-256 encryption')
-    await expect(section).toBeVisible({ timeout: 60_000 })
-    await expect(section.locator('tr[data-row-id="cipher-1-mix-columns"] th')).toHaveText('MixColumns 1')
-    await expect(section.locator('svg[data-lineage]')).toBeVisible()
-    expect(await section.locator('svg[data-lineage] line').count()).toBeGreaterThan(10_000)
-    const fillers = section.locator('tbody tr:not([data-row-id])')
-    await expect(fillers).toHaveCount(0)
-
-    await chip(section, 1).click()
-    const lane = section.locator('[role="region"][aria-label="Key expansion"]')
-    await expect(lane).toBeVisible({ timeout: 60_000 })
-    await expect(lane.locator('[data-lane-row="schedule-rot-word-2"]')).toContainText('RotWord 2')
-    expect(await fillers.count()).toBeGreaterThan(0)
-    await expect(section.locator('svg[data-lineage] line').first()).toBeAttached()
-    const scroll = await section.evaluate((element) => ({ client: element.clientWidth, scroll: element.scrollWidth }))
-    expect(scroll.scroll).toBeGreaterThan(scroll.client)
-
-    const lastBit = lane.locator('button[aria-label="Input, Bit 255: 1"]')
-    await lastBit.scrollIntoViewIfNeeded()
-    await lastBit.focus()
-    await page.keyboard.press('Enter')
-    await expect(lastBit).toHaveAttribute('aria-pressed', 'true', { timeout: 60_000 })
-
-    await lane.locator('button', { hasText: 'Close key expansion' }).click()
-    await expect(lane).toBeHidden({ timeout: 60_000 })
-    await expect(fillers).toHaveCount(0)
-  })
-
-  test('aligns the AES-128 schedule at round keys, moves between chips, and leaves decryption without an overlay', async ({ page }) => {
-    test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses the synthetic Lesson fixture')
-    test.slow()
-    await routeLesson(page, aesCipherDemoDocuments(128))
-    await page.goto('/learning/aes-128')
-    await page.getByRole('button', { name: 'Next' }).click() // enter-input -> expand-key
-    await expect(view(page, 'AES-128 key expansion')).toBeVisible({ timeout: 60_000 })
-    await page.getByRole('button', { name: 'Next' }).click() // expand-key -> encrypt
-    const section = view(page, 'AES-128 encryption')
-    await expect(section).toBeVisible({ timeout: 60_000 })
-    await expect(section.locator('tr[data-row-id="round-key-10"] th')).toHaveText('Round key 10')
-
-    await chip(section, 0).click()
-    const lane = section.locator('[role="region"][aria-label="Key expansion"]')
-    await expect(lane).toBeVisible({ timeout: 60_000 })
-    for (const [rowId, laneRow] of [['plaintext', 'schedule-input'], ['round-key-1', 'schedule-round-key-1'], ['round-key-10', 'schedule-round-key-10']]) {
-      const row = (await lane.locator(`tr[data-row-id="${rowId}"]`).boundingBox())!
-      const cell = (await lane.locator(`[data-lane-row="${laneRow}"]`).boundingBox())!
-      expect(Math.abs(row.y - cell.y)).toBeLessThan(2)
-    }
-    await expect(lane.locator('button[aria-label="Input, Bit 0: 0"]')).toBeVisible()
-
-    await chip(section, 1).click()
-    await expect(chip(section, 1)).toHaveAttribute('aria-pressed', 'true', { timeout: 60_000 })
-    await expect(chip(section, 0)).toHaveAttribute('aria-pressed', 'false')
+    const section = page.getByRole('region', { name: 'AES anchored overlay fixture' })
+    await section.getByRole('button', { name: 'Round key 0: 0x0011' }).click()
+    const lane = section.getByRole('region', { name: 'Key expansion' })
     await expect(lane).toBeVisible()
-    await chip(section, 1).click()
-    await expect(lane).toBeHidden({ timeout: 60_000 })
-
-    await page.getByRole('button', { name: 'Next' }).click()
-    const decryption = view(page, 'AES-128 decryption')
-    await expect(decryption).toBeVisible({ timeout: 60_000 })
-    await expect(decryption.locator('tr[data-row-id="cipher-9-inv-mix-columns"] th')).toHaveText('InvMixColumns 9')
-    await expect(decryption.locator('svg[data-lineage] line').first()).toBeAttached()
-    await expect(decryption.locator('button[aria-label^="Round key"]:not([aria-label*=", Bit "])')).toHaveCount(0)
+    await expect(lane.getByText('Schedule input')).toBeVisible()
+    const firstRow = await lane.locator('tr[data-row-id="state-0"]').boundingBox()
+    const firstLane = await lane.getByText('Schedule input').evaluate((element) => element.closest('tr')?.getBoundingClientRect().toJSON())
+    expect(Math.abs((firstRow?.y ?? 0) - (firstLane?.y ?? 0))).toBeLessThan(2)
+    const paddingLane = lane.locator('[data-lane-row="schedule-round-key-0"]')
+    await expect(paddingLane).toHaveCount(1)
+    expect(await paddingLane.evaluate((element) => element.closest('tr')?.querySelector('th')?.textContent)).toBe('')
+    await section.getByRole('button', { name: 'Round key 1: 0x2233' }).click()
+    await expect(section.getByRole('button', { name: 'Round key 1: 0x2233' })).toHaveAttribute('aria-pressed', 'true')
+    const secondRow = await lane.locator('tr[data-row-id="state-1"]').boundingBox()
+    const secondLane = await lane.locator('[data-lane-row="schedule-round-key-1"]').evaluate((element) => element.closest('tr')?.getBoundingClientRect().toJSON())
+    expect(Math.abs((secondRow?.y ?? 0) - (secondLane?.y ?? 0))).toBeLessThan(2)
+    await lane.getByRole('button', { name: 'Close key expansion' }).click()
+    await expect(lane).toBeHidden()
+    await expect(section.locator('[data-lane-row="schedule-round-key-0"]')).toHaveCount(0)
   })
 })
