@@ -117,6 +117,9 @@
 
 ## Interface language
 
+- **Localized UI Copy** — Fixed text authored by the application and shown in a
+  supported language. It excludes Lesson or Lab content, stable identifiers,
+  and user-supplied content.
 - **Application UI Icon** — An icon selected by the application to communicate a
   fixed navigation, action, status, or control-state meaning. It is distinct from
   author-selected content icons, branding, teaching notation, and graphics drawn

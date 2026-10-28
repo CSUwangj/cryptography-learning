@@ -1,0 +1,5 @@
+# Centralize localized UI copy in i18next resources
+
+For [#122](https://github.com/CSUwangj/cryptography-learning/issues/122), all fixed application-authored UI copy in the production frontend and runnable demos is sourced from per-language JSON resources loaded by the existing i18next setup. React components use `useTranslation`; pure presentation builders receive a small translation function instead of reading component-local dictionaries or a global i18n singleton. Keep `en-US` and `zh-CN` complete, use `en-US` as the fallback for unsupported languages, and keep Lesson/Lab content, stable identifiers, and user-supplied text outside the application UI resources.
+
+Component-local dictionaries were rejected because they split one interface across competing translation sources. Importing the global i18n singleton into pure builders was rejected because it hides language state and makes those builders harder to call directly. The explicit translation function keeps builders independent while sharing the same JSON resource source.
