@@ -189,23 +189,28 @@ run_frontend_playwright() {
   local report="$ARTIFACT_DIR/playwright-results.json"
   # Pin Node from frontend/.nvmrc and install from the lockfile before Playwright.
   if command -v fish >/dev/null 2>&1; then
-    fish -lc "cd '$ROOT/frontend'; nvm use; and npm ci >/dev/null; and npx playwright test --project=chromium e2e/completion-records.spec.ts --reporter=json > '$report'"
+    fish -lc "cd '$ROOT/frontend'; nvm use; and if test \"\$COMPLETION_SKIP_NPM_CI\" != 1; npm ci >/dev/null; end; and npx playwright test --project=chromium e2e/completion-records.spec.ts --reporter=json > '$report'"
     return
   fi
   (
     cd "$ROOT/frontend"
-    export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
-    if [[ -s "$NVM_DIR/nvm.sh" ]]; then
-      # shellcheck source=/dev/null
-      . "$NVM_DIR/nvm.sh"
-      nvm use
-    elif command -v nvm >/dev/null 2>&1; then
-      nvm use
-    else
-      echo "frontend/.nvmrc pin required: install nvm (bash) or fish+nvm.fish" >&2
-      exit 1
+    # setup-node provides the pinned runtime on PATH, outside nvm's install tree.
+    if ! command -v node >/dev/null 2>&1 || [[ "$(node --version)" != "v$(< .nvmrc)" ]]; then
+      export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+      if [[ -s "$NVM_DIR/nvm.sh" ]]; then
+        # shellcheck source=/dev/null
+        . "$NVM_DIR/nvm.sh"
+        nvm use
+      elif command -v nvm >/dev/null 2>&1; then
+        nvm use
+      else
+        echo "frontend/.nvmrc pin required: install nvm (bash) or fish+nvm.fish" >&2
+        exit 1
+      fi
     fi
-    npm ci
+    if [[ "${COMPLETION_SKIP_NPM_CI:-0}" != 1 ]]; then
+      npm ci
+    fi
     npx playwright test --project=chromium e2e/completion-records.spec.ts --reporter=json > "$report"
   )
 }

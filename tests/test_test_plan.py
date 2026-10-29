@@ -256,6 +256,24 @@ class TestPlanTest(unittest.TestCase):
             {"browser_aes-cipher-demo", "browser_visualizers"},
         )
 
+    def test_identical_visualizer_browser_commands_run_once(self):
+        plan = test_plan.plan_paths([
+            "frontend/e2e/aes-learning-fixture.tsx",
+            "frontend/src/visualizers/index.ts",
+        ])
+        visualizer_command = [
+            "npx", "playwright", "test", "--project=chromium", "e2e/visualizers.spec.ts",
+        ]
+        visualizer_checks = [item for item in plan["checks"] if item["argv"] == visualizer_command]
+        self.assertEqual(len(visualizer_checks), 1)
+        self.assertEqual(
+            set(visualizer_checks[0]["reasons"]),
+            {
+                "AES fixture helper has overlay browser consumer",
+                "real lesson runtime or visualizer behavior changed",
+            },
+        )
+
     def test_dependency_edges_and_toolchain_fallbacks(self):
         cases = {
             "backend/apps/completion-relay/src/lib.rs": {"relay", "relay_fmt", "relay_clippy"},

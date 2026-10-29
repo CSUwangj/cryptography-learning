@@ -383,13 +383,21 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
   useLayoutEffect(() => {
     const container = lineageContainer.current
     if (!container) return
-    const bounds = container.getBoundingClientRect()
-    const locations = new Map<string, LineageLocation>()
-    for (const [id, target] of targets.current) {
-      const targetBounds = target.getBoundingClientRect()
-      locations.set(id, { x: targetBounds.left - bounds.left + targetBounds.width / 2, y: targetBounds.top - bounds.top + targetBounds.height / 2 })
+    const measure = (): void => {
+      const bounds = container.getBoundingClientRect()
+      const locations = new Map<string, LineageLocation>()
+      for (const [id, target] of targets.current) {
+        const targetBounds = target.getBoundingClientRect()
+        locations.set(id, { x: targetBounds.left - bounds.left + targetBounds.width / 2, y: targetBounds.top - bounds.top + targetBounds.height / 2 })
+      }
+      setLineage((previous) => ({ measure: previous.measure + 1, presentation, width: bounds.width, height: bounds.height, locations }))
     }
-    setLineage((previous) => ({ measure: previous.measure + 1, presentation, width: bounds.width, height: bounds.height, locations }))
+    measure()
+    // Font loading can change row metrics after the first layout.
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(measure)
+    observer.observe(container)
+    return () => observer.disconnect()
   }, [presentation, laneOpen])
 
   return <section aria-label={presentation.title} style={{ overflowX: 'auto' }}>

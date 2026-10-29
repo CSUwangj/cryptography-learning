@@ -1,5 +1,35 @@
 import { expect, test } from '@playwright/test'
 
+for (const theme of ['light', 'dark']) {
+  test(`keeps lineage aligned after row layout changes in ${theme} theme`, async ({ page }) => {
+    test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses the synthetic renderer fixture')
+    await page.goto('/')
+    await page.evaluate(async (theme) => {
+      document.body.classList.toggle('bp6-dark', theme === 'dark')
+      const fixture = await import('/e2e/aes-learning-fixture.tsx')
+      fixture.mountAesFixture(fixture.aesFixturePresentation(128))
+    }, theme)
+    const region = page.getByRole('region', { name: 'AES-128 fixture' })
+    await expect(region.locator('svg[data-lineage] line')).toHaveCount(6)
+    // Reproduce a font changing row metrics after the initial layout measurement.
+    await page.addStyleTag({ content: 'section[aria-label="AES-128 fixture"] button { line-height: 30px; }' })
+    await expect.poll(() => region.evaluate((root) => {
+      const svg = root.querySelector('svg[data-lineage]')!
+      const bounds = svg.getBoundingClientRect()
+      const edges = [['input', 0, 'mixed', 0], ['input', 1, 'mixed', 0], ['mixed', 0, 'output', 0], ['input', 2, 'unrelated', 2], ['input', 3, 'mixed', 1], ['input', 3, 'output', 1]] as const
+      const point = (row: string, bit: number) => {
+        const box = root.querySelectorAll(`tr[data-row-id="${row}"] button`)[bit].getBoundingClientRect()
+        return [box.left - bounds.left + box.width / 2, box.top - bounds.top + box.height / 2]
+      }
+      return [...svg.querySelectorAll('line')].flatMap((line, index) => {
+        const [fromRow, fromBit, toRow, toBit] = edges[index]
+        const expected = [...point(fromRow, fromBit), ...point(toRow, toBit)]
+        return ['x1', 'y1', 'x2', 'y2'].map((attribute, coordinate) => Math.abs(Number(line.getAttribute(attribute)) - expected[coordinate]))
+      })
+    })).toEqual(Array(24).fill(expect.closeTo(0, 0)))
+  })
+}
+
 test('renders independently specified AES-width rows with scrollable, aligned lineage', async ({ page }) => {
   test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses the synthetic renderer fixture')
   await page.setViewportSize({ width: 900, height: 700 })
@@ -44,30 +74,29 @@ test('renders independently specified AES-width rows with scrollable, aligned li
     const geometry = await region.evaluate((root) => {
       const container = root.querySelector('div[style*="position: relative"]')!
       const bounds = container.getBoundingClientRect()
+      const svg = root.querySelector('svg[data-lineage]')!
+      const svgBounds = svg.getBoundingClientRect()
       const rows = ['input', 'mixed', 'output', 'unrelated']
       const columns = rows.map((id) => [...root.querySelectorAll<HTMLButtonElement>(`tr[data-row-id="${id}"] button`)]
         .map((button) => button.getBoundingClientRect().left - bounds.left + button.getBoundingClientRect().width / 2))
-      const svg = root.querySelector('svg[data-lineage]')!
       const lines = [...svg.querySelectorAll('line')].map((line) => [
         Number(line.getAttribute('x1')), Number(line.getAttribute('y1')),
         Number(line.getAttribute('x2')), Number(line.getAttribute('y2')),
       ])
-      return { columns, lines }
+      const expectedEdges = [['input', 0, 'mixed', 0], ['input', 1, 'mixed', 0], ['mixed', 0, 'output', 0], ['input', 2, 'unrelated', 2], ['input', 3, 'mixed', 1], ['input', 3, 'output', 1]] as const
+      const point = (row: string, bit: number) => {
+        const button = root.querySelectorAll<HTMLButtonElement>(`tr[data-row-id="${row}"] button`)[bit]
+        const box = button.getBoundingClientRect()
+        return [box.left - svgBounds.left + box.width / 2, box.top - svgBounds.top + box.height / 2]
+      }
+      const expectedLines = expectedEdges.map(([fromRow, fromBit, toRow, toBit]) => [
+        ...point(fromRow, fromBit),
+        ...point(toRow, toBit),
+      ])
+      return { columns, lines, expectedLines }
     })
     for (const columns of geometry.columns.slice(1)) expect(columns).toEqual(geometry.columns[0])
-
-    const endpoint = async (row: string, bit: number) => region.locator(`tr[data-row-id="${row}"] button`).nth(bit).boundingBox()
-    const expectedEdges = [['input', 0, 'mixed', 0], ['input', 1, 'mixed', 0], ['mixed', 0, 'output', 0], ['input', 2, 'unrelated', 2], ['input', 3, 'mixed', 1], ['input', 3, 'output', 1]] as const
-    for (const [index, [fromRow, fromBit, toRow, toBit]] of expectedEdges.entries()) {
-      const from = await endpoint(fromRow, fromBit)
-      const to = await endpoint(toRow, toBit)
-      expect(geometry.lines[index]).toEqual([
-        expect.closeTo((from?.x ?? 0) - ((await region.locator('svg').boundingBox())?.x ?? 0) + (from?.width ?? 0) / 2, 0),
-        expect.closeTo((from?.y ?? 0) - ((await region.locator('svg').boundingBox())?.y ?? 0) + (from?.height ?? 0) / 2, 0),
-        expect.closeTo((to?.x ?? 0) - ((await region.locator('svg').boundingBox())?.x ?? 0) + (to?.width ?? 0) / 2, 0),
-        expect.closeTo((to?.y ?? 0) - ((await region.locator('svg').boundingBox())?.y ?? 0) + (to?.height ?? 0) / 2, 0),
-      ])
-    }
+    expect(geometry.lines).toEqual(geometry.expectedLines.map((line) => line.map((value) => expect.closeTo(value, 0))))
 
     const selected = region.locator(`tr[data-row-id="input"] button`).nth(0)
     await selected.focus()

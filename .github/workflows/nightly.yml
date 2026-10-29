@@ -6,35 +6,106 @@ on:
   workflow_dispatch:
 
 jobs:
-  full:
-    name: Full repository verification
+  tooling:
+    name: Repository tooling
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.repository.default_branch }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
-      - name: Repository tooling
-        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
+      - name: Record source revision and timing
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          start=$(date +%s)
+          python3 -m unittest discover -s tests -p 'test_*.py' -v
+          end=$(date +%s)
+          {
+            echo "source_revision=$(git rev-parse HEAD)"
+            echo "started_at=$(date -u -d "@$start" +%FT%TZ)"
+            echo "finished_at=$(date -u -d "@$end" +%FT%TZ)"
+            echo "duration_seconds=$((end - start))"
+          } | tee tooling-timing.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nightly-tooling-${{ github.sha }}
+          path: tooling-timing.txt
+          if-no-files-found: ignore
+
+  backend:
+    name: Backend verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.97.0
           components: rustfmt, clippy
-      - name: Backend format, Clippy, tests and release build
+      - uses: actions/cache@v4
+        id: rust-cache
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            backend/target
+          key: nightly-rust-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'backend/Cargo.lock') }}
+          restore-keys: nightly-rust-${{ runner.os }}-
+      - name: Backend checks with timing
         working-directory: backend
         run: |
+          test "$(git -C .. rev-parse HEAD)" = "$GITHUB_SHA"
+          echo "rust_cache_hit=${{ steps.rust-cache.outputs.cache-hit }}" | tee ../backend-timing.txt
+          start=$(date +%s)
           cargo fmt --all -- --check
           cargo clippy --locked --all-targets -- -D warnings
           cargo test --locked -- --nocapture
           cargo build --locked --release
+          end=$(date +%s)
+          {
+            echo "source_revision=$(git -C .. rev-parse HEAD)"
+            echo "started_at=$(date -u -d "@$start" +%FT%TZ)"
+            echo "finished_at=$(date -u -d "@$end" +%FT%TZ)"
+            echo "duration_seconds=$((end - start))"
+          } >> ../backend-timing.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nightly-backend-${{ github.sha }}
+          path: backend-timing.txt
+          if-no-files-found: ignore
+
+  frontend:
+    name: Frontend verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version-file: frontend/.nvmrc
-      - name: Frontend install, codegen, typecheck, tests and build
+      - uses: actions/cache@v4
+        id: npm-cache
+        with:
+          path: ~/.npm
+          key: nightly-npm-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: nightly-npm-${{ runner.os }}-
+      - name: Frontend checks with timing
         working-directory: frontend
         env:
           VITE_FEEDBACK_URL: https://github.com/CSUAuroraLab/ISSUE-COLLECTOR/issues/new/choose
         run: |
+          test "$(git -C .. rev-parse HEAD)" = "$GITHUB_SHA"
+          echo "npm_cache_hit=${{ steps.npm-cache.outputs.cache-hit }}" | tee ../frontend-timing.txt
+          start=$(date +%s)
           npm ci
           npm run gen
           if [ -n "$(git status --porcelain -- .)" ]; then
@@ -45,34 +116,163 @@ jobs:
           npm run typecheck
           npm test -- --maxWorkers=1
           npm run build
-      - name: Install Playwright browsers
-        working-directory: frontend
-        run: npx playwright install --with-deps chromium firefox webkit
-      - name: Vite-only browser acceptance
+          end=$(date +%s)
+          {
+            echo "source_revision=$(git -C .. rev-parse HEAD)"
+            echo "started_at=$(date -u -d "@$start" +%FT%TZ)"
+            echo "finished_at=$(date -u -d "@$end" +%FT%TZ)"
+            echo "duration_seconds=$((end - start))"
+          } >> ../frontend-timing.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nightly-frontend-${{ github.sha }}
+          path: frontend-timing.txt
+          if-no-files-found: ignore
+
+  vite-acceptance:
+    name: Vite browser acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+      - uses: actions/cache@v4
+        id: npm-cache
+        with:
+          path: ~/.npm
+          key: nightly-vite-npm-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: nightly-vite-npm-${{ runner.os }}-
+      - name: Install browser dependencies
         working-directory: frontend
         run: |
+          test "$(git -C .. rev-parse HEAD)" = "$GITHUB_SHA"
+          npm ci
+          npx playwright install --with-deps chromium firefox webkit
+      - name: Run Vite browser suites with timing
+        working-directory: frontend
+        run: |
+          start=$(date +%s)
           npx playwright test e2e/crypto-graph-worker.spec.ts e2e/visualizers.spec.ts e2e/aes-cipher-demo.spec.ts e2e/learning.spec.ts e2e/completion-records-layout.spec.ts e2e/home-layout.spec.ts e2e/practice-navigation.spec.ts
-      - name: Build web and completion relay images
+          end=$(date +%s)
+          {
+            echo "source_revision=$(git -C .. rev-parse HEAD)"
+            echo "npm_cache_hit=${{ steps.npm-cache.outputs.cache-hit }}"
+            echo "started_at=$(date -u -d "@$start" +%FT%TZ)"
+            echo "finished_at=$(date -u -d "@$end" +%FT%TZ)"
+            echo "duration_seconds=$((end - start))"
+          } | tee vite-timing.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nightly-vite-${{ github.sha }}
+          path: |
+            frontend/vite-timing.txt
+            frontend/test-results
+          if-no-files-found: ignore
+
+  image-acceptance:
+    name: Immutable image and relay acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: docker/setup-buildx-action@v3
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+      - uses: actions/cache@v4
+        id: npm-cache
+        with:
+          path: ~/.npm
+          key: nightly-image-npm-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: nightly-image-npm-${{ runner.os }}-
+      - uses: actions/cache@v4
+        id: buildkit-cache
+        with:
+          path: |
+            /tmp/.buildx-cache-web
+            /tmp/.buildx-cache-relay
+          key: nightly-buildkit-${{ runner.os }}-${{ github.sha }}
+          restore-keys: nightly-buildkit-${{ runner.os }}-
+      - name: Install acceptance dependencies
+        working-directory: frontend
         run: |
-          docker build --tag cryptography-learning-web-tier:nightly .
-          docker build --target completion-relay --tag cryptography-learning-completion-relay:nightly .
-      - name: Record SQLite runtime version from nightly image
+          test "$(git -C .. rev-parse HEAD)" = "$GITHUB_SHA"
+          npm ci
+          npx playwright install --with-deps chromium firefox webkit
+      - name: Build exact source revision images
+        id: image-build
+        run: |
+          rm -rf /tmp/.buildx-cache-web-next /tmp/.buildx-cache-relay-next
+          mkdir -p /tmp/.buildx-cache-web /tmp/.buildx-cache-relay
+          web_cache_from=()
+          if [[ -f /tmp/.buildx-cache-web/index.json ]]; then
+            web_cache_from+=(--cache-from type=local,src=/tmp/.buildx-cache-web)
+          fi
+          docker buildx build --load --build-arg BUILD_COMMIT="$GITHUB_SHA" "${web_cache_from[@]}" --cache-to type=local,dest=/tmp/.buildx-cache-web-next,mode=max --tag cryptography-learning-web-tier:nightly .
+          rm -rf /tmp/.buildx-cache-web
+          mv /tmp/.buildx-cache-web-next /tmp/.buildx-cache-web
+          relay_cache_from=(--cache-from type=local,src=/tmp/.buildx-cache-web)
+          if [[ -f /tmp/.buildx-cache-relay/index.json ]]; then
+            relay_cache_from+=(--cache-from type=local,src=/tmp/.buildx-cache-relay)
+          fi
+          docker buildx build --load --build-arg BUILD_COMMIT="$GITHUB_SHA" "${relay_cache_from[@]}" --cache-to type=local,dest=/tmp/.buildx-cache-relay-next,mode=max --target completion-relay --tag cryptography-learning-completion-relay:nightly .
+          rm -rf /tmp/.buildx-cache-relay
+          mv /tmp/.buildx-cache-relay-next /tmp/.buildx-cache-relay
+          docker image inspect cryptography-learning-web-tier:nightly --format 'web_image={{.Id}}' | tee image-evidence.txt
+          docker image inspect cryptography-learning-completion-relay:nightly --format 'relay_image={{.Id}}' | tee -a image-evidence.txt
+          echo "source_revision=$(git rev-parse HEAD)" | tee -a image-evidence.txt
+          echo "buildkit_cache_hit=${{ steps.buildkit-cache.outputs.cache-hit }}" | tee -a image-evidence.txt
+      - name: Record SQLite runtime version
         run: |
           output="$(docker run --rm --entrypoint /app/backend cryptography-learning-web-tier:nightly --static /www --print-sqlite-version)"
           case "$output" in sqlite_version=*) version="${output#sqlite_version=}" ;; *) echo "Unexpected SQLite diagnostic output: $output" >&2; exit 1 ;; esac
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           test "$(printf '%s\n%s\n' 3.51.3 "$version" | sort -V | head -n1)" = 3.51.3
-          echo "$output"
+          echo "$output" | tee -a image-evidence.txt
       - name: Served-image acceptance on all browsers
         run: ./acceptance/run.sh cryptography-learning-web-tier:nightly --mode release
       - name: Relay-to-completion-board acceptance
+        if: ${{ always() && steps.image-build.outcome == 'success' }}
         run: ./acceptance/completion/run.sh cryptography-learning-web-tier:nightly cryptography-learning-completion-relay:nightly
+        env:
+          COMPLETION_SKIP_NPM_CI: '1'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: nightly-browser-diagnostics-${{ github.sha }}
-          path: frontend/test-results
+          name: nightly-image-${{ github.sha }}
+          path: |
+            image-evidence.txt
+            frontend/test-results
           if-no-files-found: ignore
+
+  aggregate:
+    name: Nightly / aggregate
+    if: always()
+    needs: [tooling, backend, frontend, vite-acceptance, image-acceptance]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every nightly stage
+        env:
+          TOOLING_RESULT: ${{ needs.tooling.result }}
+          BACKEND_RESULT: ${{ needs.backend.result }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+          VITE_RESULT: ${{ needs.vite-acceptance.result }}
+          IMAGE_RESULT: ${{ needs.image-acceptance.result }}
+        run: |
+          for result in "$TOOLING_RESULT" "$BACKEND_RESULT" "$FRONTEND_RESULT" "$VITE_RESULT" "$IMAGE_RESULT"; do
+            test "$result" = success || { echo "Required nightly stage result: $result" >&2; exit 1; }
+          done
 
   macos14-chrome-cmd-v:
     name: macOS 14 Chrome Cmd+V compatibility (advisory)
@@ -81,7 +281,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.repository.default_branch }}
+          ref: ${{ github.sha }}
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version-file: frontend/.nvmrc

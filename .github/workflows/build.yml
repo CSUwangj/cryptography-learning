@@ -9,6 +9,7 @@ jobs:
   plan:
     name: Plan changed-path checks
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       groups: ${{ steps.plan.outputs.groups }}
       encoded: ${{ steps.plan.outputs.encoded }}
@@ -56,6 +57,7 @@ jobs:
     needs: plan
     if: ${{ needs.plan.outputs.kind == 'checks' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.groups) }}
@@ -68,29 +70,71 @@ jobs:
         with:
           toolchain: 1.97.0
           components: rustfmt, clippy
+      - uses: actions/cache@v4
+        if: ${{ matrix.group == 'backend' }}
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            backend/target
+          key: rust-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'backend/Cargo.lock') }}
       - uses: actions/setup-node@v4
         if: ${{ matrix.group == 'frontend' || matrix.browser }}
         with:
           node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
       - name: Run frontend install check once
         if: ${{ matrix.group == 'frontend' && matrix.has_install }}
         env:
           PLAN: ${{ needs.plan.outputs.encoded }}
         run: python3 scripts/test_plan.py run --plan "$PLAN" --id frontend_install
       - name: Install frontend dependencies
-        if: ${{ matrix.browser || (matrix.group == 'frontend' && !matrix.has_install) }}
+        if: ${{ !matrix.has_install && (matrix.browser || matrix.group == 'frontend') }}
         working-directory: frontend
         run: npm ci
       - name: Install Chromium for browser checks
         if: ${{ matrix.browser }}
         working-directory: frontend
         run: npx playwright install --with-deps chromium
+      - uses: docker/setup-buildx-action@v3
+        if: ${{ matrix.group == 'image' }}
+      - uses: actions/cache@v4
+        id: buildkit-cache
+        if: ${{ matrix.group == 'image' }}
+        with:
+          path: |
+            /tmp/.buildx-cache-web
+            /tmp/.buildx-cache-relay
+          key: buildkit-${{ runner.os }}-${{ github.sha }}
+          restore-keys: buildkit-${{ runner.os }}-
+      - name: Record BuildKit cache state
+        if: ${{ matrix.group == 'image' }}
+        run: 'echo "BuildKit cache hit: ${{ steps.buildkit-cache.outputs.cache-hit }}"'
       - name: Build web-tier image once
         if: ${{ matrix.group == 'image' }}
-        run: docker build --tag cryptography-learning-web-tier:ci .
+        run: |
+          rm -rf /tmp/.buildx-cache-web-next
+          mkdir -p /tmp/.buildx-cache-web
+          cache_from=()
+          if [[ -f /tmp/.buildx-cache-web/index.json ]]; then
+            cache_from+=(--cache-from type=local,src=/tmp/.buildx-cache-web)
+          fi
+          docker buildx build --load "${cache_from[@]}" --cache-to type=local,dest=/tmp/.buildx-cache-web-next,mode=max --tag cryptography-learning-web-tier:ci .
+          rm -rf /tmp/.buildx-cache-web
+          mv /tmp/.buildx-cache-web-next /tmp/.buildx-cache-web
       - name: Build completion relay image once
         if: ${{ matrix.group == 'image' && contains(matrix.checks, 'completion_acceptance') }}
-        run: docker build --target completion-relay --tag cryptography-learning-completion-relay:ci .
+        run: |
+          rm -rf /tmp/.buildx-cache-relay-next
+          mkdir -p /tmp/.buildx-cache-relay
+          cache_from=(--cache-from type=local,src=/tmp/.buildx-cache-web)
+          if [[ -f /tmp/.buildx-cache-relay/index.json ]]; then
+            cache_from+=(--cache-from type=local,src=/tmp/.buildx-cache-relay)
+          fi
+          docker buildx build --load "${cache_from[@]}" --cache-to type=local,dest=/tmp/.buildx-cache-relay-next,mode=max --target completion-relay --tag cryptography-learning-completion-relay:ci .
+          rm -rf /tmp/.buildx-cache-relay
+          mv /tmp/.buildx-cache-relay-next /tmp/.buildx-cache-relay
       - name: Run grouped planned checks
         env:
           PLAN: ${{ needs.plan.outputs.encoded }}
@@ -100,7 +144,11 @@ jobs:
           status=0
           for check_id in $CHECK_IDS; do
             [[ "$check_id" == frontend_install ]] && continue
-            python3 scripts/test_plan.py run --plan "$PLAN" --id "$check_id" || status=1
+            if [[ "$check_id" == completion_acceptance ]]; then
+              COMPLETION_SKIP_NPM_CI=1 python3 scripts/test_plan.py run --plan "$PLAN" --id "$check_id" || status=1
+            else
+              python3 scripts/test_plan.py run --plan "$PLAN" --id "$check_id" || status=1
+            fi
           done
           exit "$status"
 
@@ -109,6 +157,7 @@ jobs:
     if: always()
     needs: [plan, checks]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Require every selected check group
         env:

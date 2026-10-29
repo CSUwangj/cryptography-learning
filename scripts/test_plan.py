@@ -58,6 +58,20 @@ def plan_paths(paths, repo=ROOT):
     omissions = []
 
     def add(identifier, cwd, argv, reason):
+        browser_check = identifier == "demo_browser" or identifier.startswith("browser_")
+        if browser_check:
+            signature = (cwd, tuple(argv), tuple(sorted(check(identifier, cwd, argv, reason).get("env", {}).items())))
+            for existing_id, existing in checks.items():
+                existing_signature = (
+                    existing["cwd"],
+                    tuple(existing["argv"]),
+                    tuple(sorted(existing.get("env", {}).items())),
+                )
+                if (existing_id != identifier and existing_id.startswith("browser_")) or existing_id == "demo_browser":
+                    if existing_signature == signature:
+                        if reason not in existing["reasons"]:
+                            existing["reasons"].append(reason)
+                        return
         item = checks.get(identifier)
         if item is None:
             item = checks[identifier] = check(identifier, cwd, argv, reason)
