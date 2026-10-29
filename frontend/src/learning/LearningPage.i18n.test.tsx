@@ -9,6 +9,7 @@ import { of } from 'rxjs'
 import i18n from '../app/i18n'
 import { LearningPage } from './index'
 import { compileLesson, createBrowserLessonSession } from '../lesson_runtime'
+import type { Diagnostic } from '../crypto_graph'
 
 const lesson = `version: 1
 id: locale-split
@@ -25,10 +26,76 @@ steps:
       - {input: plaintext, changed: changed_plaintext, prompt: source}
 `
 const content = 'title: Authored English Lesson\nsummary: Authored summary.\ntexts: {intro: Authored English prose., source: Authored plaintext}\n'
+const previousWorker = globalThis.Worker
 
 afterEach(async () => {
   cleanup()
+  globalThis.Worker = previousWorker
   await i18n.changeLanguage('en-US')
+})
+
+it.each([
+  ['en-US', 'Input does not match its declared type and encoding.', 'Operation execution failed.', 'Input does not match its declared type.'],
+  ['zh-CN', '输入不符合声明的类型和编码。', '操作执行失败。', '输入不符合声明的类型和编码。'],
+  ['fr-FR', 'Input does not match its declared type and encoding.', 'Operation execution failed.', 'Input does not match its declared type.'],
+])('resolves diagnostic and unrelated runtime messages through native resources in %s', (language, invalidInput, operationFailed, inputType) => {
+  const t = i18n.getFixedT(language, 'translations')
+  expect(t('learning.runtime.lesson.invalid-input')).toBe(invalidInput)
+  expect(t('learning.runtime.operation-failed')).toBe(operationFailed)
+  expect(t('learning.runtime.inputType')).toBe(inputType)
+})
+
+it.each(['lesson-invalid-input', 'inputType'])('retains unknown %s diagnostics and source metadata through mounted language changes', async (code) => {
+  const unknown: Diagnostic = {
+    code, message: 'External $t(learning.policy.preserve) {{unchanged}} <message>&', path: 'external.path',
+    span: { file: 'external.yaml', line: 7, column: 11 }, details: { request: 17, retained: true },
+  }
+  const original = structuredClone(unknown)
+  class WorkerStub {
+    private listener?: (event: MessageEvent<unknown>) => void
+    addEventListener(type: string, listener: (event: MessageEvent<unknown>) => void): void {
+      if (type === 'message') this.listener = listener
+    }
+    postMessage(request: { requestId: string }): void {
+      queueMicrotask(() => this.listener?.({ data: { requestId: request.requestId, kind: 'diagnostic', diagnostics: [unknown] } } as MessageEvent<unknown>))
+    }
+    terminate(): void {}
+  }
+  globalThis.Worker = WorkerStub as unknown as typeof Worker
+  const executionLesson = lesson.replace('graphs: {}', `graphs:
+  source:
+    nodes:
+      - {id: value, operation: core.source@1, parameters: {type: {family: bits, size: 8}}}
+    outputs: [{node: value, port: value}]`)
+    .split('    bit_flip:')[0]
+    .replace('    prose: intro', '    prose: intro\n    execute: {graph: source, bindings: {value.value: {input: plaintext}}}')
+  const documents = { lesson: executionLesson, locales: { 'en-US': content } }
+  const created = createBrowserLessonSession(documents, 'en-US', i18n.getFixedT('en-US', 'translations'))
+  if (!created.ok) throw new Error(JSON.stringify(created.diagnostics))
+  try {
+    await created.value.enter()
+    expect(created.value.state().executionDiagnostics.experiment).toEqual(original)
+    const client = new ApolloClient({
+      cache: new InMemoryCache(),
+      link: new ApolloLink((operation) => of({ data: operation.operationName === 'LearningCatalog'
+        ? { learning: { lessonCategories: [] } }
+        : { lessonDocuments: { lesson: executionLesson, locale: content } },
+      })),
+    })
+    render(<ApolloProvider client={client}><MemoryRouter initialEntries={['/learning/locale-split']}><OverlaysProvider>
+      <LearningPage />
+    </OverlaysProvider></MemoryRouter></ApolloProvider>)
+    for (const [language, location] of [['en-US', 'at'], ['zh-CN', '位置'], ['fr-FR', 'at']]) {
+      await act(async () => { await i18n.changeLanguage(language) })
+      const row = await screen.findByText((text) => text.startsWith(`${code}:`))
+      expect(row.textContent).toBe(`${code}: ${original.message} (external.path) ${location} external.yaml:7:11`)
+      expect(created.value.updateDocuments(documents, language, i18n.getFixedT(language, 'translations')).ok).toBe(true)
+      expect(created.value.state().executionDiagnostics.experiment).toEqual(original)
+    }
+    expect(unknown).toEqual(original)
+  } finally {
+    created.value.dispose()
+  }
 })
 
 it('localizes diagnostic location copy while preserving source coordinates', async () => {

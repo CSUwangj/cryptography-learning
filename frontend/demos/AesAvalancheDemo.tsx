@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import React, { useEffect, useState } from 'react'
 import type { AvalancheComparison, Diagnostic } from '../src/crypto_graph'
-import { lessonDiagnosticKeys, createBrowserLessonSession } from '../src/lesson_runtime'
+import { lessonDiagnosticCodes, createBrowserLessonSession } from '../src/lesson_runtime'
 import { RenderHost, visualizerCatalog } from '../src/visualizers'
 import { aesCipherComparisonDocuments } from './aesCipherComparisonLesson'
 
@@ -59,8 +59,8 @@ export const AesAvalancheDemo: React.FC = () => {
       </select>
     </label>
     {failure && <p role="alert">{failure.diagnostic
-      ? Object.hasOwn(lessonDiagnosticKeys, failure.diagnostic.code)
-        ? runtimeT(lessonDiagnosticKeys[failure.diagnostic.code], { defaultValue: failure.diagnostic.message })
+      ? lessonDiagnosticCodes.has(failure.diagnostic.code)
+        ? runtimeT(`learning.runtime.${failure.diagnostic.code}`, { defaultValue: failure.diagnostic.message })
         : failure.diagnostic.message
       : t('failure')}</p>}
     {!failure && !result && <p role="status">{t('running')}</p>}

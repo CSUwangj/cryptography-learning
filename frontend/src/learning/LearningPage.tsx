@@ -10,7 +10,7 @@ import { NotFound } from 'ui'
 import {
   createBrowserLessonSession,
   lessonDefaultLocale,
-  lessonDiagnosticKeys,
+  lessonDiagnosticCodes,
   rewriteLessonAssets,
   type BrowserLessonSession,
   type LessonDocuments as RuntimeLessonDocuments,
@@ -101,7 +101,7 @@ export const inputText = (value: CryptoValue | string, encoding: string): string
           : encoding === 'hex-block' ? hexValue(value).slice(2) : hexValue(value)
 
 const diagnosticText = (value: Diagnostic, t: TFunction<'translations'>): string =>
-  `${value.code}: ${Object.hasOwn(lessonDiagnosticKeys, value.code) ? t(lessonDiagnosticKeys[value.code], { defaultValue: value.message }) : value.message}${value.path ? ` (${value.path})` : ''}${value.span ? ` ${t('learning.diagnosticLocation', { file: value.span.file, line: value.span.line, column: value.span.column })}` : ''}`
+  `${value.code}: ${lessonDiagnosticCodes.has(value.code) ? t(`learning.runtime.${value.code}`, { defaultValue: value.message }) : value.message}${value.path ? ` (${value.path})` : ''}${value.span ? ` ${t('learning.diagnosticLocation', { file: value.span.file, line: value.span.line, column: value.span.column })}` : ''}`
 
 const classicalCipherData = (
   step: { readonly execute?: { readonly graph: string; readonly bindings: Readonly<Record<string, LessonValueReference>> }; readonly visualizer?: { readonly id: string; readonly bindings?: Readonly<Record<string, unknown>> } },
@@ -356,8 +356,8 @@ const LessonView: React.FC = () => {
               inputMode={input.type.family === 'integer' ? 'numeric' : undefined}
               onChange={(event) => setInput(event.target.value)}
             />}
-        {state.inputDiagnostics[input.input] && <Callout intent="danger">{Object.hasOwn(lessonDiagnosticKeys, state.inputDiagnostics[input.input].code)
-          ? t(lessonDiagnosticKeys[state.inputDiagnostics[input.input].code], { defaultValue: state.inputDiagnostics[input.input].message })
+        {state.inputDiagnostics[input.input] && <Callout intent="danger">{lessonDiagnosticCodes.has(state.inputDiagnostics[input.input].code)
+          ? t(`learning.runtime.${state.inputDiagnostics[input.input].code}`, { defaultValue: state.inputDiagnostics[input.input].message })
           : state.inputDiagnostics[input.input].message}</Callout>}
       </label>
     })}

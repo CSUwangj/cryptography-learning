@@ -9,15 +9,22 @@ import { teachingSpnPresentation } from './TeachingSpn'
 
 afterEach(async () => { await i18n.changeLanguage('en-US') })
 
-it('preserves unknown runtime path tokens, including object property names', () => {
+it.each([
+  ['en-US', '.plaintext/ciphertext.output/repeat.round/key.key-mix/substitute.permute/17..constructor/__proto__.toString/runtime.custom/'],
+  ['zh-CN', '.明文/密文.输出/重复.轮/密钥.密钥混合/替换.置换/17..constructor/__proto__.toString/runtime.custom/'],
+  ['fr-FR', '.plaintext/ciphertext.output/repeat.round/key.key-mix/substitute.permute/17..constructor/__proto__.toString/runtime.custom/'],
+])('translates only known trace tokens in %s while retaining separators, numbers and unknown names', (language, expected) => {
   const execution: WorkerExecutionSnapshot = {
     outputs: {},
-    trace: [{ path: 'constructor/runtime.custom.path', level: 'detail', value: bits(8, new Uint8Array([18])) }],
-    traceStatus: { truncated: false, retained: 1, dropped: 0 },
+    trace: ['.plaintext/ciphertext.output/repeat.round/key.key-mix/substitute.permute/17..constructor/__proto__.toString/runtime.custom/', '']
+      .map((path) => ({ path, level: 'detail', value: bits(8, new Uint8Array([18])) })),
+    traceStatus: { truncated: false, retained: 2, dropped: 0 },
   }
-  const presentation = teachingSpnPresentation(execution, i18n.getFixedT('zh-CN', 'visualizers'), 'runtime-path')
-  expect(presentation.sections[0].rows[0].label).toBe('constructor/runtime.custom.path')
-  expect(presentation.sections[0].rows[0].cells[1].value).toBe('constructor/runtime.custom.path: 0x12')
+  const presentation = teachingSpnPresentation(execution, i18n.getFixedT(language, 'visualizers'), 'runtime-path')
+  expect(presentation.sections[0].rows[0].label).toBe(expected)
+  expect(presentation.sections[0].rows[0].cells[1].value).toBe(`${expected}: 0x12`)
+  expect(presentation.sections[0].rows[1].label).toBe('')
+  expect(presentation.sections[0].rows[1].cells[1].value).toBe(': 0x12')
 })
 
 it('preserves unknown diagnostic content instead of relabeling it as a transposition warning', () => {

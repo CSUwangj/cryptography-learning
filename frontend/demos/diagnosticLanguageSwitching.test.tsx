@@ -95,6 +95,33 @@ it.each([
 })
 
 it.each([
+  { name: 'AES', Demo: AesCipherDemo },
+  { name: 'SPN', Demo: SpnDemo },
+  { name: 'AES avalanche', Demo: AesAvalancheDemo },
+  { name: 'key expansion', Demo: KeyExpansionPrototype },
+])('keeps unknown $name codes and raw nesting/interpolation text verbatim across languages', async ({ Demo }) => {
+  globalThis.Worker = WorkerStub as unknown as typeof Worker
+  for (const code of ['lesson-invalid-input', 'inputType', 'lesson', 'constructor', '__proto__', 'toString']) {
+    const unknown: Diagnostic = {
+      code, message: 'External $t(learning.policy.preserve) {{unchanged}} <message>&', path: 'external.path',
+      span: { file: 'external.yaml', line: 7, column: 11 }, details: { request: 17, retained: true },
+    }
+    const original = structuredClone(unknown)
+    workerFailure = unknown
+    const view = render(<Demo />)
+    expect((await screen.findByRole('alert')).textContent).toBe(unknown.message)
+    const completedRequests = workerRequests
+    for (const language of ['en-US', 'zh-CN', 'fr-FR']) {
+      await act(async () => { await i18n.changeLanguage(language) })
+      expect(screen.getByRole('alert').textContent).toBe(unknown.message)
+      expect(workerRequests).toBe(completedRequests)
+    }
+    expect(unknown).toEqual(original)
+    view.unmount()
+  }
+})
+
+it.each([
   { name: 'AES', Demo: AesCipherDemo, label: '密钥（定宽十六进制）', chinese: '密钥（定宽十六进制）: 输入不符合声明的类型和编码。', english: 'Key (hex-block): Input does not match its declared type and encoding.' },
   { name: 'SPN', Demo: SpnDemo, label: '明文', chinese: '输入不符合声明的类型和编码。', english: 'Input does not match its declared type and encoding.' },
 ])('re-presents retained $name input failure through shared language changes', async ({ Demo, label, chinese, english }) => {

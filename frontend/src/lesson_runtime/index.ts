@@ -11,6 +11,6 @@ export {
   type VisualizerCatalog,
   type VisualizerDescriptor,
 } from './compiler'
-export { lessonDiagnosticKeys, BrowserLessonSession, createBrowserLessonSession, type LessonSessionState } from './browser'
+export { lessonDiagnosticCodes, BrowserLessonSession, createBrowserLessonSession, type LessonSessionState } from './browser'
 export { validateLessonDocuments, type LessonValidationReport } from './node_adapter'
 export { lessonAssetUrl, rewriteLessonAssets, validateLessonMarkdown } from './markdown'

@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Diagnostic, WorkerExecutionSnapshot } from '../src/crypto_graph'
-import { lessonDiagnosticKeys, createBrowserLessonSession, type LessonSessionState } from '../src/lesson_runtime'
+import { lessonDiagnosticCodes, createBrowserLessonSession, type LessonSessionState } from '../src/lesson_runtime'
 import { learningColors } from '../src/ui/learning'
 import { RenderHost, visualizerCatalog } from '../src/visualizers'
 import { teachingSpnDemoDocuments } from './teachingSpnLesson'
@@ -197,8 +197,8 @@ export const KeyExpansionPrototype: React.FC = () => {
       <button type="submit">{t('run')}</button>
     </form>
     {failure && <p role="alert">{failure.diagnostic
-      ? Object.hasOwn(lessonDiagnosticKeys, failure.diagnostic.code)
-        ? runtimeT(lessonDiagnosticKeys[failure.diagnostic.code], { defaultValue: failure.diagnostic.message })
+      ? lessonDiagnosticCodes.has(failure.diagnostic.code)
+        ? runtimeT(`learning.runtime.${failure.diagnostic.code}`, { defaultValue: failure.diagnostic.message })
         : failure.diagnostic.message
       : t('failure')}</p>}
     <div onClickCapture={onChipClick} ref={container} style={{ position: 'relative' }}>

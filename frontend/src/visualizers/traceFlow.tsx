@@ -4,10 +4,10 @@ import { hex, type BitsValue, type TraceOperation, type TraceStage } from 'crypt
 import type { LearningRow } from '../ui/learning'
 import { PermutationVisual, SubstitutionVisual, XorVisual } from './OperationVisuals'
 
-const pathKeys: Readonly<Record<string, string>> = {"plaintext": "tracePath.plaintext", "ciphertext": "tracePath.ciphertext", "output": "tracePath.output", "repeat": "tracePath.repeat", "round": "tracePath.round", "key": "tracePath.key", "key-mix": "tracePath.key-mix", "substitute": "tracePath.substitute", "permute": "tracePath.permute"}
+const pathTokens: ReadonlySet<string> = new Set(['plaintext', 'ciphertext', 'output', 'repeat', 'round', 'key', 'key-mix', 'substitute', 'permute'])
 
 export const formatTracePath = (path: string, t: TFunction<'visualizers'>): string =>
-  path.split(/([./])/).map((token) => Object.hasOwn(pathKeys, token) ? t(pathKeys[token]) : token).join('')
+  path.split(/([./])/).map((token) => pathTokens.has(token) ? t(`tracePath.${token}`) : token).join('')
 
 const range = (length: number, start = 0): readonly number[] => Array.from({ length }, (_, index) => start + index)
 
