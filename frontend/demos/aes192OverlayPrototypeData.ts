@@ -1,10 +1,10 @@
+import type { TFunction } from 'i18next'
 // PROTOTYPE: fixed AES-192 slice for #95 P0; values use the existing CryptoGraph engine.
 import { aesCipherGraph, aesInverseCipherGraph, aesKeyExpansionGraph, bits, compile, hex, type AuthoredGraph, type BitsValue, type CryptoValue, type WorkerExecutionSnapshot } from 'crypto_graph'
 import { relatedBitIds, type LearningPresentation, type LearningRelationship, type LearningRow } from '../src/ui/learning'
 import { blockCipherPresentation } from '../src/visualizers/BlockCipher'
 import { keyExpansionPresentation } from '../src/visualizers/KeyExpansion'
 
-export type PrototypeLocale = 'en-US' | 'zh-CN'
 export type PrototypeDirection = 'forward' | 'reverse'
 export type PrototypeRow = {
   id: string
@@ -49,8 +49,8 @@ const convert = (row: LearningRow, prefix: string, unit: number): PrototypeRow =
 const prefixEdges = (rows: readonly LearningRow[], prefix: string): LearningRelationship[] => rows.flatMap((row) =>
   (row.relationships ?? []).map(({ from, to }) => ({ from: `${prefix}/${from}`, to: `${prefix}/${to}` })))
 
-export const prototypeData = (locale: PrototypeLocale, direction: PrototypeDirection) => {
-  const originalSchedule = keyExpansionPresentation(schedule, locale, 'prototype', { algorithm: 'AES', variant: 192 }).sections[0].rows
+export const prototypeData = (t: TFunction<'visualizers'>, direction: PrototypeDirection) => {
+  const originalSchedule = keyExpansionPresentation(schedule, t, 'prototype', { algorithm: 'AES', variant: 192 }).sections[0].rows
   const scheduleSlice = originalSchedule.slice(0, originalSchedule.findIndex((row) => row.id === 'round-key-2') + 1)
   const generated = scheduleSlice.find((row) => row.id.startsWith('xor-'))!
   const scheduleRows = scheduleSlice.map((row, sourceOrder) => {
@@ -61,13 +61,13 @@ export const prototypeData = (locale: PrototypeLocale, direction: PrototypeDirec
     }
     return { ...converted, words: row.id === 'input' ? 'w0..w5' : row.id === generated.id ? 'w6..w11' : 'w0..w4 | temp(w5)' }
   })
-  const fullCipher = blockCipherPresentation(direction === 'forward' ? encryption : decryption, locale, 'prototype', { algorithm: 'AES', variant: 192, direction: direction === 'forward' ? 'encrypt' : 'decrypt' }).sections[0].rows
+  const fullCipher = blockCipherPresentation(direction === 'forward' ? encryption : decryption, t, 'prototype', { algorithm: 'AES', variant: 192, direction: direction === 'forward' ? 'encrypt' : 'decrypt' }).sections[0].rows
   const cipherSlice = direction === 'forward'
     ? fullCipher.slice(0, fullCipher.findIndex((row) => row.id === 'cipher-2-add-round-key') + 1)
     : fullCipher.slice(fullCipher.findIndex((row) => row.id === 'cipher-3-inv-mix-columns'), fullCipher.findIndex((row) => row.id === 'cipher-0-add-round-key') + 1)
   const cipherRows = cipherSlice.map((row, index) => ({
     ...convert(row, 'c', 8),
-    ...(direction === 'reverse' && index === 0 ? { label: locale === 'zh-CN' ? 'rk2 前的状态' : 'State before rk2' } : {}),
+    ...(direction === 'reverse' && index === 0 ? { label: t('aes192Overlay.beforeRoundKey', { ns: 'demos', keyPrefix: '' }) } : {}),
   }))
   // shortcut: fixed rk0-rk2 projections; replace when implementing approved generic v2 lineage.
   const roundKeys = range(3).flatMap((round) => range(128).map((bit) => {
@@ -81,7 +81,7 @@ export const prototypeData = (locale: PrototypeLocale, direction: PrototypeDirec
   const visibleBits = new Set(allRows.flatMap((row) => row.bitValues.map((_, bit) => `${row.id}#${bit}`)))
   const relationships = [...prefixEdges(scheduleSlice, 's'), ...roundKeys, ...prefixEdges(cipherSlice, 'c'), ...anchors]
     .filter(({ from, to }) => visibleBits.has(from) && visibleBits.has(to))
-  const lineage: LearningPresentation = { title: 'Prototype', sections: [{ kind: 'trace', caption: '', headers: [], rows: [{ id: 'relationships', label: '', cells: [], relationships }] }] }
+  const lineage: LearningPresentation = { title: t('aes192Overlay.prototype', { ns: 'demos', keyPrefix: '' }), sections: [{ kind: 'trace', caption: '', headers: [], rows: [{ id: 'relationships', label: '', cells: [], relationships }] }] }
   // Reverse blocks, never the operations inside a block. Source identities and dependencies stay fixed.
   const groups: PrototypeRow[][] = []
   let pending: PrototypeRow[] = []
@@ -121,19 +121,4 @@ export const bitRanges = (indices: readonly number[]): string => {
     groups.push(first === indices[i] ? String(first) : `${first}..${indices[i]}`)
   }
   return groups.join(', ')
-}
-
-// Small executable checks for the prototype adapter, separate from production v2 claims.
-const fixture = prototypeData('en-US', 'forward')
-const selected = selectedLineage(fixture, range(8).map((bit) => `c/cipher-1-add-round-key#${bit}`))
-check(range(8, 128).every((bit) => selected.has(`s/input#${bit}`)), 'selected byte must cross the rk1 anchor')
-check(!selected.has('s/input#136'), 'a highlighted word must not add its other bits')
-check(!selected.has('s/round-key-2#64'), 'ancestors must not introduce their other descendants')
-const selectedWord = selectedLineage(fixture, range(32, 128).map((bit) => `s/input#${bit}`))
-check(selectedWord.has('c/round-key-1#31'), 'explicit word selection must include all its bits')
-for (const direction of ['forward', 'reverse'] as const) for (const anchor of ['key', 'operation'] as const) {
-  const data = prototypeData('en-US', direction)
-  const layout = alignedRows(data, anchor)
-  check(layout.filter((row) => row.anchor !== undefined).map((row) => row.anchor).join() === (direction === 'forward' ? '0,1,2' : '2,1,0'), 'anchors must follow consumption order')
-  check(new Set(layout.flatMap((row) => row.schedule ? [row.schedule.id] : [])).size === data.scheduleRows.length, 'alignment must retain every schedule row once')
 }

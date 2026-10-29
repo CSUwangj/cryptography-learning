@@ -1,9 +1,10 @@
+import type { TFunction } from 'i18next'
+import { useTranslation } from 'react-i18next'
 import React, { useMemo } from 'react'
 import { bits, hex, type BitsValue, type TraceCheckpoint, type TraceEvent, type WorkerExecutionSnapshot } from 'crypto_graph'
 import { LearningPresentationView, type LearningDiagnostic, type LearningPresentation, type LearningRelationship, type LearningRow } from '../ui/learning'
 import { bitAt } from './traceFlow'
 
-type Locale = 'en-US' | 'zh-CN'
 type Variant = 128 | 192 | 256
 type Stage = 'input' | 'rot-word' | 'sub-word' | 'rcon' | 'xor'
 
@@ -14,49 +15,9 @@ export type KeyExpansionPresentationMeta = {
 
 export type KeyExpansionRendererProps = {
   readonly execution: WorkerExecutionSnapshot
-  readonly locale: string
   readonly executionIdentity: string
   readonly presentation: KeyExpansionPresentationMeta
 }
-
-const copy = {
-  'en-US': {
-    title: (algorithm: string, variant: Variant) => `${algorithm}-${variant} key expansion`,
-    teaching: (algorithm: string, size: number) => `${algorithm}-style teaching key schedule (${size}-bit key, not a FIPS-197 variant)`,
-    instructions: 'Every line is a structural bit relationship. Select a bit to emphasize its lineage.',
-    flow: 'Key schedule',
-    stage: 'Stage',
-    round: 'Round',
-    roundKey: 'Round key',
-    value: 'Value',
-    bits: 'Bits',
-    bit: 'Bit',
-    selected: 'Selected lineage',
-    none: 'No bit selected.',
-    incomplete: 'Trace is incomplete. Retained operation rows remain visible; later rows and their lineage are missing.',
-    gap: 'Trace gap',
-    word: 'word',
-    stages: { input: 'Input', 'rot-word': 'RotWord', 'sub-word': 'SubWord', rcon: 'Rcon', xor: 'XOR' },
-  },
-  'zh-CN': {
-    title: (algorithm: string, variant: Variant) => `${algorithm}-${variant} 密钥扩展`,
-    teaching: (algorithm: string, size: number) => `${algorithm} 风格教学密钥编排（${size} 位密钥，非 FIPS-197 变体）`,
-    instructions: '每条连线都是一条结构位关系。选择一位以突出显示其谱系。',
-    flow: '密钥编排',
-    stage: '阶段',
-    round: '轮',
-    roundKey: '轮密钥',
-    value: '值',
-    bits: '位',
-    bit: '位',
-    selected: '所选谱系',
-    none: '未选择位。',
-    incomplete: '轨迹不完整。保留的操作行仍可见；后续行及其谱系缺失。',
-    gap: '轨迹缺口',
-    word: '字',
-    stages: { input: '输入', 'rot-word': '字循环移位', 'sub-word': '字替换', rcon: '轮常量', xor: '异或' },
-  },
-} as const satisfies Record<Locale, { readonly stages: Record<Stage, string> } & Record<string, unknown>>
 
 const isBitsEvent = (event: TraceCheckpoint | TraceEvent): event is TraceEvent & { readonly value: BitsValue } =>
   'level' in event && event.value?.type.family === 'bits' && 'bytes' in event.value
@@ -204,14 +165,13 @@ const scheduleRows = (execution: WorkerExecutionSnapshot): { readonly rows: read
  */
 export const keyExpansionPresentation = (
   execution: WorkerExecutionSnapshot,
-  locale: string,
+  t: TFunction<'visualizers'>,
   executionIdentity: string,
   meta: KeyExpansionPresentationMeta,
 ): LearningPresentation => {
-  const text = copy[locale as Locale] ?? copy['en-US']
   const label = (row: StateRow) => {
-    const base = row.round === undefined ? text.stages[row.stage] : `${text.stages[row.stage]} ${row.round}`
-    return row.id.endsWith(`-w${row.wordIndex}`) ? `${base} (${text.word} ${row.wordIndex})` : base
+    const base = row.round === undefined ? t(`keyExpansion.stages.${row.stage}`) : `${t(`keyExpansion.stages.${row.stage}`)} ${row.round}`
+    return row.id.endsWith(`-w${row.wordIndex}`) ? `${base} (${t('keyExpansion.word')} ${row.wordIndex})` : base
   }
   const { rows: stateRows, wordRows } = scheduleRows(execution)
   const rows: LearningRow[] = stateRows.map((row) => ({
@@ -222,7 +182,7 @@ export const keyExpansionPresentation = (
       id: `${row.id}#${bit}`,
       bit,
       value: String(bitAt(row.value, bit)),
-      ariaLabel: `${label(row)}, ${text.bit} ${bit}: ${bitAt(row.value, bit)}`,
+      ariaLabel: `${label(row)}, ${t('keyExpansion.bit')} ${bit}: ${bitAt(row.value, bit)}`,
     })),
     relationships: row.relationships,
     ...(row.bitGrouping ? { bitGrouping: row.bitGrouping } : {}),
@@ -230,7 +190,7 @@ export const keyExpansionPresentation = (
   const roundKeys = execution.trace.filter(isBitsEvent).filter((event) => event.stage === 'round-key')
   const roundKeyRow = (event: TraceEvent & { readonly value: BitsValue }): LearningRow => ({
     id: event.path,
-    label: `${text.roundKey} ${event.round}`,
+    label: `${t('keyExpansion.roundKey')} ${event.round}`,
     cells: [{ value: event.round ?? '—' }, { value: hex(event.value) }],
   })
   const roundKeyAfter = (event: TraceEvent): string | undefined => wordRows.get((event.round ?? 0) * 4 + 3)
@@ -241,7 +201,7 @@ export const keyExpansionPresentation = (
   const traceIncompleteDiagnostic: LearningDiagnostic | undefined = execution.traceStatus.truncated
     ? {
       code: 'aes.key-expansion-trace-incomplete',
-      message: text.incomplete,
+      message: t('keyExpansion.incomplete'),
       path: 'trace',
       details: { retained: execution.traceStatus.retained, dropped: execution.traceStatus.dropped },
     }
@@ -250,25 +210,26 @@ export const keyExpansionPresentation = (
     // The heading names the traced state width; a schedule narrower or wider than the declared
     // variant is a teaching schedule and is never labeled as that FIPS-197 variant.
     title: stateRows.length && stateRows[0].value.type.size !== meta.variant
-      ? text.teaching(meta.algorithm, stateRows[0].value.type.size)
-      : text.title(meta.algorithm, meta.variant),
-    instructions: text.instructions,
+      ? t('keyExpansion.teaching', { algorithm: meta.algorithm, size: stateRows[0].value.type.size })
+      : t('keyExpansion.title', { algorithm: meta.algorithm, variant: meta.variant }),
+    instructions: t('keyExpansion.instructions'),
     executionIdentity,
     diagnostics: traceIncompleteDiagnostic ? [traceIncompleteDiagnostic] : undefined,
-    selectionStatus: (selected) => selected ? `${text.selected}: ${selected.ariaLabel}.` : text.none,
+    selectionStatus: (selected) => selected ? `${t('keyExpansion.selected')}: ${selected.ariaLabel}.` : t('keyExpansion.none'),
     sections: [
-      { kind: 'trace', caption: text.flow, headers: [text.stage, text.round, text.value, text.bits], rows: orderedRows },
+      { kind: 'trace', caption: t('keyExpansion.flow'), headers: [t('keyExpansion.stage'), t('keyExpansion.round'), t('keyExpansion.value'), t('keyExpansion.bits')], rows: orderedRows },
       ...(traceIncompleteDiagnostic
-        ? [{ kind: 'raw' as const, caption: text.incomplete, headers: [text.stage, text.value], rows: [{ id: 'gap', label: text.gap, state: 'incomplete' as const, cells: [{ value: '—' }] }] }]
+        ? [{ kind: 'raw' as const, caption: t('keyExpansion.incomplete'), headers: [t('keyExpansion.stage'), t('keyExpansion.value')], rows: [{ id: 'gap', label: t('keyExpansion.gap'), state: 'incomplete' as const, cells: [{ value: '—' }] }] }]
         : []),
     ],
   }
 }
 
-export const KeyExpansionRenderer: React.FC<KeyExpansionRendererProps> = ({ execution, locale, executionIdentity, presentation }) => {
+export const KeyExpansionRenderer: React.FC<KeyExpansionRendererProps> = ({ execution, executionIdentity, presentation }) => {
+  const { t } = useTranslation('visualizers')
   const learning = useMemo(
-    () => keyExpansionPresentation(execution, locale, executionIdentity, presentation),
-    [execution, locale, executionIdentity, presentation],
+    () => keyExpansionPresentation(execution, t, executionIdentity, presentation),
+    [execution, t, executionIdentity, presentation],
   )
   return <LearningPresentationView presentation={learning} />
 }

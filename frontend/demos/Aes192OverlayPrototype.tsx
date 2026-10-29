@@ -1,33 +1,12 @@
+import { useTranslation } from 'react-i18next'
 // PROTOTYPE: four AES-192 surface/anchor variants on /testaescipher?prototype=overlay&variant=A.
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Global } from '@emotion/react'
 import styled from '@emotion/styled'
 import { Icon } from '@blueprintjs/core'
 import { ComparisonRow, LineageDiagram, TraceTable, ValueCell, type LearningRelationship } from '../src/ui/learning'
-import { alignedRows, bitRanges, prototypeData, range, selectedLineage, type PrototypeDirection, type PrototypeLocale, type PrototypeRow } from './aes192OverlayPrototypeData'
+import { alignedRows, bitRanges, prototypeData, range, selectedLineage, type PrototypeDirection, type PrototypeRow } from './aes192OverlayPrototypeData'
 
-const copy = {
-  'en-US': {
-    title: 'AES-192 overlay', prototype: 'P0 prototype', forward: 'Forward: rk0 → rk1 → rk2', reverse: 'Reverse slice: rk2 → rk1 → rk0',
-    direction: 'Key consumption', grain: 'Selection', units: 'Byte / word', bits: 'Bit', cipher: 'Cipher state', schedule: 'Key schedule',
-    side: 'Side by side', cover: 'Covering lane', key: 'Round-key row', operation: 'AddRoundKey row',
-    previous: 'Previous variant', next: 'Next variant', clear: 'Clear selection', close: 'Close key schedule', open: 'Open key schedule',
-    stage: 'Operation / key', value: 'Value', selected: 'Selected', none: 'No selection', byte: 'Byte', word: 'Word', bit: 'Bit',
-    source: 'Source order', related: 'Related bits', details: 'Bit lineage', row: 'Row', range: 'Bit positions', count: 'Count',
-    initial: 'Initial key', batch: 'Generated batch 0', anchors: 'Anchors', full: 'Full AES-192 execution',
-    language: 'Language', all: 'All demos', hidden: 'Cipher controls covered', generation: 'Original schedule order',
-  },
-  'zh-CN': {
-    title: 'AES-192 overlay', prototype: 'P0 原型', forward: '正向：rk0 → rk1 → rk2', reverse: '倒序片段：rk2 → rk1 → rk0',
-    direction: '轮密钥消费', grain: '选择粒度', units: '字节 / 字', bits: '位', cipher: '密码状态', schedule: '密钥编排',
-    side: '并列', cover: '覆盖层', key: '轮密钥行', operation: 'AddRoundKey 行',
-    previous: '上一个方案', next: '下一个方案', clear: '清除选择', close: '关闭密钥编排', open: '打开密钥编排',
-    stage: '操作 / 轮密钥', value: '值', selected: '已选择', none: '未选择', byte: '字节', word: '字', bit: '位',
-    source: '原始顺序', related: '关联位', details: '位依赖', row: '行', range: '位编号', count: '数量',
-    initial: '初始密钥', batch: '生成批次 0', anchors: '锚点', full: '完整 AES-192 执行',
-    language: '语言', all: '全部 demo', hidden: '密码位操作区已覆盖', generation: '密钥编排原始顺序',
-  },
-} as const
 const variants = [
   { key: 'A', surface: 'side', anchor: 'key' },
   { key: 'B', surface: 'side', anchor: 'operation' },
@@ -91,14 +70,14 @@ const Page = styled.main`
 
 export const Aes192OverlayPrototype: React.FC = () => {
   const [query, setQuery] = useState(() => new URLSearchParams(window.location.search))
-  const locale: PrototypeLocale = query.get('lang') === 'zh-CN' ? 'zh-CN' : 'en-US'
+  const { t, i18n } = useTranslation('demos', { keyPrefix: 'aes192Overlay' })
+  const { t: visualizerT } = useTranslation('visualizers')
   const direction: PrototypeDirection = query.get('direction') === 'reverse' ? 'reverse' : 'forward'
   const variant = variants.find((item) => item.key === query.get('variant')) ?? variants[0]
-  const text = copy[locale]
   const [bitMode, setBitMode] = useState(false)
   const [openKey, setOpenKey] = useState<number>()
   const [selection, setSelection] = useState<{ row: string; start: number; width: number }>()
-  const data = useMemo(() => prototypeData(locale, direction), [locale, direction])
+  const data = useMemo(() => prototypeData(visualizerT, direction), [visualizerT, direction])
   const seeds = useMemo(() => selection ? range(selection.width, selection.start).map((bit) => `${selection.row}#${bit}`) : [], [selection])
   const related = useMemo(() => selectedLineage(data, seeds), [data, seeds])
   const rows = useMemo(() => alignedRows(data, variant.anchor), [data, variant.anchor])
@@ -139,7 +118,7 @@ export const Aes192OverlayPrototype: React.FC = () => {
     measure()
     window.addEventListener('resize', measure)
     return () => window.removeEventListener('resize', measure)
-  }, [rows, cover, bitMode, locale, variant.surface])
+  }, [rows, cover, bitMode, t, variant.surface])
 
   const unitId = (row: PrototypeRow, bit: number) => `${row.id}@${Math.floor(bit / (bitMode ? 1 : row.unit))}`
   const displayEdges = useMemo(() => {
@@ -170,13 +149,13 @@ export const Aes192OverlayPrototype: React.FC = () => {
       const positions = range(width, start)
       const active = positions.filter((bit) => related.has(`${row.id}#${bit}`))
       const value = parseInt(row.bitValues.slice(start, start + width).join(''), 2).toString(width === 1 ? 2 : 16).padStart(Math.ceil(width / 4), '0')
-      const name = width === 1 ? text.bit : width === 8 ? text.byte : text.word
+      const name = width === 1 ? t('bit') : width === 8 ? t('byte') : t('word')
       const id = unitId(row, start)
       return <button className="unit" type="button" key={id} data-unit-id={id} data-related={active.length > 0} data-related-bits={active.join(',')}
         style={{ width: width === 32 ? 80 : width === 8 ? 28 : 22 }}
-        aria-label={`${row.label}, ${name} ${index}, ${text.range} ${start}..${start + width - 1}: ${value}, ${text.related} ${active.length}/${width}`}
+        aria-label={`${row.label}, ${name} ${index}, ${t('range')} ${start}..${start + width - 1}: ${value}, ${t('related')} ${active.length}/${width}`}
         aria-pressed={selection?.row === row.id && selection.start === start && selection.width === width}
-        title={`${text.range}: ${start}..${start + width - 1}; ${text.related}: ${bitRanges(active) || '0'}`}
+        title={`${t('range')}: ${start}..${start + width - 1}; ${t('related')}: ${bitRanges(active) || '0'}`}
         ref={(target) => { if (target) targets.current.set(id, target); else targets.current.delete(id) }}
         onClick={() => setSelection({ row: row.id, start, width })}>
         <small>{index}</small><span>{value}</span><small>{active.length ? `${active.length}/${width}` : '\u00a0'}</small>
@@ -185,40 +164,40 @@ export const Aes192OverlayPrototype: React.FC = () => {
   }
   const scheduleLabel = (row: PrototypeRow, anchor?: number) => <div className="rowlabel">
     {anchor !== undefined && <span className="anchor-tag">rk{anchor}</span>}
-    <span>{row.label}</span><small>{text.source} {row.sourceOrder} · {row.words}</small><code>{row.value}</code>
+    <span>{row.label}</span><small>{t('source')} {row.sourceOrder} · {row.words}</small><code>{row.value}</code>
   </div>
   const selectedRow = data.allRows.find((row) => row.id === selection?.row)
 
   return <Page data-prototype="aes192-overlay" data-variant={variant.key} data-direction={direction}>
     <Global styles={{ body: { margin: 0, background: '#fff' }, '*': { boxSizing: 'border-box' } }} />
-    <div className="eyebrow">{text.prototype} · #95</div>
-    <h1>{text.title}</h1>
+    <div className="eyebrow">{t('prototype')} · #95</div>
+    <h1>{t('title')}</h1>
     <div className="toolbar">
-      <fieldset><legend>{text.direction}</legend><div className="segmented">
-        <button type="button" aria-pressed={direction === 'forward'} onClick={() => update('direction', 'forward')}>{text.forward}</button>
-        <button type="button" aria-pressed={direction === 'reverse'} onClick={() => update('direction', 'reverse')}>{text.reverse}</button>
+      <fieldset><legend>{t('direction')}</legend><div className="segmented">
+        <button type="button" aria-pressed={direction === 'forward'} onClick={() => update('direction', 'forward')}>{t('forward')}</button>
+        <button type="button" aria-pressed={direction === 'reverse'} onClick={() => update('direction', 'reverse')}>{t('reverse')}</button>
       </div></fieldset>
-      <fieldset><legend>{text.grain}</legend><div className="segmented">
-        <button type="button" aria-pressed={!bitMode} onClick={() => { setBitMode(false); setSelection(undefined) }}>{text.units}</button>
-        <button type="button" aria-pressed={bitMode} onClick={() => { setBitMode(true); setSelection(undefined) }}>{text.bits}</button>
+      <fieldset><legend>{t('grain')}</legend><div className="segmented">
+        <button type="button" aria-pressed={!bitMode} onClick={() => { setBitMode(false); setSelection(undefined) }}>{t('units')}</button>
+        <button type="button" aria-pressed={bitMode} onClick={() => { setBitMode(true); setSelection(undefined) }}>{t('bits')}</button>
       </div></fieldset>
-      <label>{text.language}<select value={locale} aria-label={text.language} onChange={(event) => update('lang', event.target.value)}>
-        <option value="en-US">English</option><option value="zh-CN">简体中文</option>
+      <label>{t('language')}<select value={i18n.resolvedLanguage ?? 'en-US'} aria-label={t('language')} onChange={(event) => { void i18n.changeLanguage(event.target.value); update('lang', event.target.value) }}>
+        <option value="en-US">{t('i18n.en-US', { ns: 'translations', keyPrefix: '' })}</option><option value="zh-CN">{t('i18n.zh-CN', { ns: 'translations', keyPrefix: '' })}</option>
       </select></label>
-      {variant.surface === 'cover' && <button className="icon" title={cover ? text.close : text.open} aria-label={cover ? text.close : text.open} onClick={() => setOpenKey(cover ? undefined : direction === 'forward' ? 0 : 2)}><Icon icon={cover ? 'cross' : 'layers'} /></button>}
-      <a href="/testaescipher">{text.full}</a>
+      {variant.surface === 'cover' && <button className="icon" title={cover ? t('close') : t('open')} aria-label={cover ? t('close') : t('open')} onClick={() => setOpenKey(cover ? undefined : direction === 'forward' ? 0 : 2)}><Icon icon={cover ? 'cross' : 'layers'} /></button>}
+      <a href="/testaescipher">{t('full')}</a>
     </div>
-    <div className="legend"><span>rk1 = <code>w4,w5</code> ({text.initial}) + <code>w6,w7</code> ({text.batch})</span><span>{text.anchors}: {variant.anchor === 'key' ? text.key : text.operation}</span>{cover && <span>{text.hidden}</span>}</div>
+    <div className="legend"><span>rk1 = <code>w4,w5</code> ({t('initial')}) + <code>w6,w7</code> ({t('batch')})</span><span>{t('anchors')}: {variant.anchor === 'key' ? t('key') : t('operation')}</span>{cover && <span>{t('hidden')}</span>}</div>
     <div className="status" role="status" aria-live="polite">
-      <button className="icon" title={text.clear} aria-label={text.clear} onClick={() => setSelection(undefined)}><Icon icon="reset" /></button>
-      <output>{selection ? `${text.selected}: ${selectedRow?.label} · ${text.range} ${selection.start}..${selection.start + selection.width - 1} · ${text.related}: ${related.size}` : text.none}</output>
+      <button className="icon" title={t('clear')} aria-label={t('clear')} onClick={() => setSelection(undefined)}><Icon icon="reset" /></button>
+      <output>{selection ? `${t('selected')}: ${selectedRow?.label} · ${t('range')} ${selection.start}..${selection.start + selection.width - 1} · ${t('related')}: ${related.size}` : t('none')}</output>
     </div>
-    <div className="viewport" tabIndex={0} aria-label={`${text.cipher} / ${text.schedule}`}>
+    <div className="viewport" tabIndex={0} aria-label={`${t('cipher')} / ${t('schedule')}`}>
       <div className="canvas" ref={canvas}>
         <LineageDiagram relationships={displayEdges} locations={geometry.locations} width={geometry.width} height={geometry.height} related={new Set()} />
-        <TraceTable caption={`${text.cipher} · ${direction === 'forward' ? text.forward : text.reverse}`} headers={variant.surface === 'side'
-          ? [text.stage, text.value, text.cipher, text.schedule, text.units]
-          : [text.stage, text.value, cover ? text.schedule : text.cipher]}>
+        <TraceTable caption={`${t('cipher')} · ${direction === 'forward' ? t('forward') : t('reverse')}`} headers={variant.surface === 'side'
+          ? [t('stage'), t('value'), t('cipher'), t('schedule'), t('units')]
+          : [t('stage'), t('value'), cover ? t('schedule') : t('cipher')]}>
           {rows.map(({ cipher, schedule: scheduleRow, anchor }, index) => <ComparisonRow key={`${cipher?.id ?? ''}|${scheduleRow?.id ?? ''}`} rowId={cipher?.id ?? `pad-${index}`} label={cipher?.label ?? ''}>
             <ValueCell><div className="rowlabel">
               {cipher && <>
@@ -241,20 +220,20 @@ export const Aes192OverlayPrototype: React.FC = () => {
       </div>
     </div>
     <details open={selection !== undefined}>
-      <summary>{text.details} · {audit.length}</summary>
-      <div className="audit"><TraceTable caption={text.related} headers={[text.row, text.count, text.range]}>
-        {audit.map(({ row, bits }) => <ComparisonRow key={row.id} label={`${row.id.startsWith('s/') ? text.schedule : text.cipher}: ${row.label}`}>
+      <summary>{t('details')} · {audit.length}</summary>
+      <div className="audit"><TraceTable caption={t('related')} headers={[t('row'), t('count'), t('range')]}>
+        {audit.map(({ row, bits }) => <ComparisonRow key={row.id} label={`${row.id.startsWith('s/') ? t('schedule') : t('cipher')}: ${row.label}`}>
           <ValueCell>{bits.length}/{row.bitValues.length}</ValueCell><ValueCell><code>{bitRanges(bits)}</code></ValueCell>
         </ComparisonRow>)}
       </TraceTable></div>
     </details>
-    <details><summary>{text.generation}</summary><div className="audit"><TraceTable caption={text.schedule} headers={[text.row, text.source, text.value]}>
+    <details><summary>{t('generation')}</summary><div className="audit"><TraceTable caption={t('schedule')} headers={[t('row'), t('source'), t('value')]}>
       {[...data.scheduleRows].sort((a, b) => a.sourceOrder! - b.sourceOrder!).map((row) => <ComparisonRow key={row.id} label={row.label}><ValueCell>{row.sourceOrder} · {row.words}</ValueCell><ValueCell><code>{row.value}</code></ValueCell></ComparisonRow>)}
     </TraceTable></div></details>
-    {import.meta.env.DEV && <div className="switcher" aria-label={text.prototype}>
-      <button className="icon" title={text.previous} aria-label={text.previous} onClick={() => cycle(-1)}><Icon icon="arrow-left" /></button>
-      <output>{variant.key} · {variant.surface === 'side' ? text.side : text.cover} · {variant.anchor === 'key' ? text.key : text.operation}</output>
-      <button className="icon" title={text.next} aria-label={text.next} onClick={() => cycle(1)}><Icon icon="arrow-right" /></button>
+    {import.meta.env.DEV && <div className="switcher" aria-label={t('prototype')}>
+      <button className="icon" title={t('previous')} aria-label={t('previous')} onClick={() => cycle(-1)}><Icon icon="arrow-left" /></button>
+      <output>{variant.key} · {variant.surface === 'side' ? t('side') : t('cover')} · {variant.anchor === 'key' ? t('key') : t('operation')}</output>
+      <button className="icon" title={t('next')} aria-label={t('next')} onClick={() => cycle(1)}><Icon icon="arrow-right" /></button>
     </div>}
   </Page>
 }

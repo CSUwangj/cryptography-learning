@@ -1,3 +1,5 @@
+import { I18nextProvider } from 'react-i18next'
+import i18n from '../src/app/i18n'
 import React from 'react'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -36,7 +38,7 @@ describe('AesCipherDemo form', () => {
   it('switches variants and direction, reports localized invalid input, and retains the prior result', async () => {
     globalThis.Worker = WorkerStub as unknown as typeof Worker
     const user = userEvent.setup()
-    render(<AesCipherDemo locale="en-US" />)
+    render(<I18nextProvider i18n={i18n.cloneInstance({ lng: "en-US" })}><AesCipherDemo  /></I18nextProvider>)
     await waitFor(() => expect(screen.getByTestId('render-host')).toBeVisible())
     expect(screen.getByText('cipher-10-add-round-key.value')).toBeVisible()
 
@@ -64,7 +66,7 @@ describe('AesCipherDemo form', () => {
   it('localizes diagnostics and keeps the successful render marker', async () => {
     globalThis.Worker = WorkerStub as unknown as typeof Worker
     const user = userEvent.setup()
-    render(<AesCipherDemo locale="zh-CN" />)
+    render(<I18nextProvider i18n={i18n.cloneInstance({ lng: "zh-CN" })}><AesCipherDemo  /></I18nextProvider>)
     await waitFor(() => expect(screen.getByText('cipher-10-add-round-key.value')).toBeVisible())
     const key = screen.getAllByRole('textbox')[0]
     await user.clear(key)

@@ -155,11 +155,7 @@ const readTheme = (): Theme => {
 
 export const Shell: React.FC<PropsWithChildren> = ({ children }) => {
   const { t, i18n } = useTranslation()
-  // i18n.languages is list of fallback languages
-  const items = i18n.languages
-  // but if not using line above, seems only ugly way to do so,
-  // check https://github.com/i18next/i18next/issues/1068 for discuss
-  // const items = Object.keys(i18n.services.resourceStore.data)
+  const items = ['en-US', 'zh-CN']
   const [theme, setTheme] = useState<Theme>(readTheme)
   const dark = theme === 'dark'
   const history = useHistory()

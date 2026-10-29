@@ -1,3 +1,5 @@
+import { I18nextProvider } from 'react-i18next'
+import i18n from '../app/i18n'
 import React from 'react'
 import { cleanup, render } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
@@ -27,7 +29,7 @@ describe('Authored AES v2 shared trace rendering (#105)', () => {
     if (cipher.kind !== 'snapshot') throw new Error(JSON.stringify(cipher))
 
     for (const locale of ['en-US', 'zh-CN'] as const) {
-      const presentation = executionTracePresentation(schedule.snapshot, locale, 'schedule')
+      const presentation = executionTracePresentation(schedule.snapshot, i18n.getFixedT(locale, 'visualizers'), 'schedule')
       expect(presentation.diagnostics).toBeUndefined()
       const rows = presentation.sections[0].rows
       const finalState = rows.find((row) => row.id === `batch-${fixture.finalBatch}.value`)!
@@ -44,11 +46,11 @@ describe('Authored AES v2 shared trace rendering (#105)', () => {
       expect(compiled.value.locales[locale].texts['schedule-description']).toBeTruthy()
       expect(compiled.value.locales[locale].texts['cipher-description']).toBeTruthy()
 
-      const props = { locale, executionIdentity: 'calculation', dimensions: { width: 1100, height: 700 }, reducedMotion: true }
-      const view = render(React.createElement(RenderHost, { ...props, execution: schedule.snapshot }))
+      const props = { executionIdentity: 'calculation', dimensions: { width: 1100, height: 700 }, reducedMotion: true }
+      const view = render(React.createElement(I18nextProvider, { i18n: i18n.cloneInstance({ lng: locale }) }, React.createElement(RenderHost, { ...props, execution: schedule.snapshot })))
       expect(view.queryByRole('alert')).toBeNull()
       expect(view.getByRole('row', { name: new RegExp(`^${locale === 'en-US' ? 'Output' : '输出'} ${fixture.finalRound} ${fixture.finalRound} ${fixture.finalKey}$`) })).toBeVisible()
-      view.rerender(React.createElement(RenderHost, { ...props, execution: cipher.snapshot }))
+      view.rerender(React.createElement(I18nextProvider, { i18n: i18n.cloneInstance({ lng: locale }) }, React.createElement(RenderHost, { ...props, execution: cipher.snapshot })))
       expect(view.queryByRole('alert')).toBeNull()
       expect(view.getByRole('row', { name: new RegExp(`^${locale === 'en-US' ? 'XOR' : '异或'} ${fixture.finalRound} ${fixture.finalRound} ${fixture.ciphertext}$`) })).toBeVisible()
       cleanup()

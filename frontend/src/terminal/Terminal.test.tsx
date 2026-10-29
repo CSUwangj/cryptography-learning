@@ -164,9 +164,11 @@ const packageJson = JSON.parse(
 ) as { dependencies: Record<string, string> }
 
 import { Terminal } from './Terminal'
+import i18n from '../app/i18n'
 
 describe('Terminal module (#17)', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await i18n.changeLanguage('en-US')
     MockWebSocket.instances = []
     MockResizeObserver.instances = []
     terminalInstances.length = 0

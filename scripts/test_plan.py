@@ -277,6 +277,12 @@ def plan_paths(paths, repo=ROOT):
                 add("frontend_typecheck", "frontend", ["npm", "run", "typecheck"], f"unknown root executable path fallback: {path}")
                 add("frontend_build", "frontend", ["npm", "run", "build"], f"unknown root executable path fallback: {path}")
 
+    if any(path.startswith("frontend/") and not path.endswith(".md") for path in paths):
+        add("frontend-tests", "frontend", [
+            "npm", "test", "--", "--maxWorkers=1", "--passWithNoTests=false",
+            "src/app/i18n/noEmbeddedUiResources.test.ts",
+        ], "frontend changes must keep localized UI resources in JSON")
+
     if prototype_paths and "demo_browser" not in checks:
         omissions.append({
             "id": "demo_browser",

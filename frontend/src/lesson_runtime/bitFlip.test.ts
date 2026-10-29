@@ -1,3 +1,4 @@
+import i18n from '../app/i18n'
 import { describe, expect, it } from 'vitest'
 import { hex } from '../crypto_graph'
 import { compileLesson, createBrowserLessonSession, type LessonDocuments } from './index'
@@ -23,7 +24,7 @@ steps:
 }
 
 const session = (inputDocuments = documents) => {
-  const result = createBrowserLessonSession(inputDocuments, 'en-US')
+  const result = createBrowserLessonSession(inputDocuments, 'en-US', i18n.getFixedT('en-US', 'translations'))
   if (!result.ok) throw new Error(JSON.stringify(result.diagnostics))
   return result.value
 }
@@ -34,6 +35,38 @@ const value = (s: ReturnType<typeof session>, id: string) => {
 }
 
 describe('one-bit Lesson experiment inputs', () => {
+  it('retains original input diagnostics separately from UI language and authored fallback', () => {
+    const s = session()
+    try {
+      const result = s.setInput('plaintext', 'invalid')
+      expect(result).toMatchObject({ ok: false, diagnostics: [{ message: 'Value does not match its declared type and encoding.' }] })
+      expect(s.updateDocuments(documents, 'zh-CN', i18n.getFixedT('zh-CN', 'translations')).ok).toBe(true)
+      expect(s.state().locale).toBe('en-US')
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(s.state().inputDiagnostics.plaintext).toEqual(result.diagnostics[0])
+      expect(s.updateDocuments(documents, 'en-US', i18n.getFixedT('en-US', 'translations')).ok).toBe(true)
+      expect(s.state().inputDiagnostics.plaintext).toEqual(result.diagnostics[0])
+      expect(s.state().inputs.plaintext).toBe('invalid')
+    } finally {
+      s.dispose()
+    }
+  })
+
+  it('keeps original diagnostic detail separate from authored Lesson fallback', () => {
+    const created = createBrowserLessonSession(documents, 'zh-CN', i18n.getFixedT('zh-CN', 'translations'))
+    if (!created.ok) throw new Error(JSON.stringify(created.diagnostics))
+    try {
+      expect(created.value.locale).toBe('en-US')
+      expect(created.value.setBitFlip('experiment', 'plaintext', 16)).toMatchObject({
+        ok: false,
+        diagnostics: [{ code: 'lesson.invalid-input', message: 'Choose a valid source and bit index.', path: 'steps.experiment.bit_flip' }],
+      })
+    } finally {
+      created.value.dispose()
+    }
+  })
+
   it('flips first and last bits, switches source, and follows baseline edits without mutating the baseline', () => {
     const s = session()
     expect(value(s, 'changed_plaintext')).toBe('0x9234')

@@ -88,6 +88,30 @@ class TestPlanTest(unittest.TestCase):
         self.assertIn("src/crypto_graph/index.test.ts", check["argv"])
         self.assertIn("--passWithNoTests=false", check["argv"])
 
+    def test_frontend_changes_include_ui_resource_guard(self):
+        for path in (
+            "frontend/src/crypto_graph/index.test.ts",
+            "frontend/src/app/home/HomePage.tsx",
+            "frontend/src/app/App.css",
+            "frontend/src/app/i18n/locales/en-US/demos.json",
+            "frontend/demos/LearningShellPrototype.tsx",
+            "frontend/e2e/aes-cipher-demo.spec.ts",
+        ):
+            with self.subTest(path=path):
+                plan = test_plan.plan_paths([path])
+                check = next(item for item in plan["checks"] if item["id"] == "frontend-tests")
+                self.assertEqual(check["argv"].count("src/app/i18n/noEmbeddedUiResources.test.ts"), 1)
+
+    def test_full_frontend_suite_discovers_guard_without_an_extra_run(self):
+        plan = test_plan.plan_paths(["frontend/package.json"])
+        checks = [item for item in plan["checks"] if item["id"] == "frontend-tests"]
+        self.assertEqual(len(checks), 1)
+        self.assertEqual(checks[0]["argv"], ["npm", "test", "--", "--maxWorkers=1", "--passWithNoTests=false"])
+
+    def test_backend_only_changes_do_not_select_ui_resource_guard(self):
+        plan = test_plan.plan_paths(["backend/apps/web-server/src/serve.rs"])
+        self.assertNotIn("frontend-tests", {item["id"] for item in plan["checks"]})
+
     def test_browser_specs_have_distinct_check_ids(self):
         plan = test_plan.plan_paths([
             "frontend/e2e/home-layout.spec.ts",
@@ -100,6 +124,7 @@ class TestPlanTest(unittest.TestCase):
             {
                 "browser_home-layout", "browser_learning", "image_acceptance",
                 "browser_aes-cipher-demo", "browser_visualizers", "browser_parallel_regressions",
+                "frontend-tests",
             },
             set(checks),
         )
@@ -240,12 +265,12 @@ class TestPlanTest(unittest.TestCase):
         worker = test_plan.plan_paths(["frontend/e2e/v2-default-trace-browser.tsx"])
         self.assertEqual(
             {item["id"] for item in worker["checks"]},
-            {"browser_crypto-graph-worker"},
+            {"browser_crypto-graph-worker", "frontend-tests"},
         )
         terminal = test_plan.plan_paths(["frontend/e2e/fixtures/browser_terminal_fixture.py"])
         self.assertEqual(
             {item["id"] for item in terminal["checks"]},
-            {"browser_terminal"},
+            {"browser_terminal", "frontend-tests"},
         )
         unknown = test_plan.plan_paths(["frontend/e2e/new-helper.ts"])
         self.assertIn("frontend-tests", {item["id"] for item in unknown["checks"]})
@@ -253,7 +278,7 @@ class TestPlanTest(unittest.TestCase):
         aes_fixture = test_plan.plan_paths(["frontend/e2e/aes-learning-fixture.tsx"])
         self.assertEqual(
             {item["id"] for item in aes_fixture["checks"]},
-            {"browser_aes-cipher-demo", "browser_visualizers"},
+            {"browser_aes-cipher-demo", "browser_visualizers", "frontend-tests"},
         )
 
     def test_identical_visualizer_browser_commands_run_once(self):

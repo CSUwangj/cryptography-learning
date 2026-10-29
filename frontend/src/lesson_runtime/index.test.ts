@@ -1,3 +1,4 @@
+import i18n from '../app/i18n'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -70,7 +71,7 @@ describe('Lesson Runtime compiler (#29)', () => {
     const previousWorker = globalThis.Worker
     globalThis.Worker = WorkerStub as unknown as typeof Worker
     try {
-      const session = createBrowserLessonSession(aes128V2Fixture, 'en-US')
+      const session = createBrowserLessonSession(aes128V2Fixture, 'en-US', i18n.getFixedT('en-US', 'translations'))
       expect(session.ok).toBe(true)
       if (!session.ok) return
       const schedule = await session.value.enter()
@@ -110,7 +111,7 @@ describe('Lesson Runtime compiler (#29)', () => {
     const previousWorker = globalThis.Worker
     globalThis.Worker = WorkerStub as unknown as typeof Worker
     try {
-      const session = createBrowserLessonSession(teachingSpnV2DemoDocuments, 'en-US')
+      const session = createBrowserLessonSession(teachingSpnV2DemoDocuments, 'en-US', i18n.getFixedT('en-US', 'translations'))
       expect(session.ok).toBe(true)
       if (!session.ok) return
       const entered = await session.value.enter()
@@ -166,7 +167,7 @@ describe('Lesson Runtime compiler (#29)', () => {
     const previousWorker = globalThis.Worker
     globalThis.Worker = WorkerStub as unknown as typeof Worker
     try {
-      const session = createBrowserLessonSession(documents, 'en-US')
+      const session = createBrowserLessonSession(documents, 'en-US', i18n.getFixedT('en-US', 'translations'))
       expect(session.ok).toBe(true)
       if (!session.ok) return
       expect(await session.value.enter()).toMatchObject({ ok: true, value: { snapshots: { first: expect.anything() } } })
@@ -202,7 +203,7 @@ describe('Lesson Runtime compiler (#29)', () => {
     const previousWorker = globalThis.Worker
     globalThis.Worker = WorkerStub as unknown as typeof Worker
     try {
-      const session = createBrowserLessonSession(documents, 'en-US')
+      const session = createBrowserLessonSession(documents, 'en-US', i18n.getFixedT('en-US', 'translations'))
       expect(session.ok).toBe(true)
       if (!session.ok) return
       const entered = await session.value.enter()
@@ -444,7 +445,7 @@ steps:
     const previousWorker = globalThis.Worker
     globalThis.Worker = WorkerStub as unknown as typeof Worker
     try {
-      const session = createBrowserLessonSession(documents, 'en-US')
+      const session = createBrowserLessonSession(documents, 'en-US', i18n.getFixedT('en-US', 'translations'))
       expect(session.ok).toBe(true)
       if (!session.ok) return
       expect(await session.value.enter()).toMatchObject({ ok: true, value: { snapshots: { first: expect.anything() } } })
@@ -568,7 +569,7 @@ steps: []
     const previousWorker = globalThis.Worker
     globalThis.Worker = WorkerStub as unknown as typeof Worker
     try {
-      const session = createBrowserLessonSession({ ...documents, lesson }, 'en-US')
+      const session = createBrowserLessonSession({ ...documents, lesson }, 'en-US', i18n.getFixedT('en-US', 'translations'))
       expect(session.ok).toBe(true)
       if (!session.ok) return
       await session.value.next()
@@ -596,7 +597,7 @@ steps: []
       expected: {constant: expected}
       feedback: {match: check-xor-match, mismatch: check-xor-mismatch}
 `)
-    const session = createBrowserLessonSession({ ...documents, lesson }, 'en-US')
+    const session = createBrowserLessonSession({ ...documents, lesson }, 'en-US', i18n.getFixedT('en-US', 'translations'))
     expect(session.ok).toBe(true)
     if (!session.ok) return
     await session.value.next()
@@ -615,7 +616,7 @@ steps: []
     const previousWorker = globalThis.Worker
     globalThis.Worker = WorkerStub as unknown as typeof Worker
     try {
-      const session = createBrowserLessonSession(fixture(), 'en-US')
+      const session = createBrowserLessonSession(fixture(), 'en-US', i18n.getFixedT('en-US', 'translations'))
       expect(session.ok).toBe(true)
       if (!session.ok) return
       await session.value.next()
@@ -663,7 +664,7 @@ steps: []
     }
     globalThis.Worker = WorkerStub as unknown as typeof Worker
     try {
-      const session = createBrowserLessonSession({ ...documents, lesson }, 'en-US')
+      const session = createBrowserLessonSession({ ...documents, lesson }, 'en-US', i18n.getFixedT('en-US', 'translations'))
       expect(session.ok).toBe(true)
       if (!session.ok) return
       await session.value.next()
@@ -690,7 +691,7 @@ steps: []
       const first = createBrowserLessonSession({
         ...documents,
         lesson: documents.lesson.replace(/  - id: introduction[\s\S]*?(?=  - id: calculate)/, ''),
-      }, 'en-US')
+      }, 'en-US', i18n.getFixedT('en-US', 'translations'))
       expect(first.ok).toBe(true)
       if (!first.ok) return
       const entered = await first.value.enter()
@@ -699,7 +700,7 @@ steps: []
       expect(hex(entered.value.snapshots.calculate.outputs['mixed.value'] as never)).toBe('0x0ff0')
       first.value.dispose()
 
-      const session = createBrowserLessonSession(documents, 'en-US')
+      const session = createBrowserLessonSession(documents, 'en-US', i18n.getFixedT('en-US', 'translations'))
       expect(session.ok).toBe(true)
       if (!session.ok) return
       await session.value.next()
@@ -761,7 +762,7 @@ steps:
   it('gives Node and browser adapters identical validation results', () => {
     expect(validateLessonDocuments(fixture())).toMatchObject({ ok: true, diagnostics: [], dryRun: expect.anything() })
     const browserDocuments = { ...fixture(), locales: { 'en-US': fixture().locales['en-US'] } }
-    const browser = createBrowserLessonSession(browserDocuments, 'zh-CN')
+    const browser = createBrowserLessonSession(browserDocuments, 'zh-CN', i18n.getFixedT('zh-CN', 'translations'))
     expect(browser.ok).toBe(true)
     if (!browser.ok) return
     expect(browser.value.locale).toBe('en-US')
@@ -772,13 +773,11 @@ steps:
 
     const malformed = { ...fixture(), lesson: fixture().lesson.replace('version: 1', 'version: 3') }
     const node = validateLessonDocuments(malformed)
-    const browserMalformed = createBrowserLessonSession(malformed, 'zh-CN')
+    const browserMalformed = createBrowserLessonSession(malformed, 'zh-CN', i18n.getFixedT('zh-CN', 'translations'))
     expect(node.ok).toBe(false)
     expect(browserMalformed.ok).toBe(false)
     if (node.ok || browserMalformed.ok) return
-    expect(browserMalformed.diagnostics.map(({ message: _, ...diagnostic }) => diagnostic))
-      .toEqual(node.diagnostics.map(({ message: _, ...diagnostic }) => diagnostic))
-    expect(browserMalformed.diagnostics[0].message).toBe('不支持的课程版本。')
+    expect(browserMalformed.diagnostics).toEqual(node.diagnostics)
   })
 
   it('reads the default locale through the strict Lesson YAML parser', () => {
@@ -903,7 +902,7 @@ steps:
     const previousWorker = globalThis.Worker
     globalThis.Worker = WorkerStub as unknown as typeof Worker
     try {
-      const session = createBrowserLessonSession(fixture(), 'en-US')
+      const session = createBrowserLessonSession(fixture(), 'en-US', i18n.getFixedT('en-US', 'translations'))
       expect(session.ok).toBe(true)
       if (!session.ok) return
       await session.value.next()
@@ -1022,7 +1021,7 @@ texts: {plaintext: 明文, shift: 位移, policy: 策略}
     }
     globalThis.Worker = TrackingWorker as unknown as typeof Worker
     try {
-      const session = createBrowserLessonSession(documents, 'en-US')
+      const session = createBrowserLessonSession(documents, 'en-US', i18n.getFixedT('en-US', 'translations'))
       expect(session.ok).toBe(true)
       if (!session.ok) return
       const first = await session.value.next()
@@ -1230,7 +1229,7 @@ steps:
     const previousWorker = globalThis.Worker
     globalThis.Worker = WorkerStub as unknown as typeof Worker
     try {
-      const session = createBrowserLessonSession(documents, 'en-US')
+      const session = createBrowserLessonSession(documents, 'en-US', i18n.getFixedT('en-US', 'translations'))
       expect(session.ok).toBe(true)
       if (!session.ok) return
       await session.value.next()

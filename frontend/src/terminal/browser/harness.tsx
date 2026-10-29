@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { Terminal } from '../Terminal'
+import '../../app/i18n'
 
 declare global {
   interface Window {

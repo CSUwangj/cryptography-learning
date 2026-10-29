@@ -3,9 +3,11 @@ import { Switch } from 'react-router-dom'
 import { RoutePage } from './LoadPage'
 import { LAB_PATTERN } from 'practice'
 import { COMPLETION_PATTERN } from 'completion_board'
+import { useTranslation } from 'react-i18next'
 
 export const Routes: React.FC = () => {
-  return <Suspense fallback={ <div>faild</div> }>
+  const { t } = useTranslation()
+  return <Suspense fallback={<div>{t('loading')}</div>}>
     <Switch>
       <RoutePage path='/' page={import('./shell/Shell').then(m => ({ Page: m.Shell }))}>
         <Switch>

@@ -1,109 +1,32 @@
+import type { TFunction } from 'i18next'
+import { useTranslation } from 'react-i18next'
 import React, { useMemo } from 'react'
 import { hex, type AvalancheCheckpoint, type AvalancheComparison } from 'crypto_graph'
 import { LearningPresentationView, type LearningPresentation, type LearningRow } from '../ui/learning'
 import { flowRows, formatTracePath, type FlowNode } from './traceFlow'
 
-type Locale = 'en-US' | 'zh-CN'
 type CompleteCheckpoint = AvalancheCheckpoint & { readonly complete: true }
 
 export type AvalancheRendererProps = {
   readonly comparison: AvalancheComparison
-  readonly locale: string
   readonly executionIdentity: string
 }
 
-const copy = {
-  'en-US': {
-    title: 'Continuous avalanche comparison',
-    instructions: 'Select one bit to inspect its structural lineage. Underlined cells differ; connected lines show dependency, not individual causation.',
-    flow: 'State flow',
-    summary: 'Comparison summary',
-    raw: 'Retained raw execution values',
-    stage: 'Stage',
-    baseline: 'Baseline',
-    changed: 'Changed',
-    changedBits: 'Changed bits',
-    ratio: 'Ratio',
-    keys: 'Round keys',
-    details: 'Operation details',
-    incomplete: 'Trace is incomplete. Raw retained values remain visible; paired differences and lineage stop at the gap.',
-    gap: 'Trace gap',
-    warning: 'This round key differs between the two executions.',
-    lineage: 'Selected bit lineage',
-    noSelection: 'No differing plaintext bit is available.',
-    keyMix: 'XOR operands and result',
-    substitution: 'S-box input and output',
-    permutation: 'Permutation source to destination',
-    bit: 'Bit',
-    different: 'different',
-    run: 'Run',
-    sBox: 'S-box',
-    stages: {
-      'add-round-key': 'AddRoundKey',
-      'sub-bytes': 'SubBytes',
-      'inv-sub-bytes': 'InvSubBytes',
-      'shift-rows': 'ShiftRows',
-      'inv-shift-rows': 'InvShiftRows',
-      'mix-columns': 'MixColumns',
-      'inv-mix-columns': 'InvMixColumns',
-    },
-  },
-  'zh-CN': {
-    title: '连续雪崩比较',
-    instructions: '选择一位以查看其结构谱系。带下划线的格表示差异；连线表示依赖关系，不表示单个位的独立因果。',
-    flow: '状态流',
-    summary: '比较摘要',
-    raw: '保留的原始执行值',
-    stage: '阶段',
-    baseline: '基准执行',
-    changed: '改变后执行',
-    changedBits: '改变位数',
-    ratio: '比例',
-    keys: '轮密钥',
-    details: '操作详情',
-    incomplete: '轨迹不完整。保留的原始值仍可见；配对差异和位谱系会在缺口处停止。',
-    gap: '轨迹缺口',
-    warning: '两次执行的这个轮密钥不同。',
-    lineage: '所选位的谱系',
-    noSelection: '没有可选择的不同明文位。',
-    keyMix: '异或操作数与结果',
-    substitution: 'S 盒输入和输出',
-    permutation: '置换来源到目标',
-    bit: '位',
-    different: '不同',
-    run: '执行',
-    sBox: 'S 盒',
-    stages: {
-      'add-round-key': '轮密钥加',
-      'sub-bytes': '字节替换',
-      'inv-sub-bytes': '逆字节替换',
-      'shift-rows': '行移位',
-      'inv-shift-rows': '逆行移位',
-      'mix-columns': '列混合',
-      'inv-mix-columns': '逆列混合',
-    },
-  },
-} as const
-
-const textFor = (locale: string) => copy[locale as Locale] ?? copy['en-US']
-
-const stageName = (checkpoint: { readonly path: string; readonly stage?: string; readonly round?: number }, locale: string): string => {
-  const text = textFor(locale)
-  if (checkpoint.stage === 'key-mix') return text.keyMix
-  if (checkpoint.stage === 'substitute') return text.substitution
-  if (checkpoint.stage === 'permute') return text.permutation
-  if (checkpoint.stage && checkpoint.stage in text.stages) {
-    const label = text.stages[checkpoint.stage as keyof typeof text.stages]
+const stageName = (checkpoint: { readonly path: string; readonly stage?: string; readonly round?: number }, t: TFunction<'visualizers'>): string => {
+  if (checkpoint.stage === 'key-mix') return t('avalanche.keyMix')
+  if (checkpoint.stage === 'substitute') return t('avalanche.substitution')
+  if (checkpoint.stage === 'permute') return t('avalanche.permutation')
+  if (checkpoint.stage && ['add-round-key', 'sub-bytes', 'inv-sub-bytes', 'shift-rows', 'inv-shift-rows', 'mix-columns', 'inv-mix-columns'].includes(checkpoint.stage)) {
+    const label = t(`avalanche.stages.${checkpoint.stage}`)
     return checkpoint.round === undefined ? label : `${label} ${checkpoint.round}`
   }
-  return formatTracePath(checkpoint.path, locale)
+  return formatTracePath(checkpoint.path, t)
 }
 
-export const avalanchePresentation = (comparison: AvalancheComparison, locale: string, executionIdentity: string): LearningPresentation => {
-  const text = textFor(locale)
+export const avalanchePresentation = (comparison: AvalancheComparison, t: TFunction<'visualizers'>, executionIdentity: string): LearningPresentation => {
   const checkpoints = comparison.checkpoints.filter((checkpoint): checkpoint is CompleteCheckpoint => checkpoint.complete)
   const nodes: readonly FlowNode[] = checkpoints.map((checkpoint) => ({ ...checkpoint, values: [checkpoint.left, checkpoint.right] }))
-  const rows = flowRows(nodes, { ...text, xor: text.keyMix }, (node) => stageName(node, locale)).map((row, index) => ({
+  const rows = flowRows(nodes, { bit: t('avalanche.bit'), keys: t('avalanche.keys'), xor: t('avalanche.keyMix'), sBox: t('avalanche.sBox'), different: t('avalanche.different') }, (node) => stageName(node, t)).map((row, index) => ({
     ...row,
     cells: [
       { value: `${hex(checkpoints[index].left)} | ${hex(checkpoints[index].right)}` },
@@ -113,48 +36,49 @@ export const avalanchePresentation = (comparison: AvalancheComparison, locale: s
   const summary: readonly LearningRow[] = comparison.checkpoints.map((checkpoint) => checkpoint.complete
     ? {
         id: checkpoint.path,
-        label: stageName(checkpoint, locale),
+        label: stageName(checkpoint, t),
         state: warned(checkpoint) ? 'warning' : undefined,
         cells: [hex(checkpoint.left), hex(checkpoint.right), checkpoint.changedBits, checkpoint.ratio].map((value) => ({ value })),
-        detail: warned(checkpoint) ? text.warning : undefined,
+        detail: warned(checkpoint) ? t('avalanche.warning') : undefined,
       }
-    : { id: checkpoint.path, label: stageName(checkpoint, locale), cells: [{ value: text.gap }] })
+    : { id: checkpoint.path, label: stageName(checkpoint, t), cells: [{ value: t('avalanche.gap') }] })
   const retained: readonly LearningRow[] = (['baseline', 'changed'] as const).flatMap((run) => comparison.executions[run].trace.flatMap((event) =>
-    'value' in event && event.value && 'bytes' in event.value ? [{ id: `${run}-${event.path}`, label: text[run], cells: [{ value: event.path }, { value: hex(event.value) }] }] : []))
+    'value' in event && event.value && 'bytes' in event.value ? [{ id: `${run}-${event.path}`, label: t(`avalanche.${run}`), cells: [{ value: event.path }, { value: hex(event.value) }] }] : []))
   const input = rows.find((row) => (row.id === 'plaintext' || row.id === 'ciphertext') && row.selectableBits)
   const initialChanged = input?.selectableBits?.find((bit) => bit.state === 'changed')?.id
     ?? rows.flatMap((row) => row.selectableBits ?? []).find((bit) => bit.state === 'changed')?.id
   return {
-    title: text.title,
-    instructions: text.instructions,
+    title: t('avalanche.title'),
+    instructions: t('avalanche.instructions'),
     executionIdentity,
     initialSelection: initialChanged,
     selectionStatus: (selected) => !selected
-      ? text.noSelection
+      ? t('avalanche.noSelection')
       : 'bit' in selected
-        ? `${text.lineage}: ${rows.find((row) => row.selectableBits?.includes(selected))?.label}, ${text.bit} ${selected.bit}.`
-        : `${text.lineage}: ${selected.ariaLabel}`,
+        ? `${t('avalanche.lineage')}: ${rows.find((row) => row.selectableBits?.includes(selected))?.label}, ${t('avalanche.bit')} ${selected.bit}.`
+        : `${t('avalanche.lineage')}: ${selected.ariaLabel}`,
     sections: [
-      { kind: 'trace', caption: text.flow, headers: [text.stage, `${text.baseline} | ${text.changed}`, text.bit, text.details], rows },
+      { kind: 'trace', caption: t('avalanche.flow'), headers: [t('avalanche.stage'), `${t('avalanche.baseline')} | ${t('avalanche.changed')}`, t('avalanche.bit'), t('avalanche.details')], rows },
       {
         kind: 'comparison',
-        caption: text.summary,
-        headers: [text.stage, text.baseline, text.changed, text.changedBits, text.ratio, ...(summary.some((row) => row.detail) ? [text.details] : [])],
+        caption: t('avalanche.summary'),
+        headers: [t('avalanche.stage'), t('avalanche.baseline'), t('avalanche.changed'), t('avalanche.changedBits'), t('avalanche.ratio'), ...(summary.some((row) => row.detail) ? [t('avalanche.details')] : [])],
         rows: summary,
       },
       ...(comparison.truncated
         ? [{
             kind: 'raw' as const,
-            caption: text.incomplete,
-            headers: [text.run, text.stage, text.raw],
-            rows: [...retained, { id: 'gap', label: text.gap, state: 'incomplete' as const, cells: [{ value: '—' }, { value: '—' }] }],
+            caption: t('avalanche.incomplete'),
+            headers: [t('avalanche.run'), t('avalanche.stage'), t('avalanche.raw')],
+            rows: [...retained, { id: 'gap', label: t('avalanche.gap'), state: 'incomplete' as const, cells: [{ value: '—' }, { value: '—' }] }],
           }]
         : []),
     ],
   }
 }
 
-export const AvalancheRenderer: React.FC<AvalancheRendererProps> = ({ comparison, locale, executionIdentity }) => {
-  const presentation = useMemo(() => avalanchePresentation(comparison, locale, executionIdentity), [comparison, locale, executionIdentity])
+export const AvalancheRenderer: React.FC<AvalancheRendererProps> = ({ comparison, executionIdentity }) => {
+  const { t } = useTranslation('visualizers')
+  const presentation = useMemo(() => avalanchePresentation(comparison, t, executionIdentity), [comparison, t, executionIdentity])
   return <LearningPresentationView presentation={presentation} />
 }

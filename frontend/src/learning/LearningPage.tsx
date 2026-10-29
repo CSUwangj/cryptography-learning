@@ -4,11 +4,13 @@ import styled from '@emotion/styled'
 import { useApolloClient } from '@apollo/client/react'
 import { Link, Route, Switch, useHistory, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { Markdown } from 'practice'
 import { NotFound } from 'ui'
 import {
   createBrowserLessonSession,
   lessonDefaultLocale,
+  lessonDiagnosticKeys,
   rewriteLessonAssets,
   type BrowserLessonSession,
   type LessonDocuments as RuntimeLessonDocuments,
@@ -98,8 +100,8 @@ export const inputText = (value: CryptoValue | string, encoding: string): string
           ? String(value.value)
           : encoding === 'hex-block' ? hexValue(value).slice(2) : hexValue(value)
 
-const diagnosticText = (value: Diagnostic): string =>
-  `${value.code}: ${value.message}${value.path ? ` (${value.path})` : ''}${value.span ? ` at ${value.span.file}:${value.span.line}:${value.span.column}` : ''}`
+const diagnosticText = (value: Diagnostic, t: TFunction<'translations'>): string =>
+  `${value.code}: ${Object.hasOwn(lessonDiagnosticKeys, value.code) ? t(lessonDiagnosticKeys[value.code], { defaultValue: value.message }) : value.message}${value.path ? ` (${value.path})` : ''}${value.span ? ` ${t('learning.diagnosticLocation', { file: value.span.file, line: value.span.line, column: value.span.column })}` : ''}`
 
 const classicalCipherData = (
   step: { readonly execute?: { readonly graph: string; readonly bindings: Readonly<Record<string, LessonValueReference>> }; readonly visualizer?: { readonly id: string; readonly bindings?: Readonly<Record<string, unknown>> } },
@@ -195,13 +197,13 @@ const LessonView: React.FC = () => {
     setLoad({ status: 'loading' })
     const apply = async (documents: RuntimeLessonDocuments) => {
       if (activeLesson.current === lessonId && session.current) {
-        const updated = session.current.updateDocuments(documents, i18n.language, visualizerCatalog)
+        const updated = session.current.updateDocuments(documents, i18n.language, t, visualizerCatalog)
         if (!updated.ok) {
           if (!disposed) setLoad({ status: 'error', diagnostics: updated.diagnostics })
           return
         }
       } else {
-        const created = createBrowserLessonSession(documents, i18n.language, visualizerCatalog)
+        const created = createBrowserLessonSession(documents, i18n.language, t, visualizerCatalog)
         if (!created.ok) {
           if (!disposed) setLoad({ status: 'error', diagnostics: created.diagnostics })
           return
@@ -263,7 +265,7 @@ const LessonView: React.FC = () => {
 
   if (load.status === 'loading') return <Spinner aria-label={t('learning.loadingLesson')} />
   if (load.status === 'not-found') return <NotFound />
-  if (load.status === 'error') return <Callout intent="danger">{load.diagnostics.map((item) => <p key={`${item.code}-${item.path}`}>{diagnosticText(item)}</p>)}</Callout>
+  if (load.status === 'error') return <Callout intent="danger">{load.diagnostics.map((item) => <p key={`${item.code}-${item.path}`}>{diagnosticText(item, t)}</p>)}</Callout>
 
   const current = session.current!
   const state = load.state
@@ -308,15 +310,15 @@ const LessonView: React.FC = () => {
       {step.prose && <Markdown source={rewriteLessonAssets(locale.texts[step.prose] ?? '', lessonId)} />}
     </div>
     {step.bitFlip && state.bitFlips[step.id] && <fieldset>
-      <legend>{state.locale === 'zh-CN' ? '单比特变化' : 'One-bit change'}</legend>
-      <label htmlFor={`${step.id}-source`}>{state.locale === 'zh-CN' ? '变化来源' : 'Change source'}</label>{' '}
+      <legend>{t('learning.oneBitChange')}</legend>
+      <label htmlFor={`${step.id}-source`}>{t('learning.changeSource')}</label>{' '}
       <select id={`${step.id}-source`} value={state.bitFlips[step.id].input} onChange={(event) => {
         current.setBitFlip(step.id, event.target.value, 0)
         refresh()
       }}>
         {step.bitFlip.map((option) => <option key={option.input} value={option.input}>{locale.texts[option.prompt]}</option>)}
       </select>
-      {' '}<label htmlFor={`${step.id}-bit`}>{state.locale === 'zh-CN' ? '翻转位（从最高位 0 开始）' : 'Flip bit (MSB-first, starting at 0)'}</label>{' '}
+      {' '}<label htmlFor={`${step.id}-bit`}>{t('learning.flipBit')}</label>{' '}
       <select id={`${step.id}-bit`} value={state.bitFlips[step.id].bit} onChange={(event) => {
         current.setBitFlip(step.id, state.bitFlips[step.id].input, Number(event.target.value))
         refresh()
@@ -327,7 +329,7 @@ const LessonView: React.FC = () => {
         })() }, (_, bit) => <option key={bit} value={bit}>{bit}</option>)}
       </select>
       <dl>{step.bitFlip.map((option) => <React.Fragment key={option.input}>
-        <dt>{locale.texts[option.prompt]} — {state.locale === 'zh-CN' ? '基准 / 改变后' : 'Baseline / changed'}</dt>
+        <dt>{locale.texts[option.prompt]} — {t('learning.baselineChanged')}</dt>
         <dd>{inputText(state.inputs[option.input], current.lesson.inputs[option.input].encoding)} / {inputText(state.inputs[option.changed], current.lesson.inputs[option.changed].encoding)}</dd>
       </React.Fragment>)}</dl>
     </fieldset>}
@@ -354,7 +356,9 @@ const LessonView: React.FC = () => {
               inputMode={input.type.family === 'integer' ? 'numeric' : undefined}
               onChange={(event) => setInput(event.target.value)}
             />}
-        {state.inputDiagnostics[input.input] && <Callout intent="danger">{state.inputDiagnostics[input.input].message}</Callout>}
+        {state.inputDiagnostics[input.input] && <Callout intent="danger">{Object.hasOwn(lessonDiagnosticKeys, state.inputDiagnostics[input.input].code)
+          ? t(lessonDiagnosticKeys[state.inputDiagnostics[input.input].code], { defaultValue: state.inputDiagnostics[input.input].message })
+          : state.inputDiagnostics[input.input].message}</Callout>}
       </label>
     })}
     {step.execute && state.snapshots[step.id] && <table>
@@ -373,7 +377,6 @@ const LessonView: React.FC = () => {
         invocation={step.visualizer}
         presentation={step.presentation}
         lessonTexts={locale.texts}
-        locale={state.locale}
         reducedMotion={reducedMotion}
         classicalCipher={cipher && {
           input: cipher.input,
@@ -385,8 +388,8 @@ const LessonView: React.FC = () => {
         }}
       />
     </div>}
-    {acceptedDiagnostic && <Callout intent="primary">{diagnosticText(acceptedDiagnostic)}</Callout>}
-    {executionDiagnostic && <Callout intent="danger">{diagnosticText(executionDiagnostic)}</Callout>}
+    {acceptedDiagnostic && <Callout intent="primary">{diagnosticText(acceptedDiagnostic, t)}</Callout>}
+    {executionDiagnostic && <Callout intent="danger">{diagnosticText(executionDiagnostic, t)}</Callout>}
     {step.check?.kind === 'choice' && <fieldset>
       <legend>{t('learning.check')}</legend>
       {step.check.options.map((option) => <Button

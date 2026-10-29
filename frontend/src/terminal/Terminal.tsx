@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { AttachAddon } from '@xterm/addon-attach'
@@ -109,6 +110,7 @@ export const Terminal: React.FC<TerminalViewProps> = ({
   onPtyResize,
   onSession,
 }) => {
+  const { t } = useTranslation('translations', { keyPrefix: 'terminal' })
   const [reconnectNonce, setReconnectNonce] = useState(0)
   const [status, setStatus] = useState<ConnectionStatus>('connecting')
   const containerRef = useRef<HTMLDivElement>(null)
@@ -262,13 +264,13 @@ export const Terminal: React.FC<TerminalViewProps> = ({
       <div ref={containerRef} data-terminal-container id={id ?? 'terminal'} />
       {status === 'closed' ? (
         <div role="status" aria-live="polite">
-          <p>Disconnected from Challenge</p>
+          <p>{t('disconnected')}</p>
           <button type="button" onClick={retry}>
-            Retry
+            {t('retry')}
           </button>
           {onExit ? (
             <button type="button" onClick={onExit}>
-              Exit
+              {t('exit')}
             </button>
           ) : null}
         </div>

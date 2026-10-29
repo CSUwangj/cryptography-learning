@@ -1,3 +1,5 @@
+import { I18nextProvider } from 'react-i18next'
+import i18n from '../app/i18n'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
@@ -82,7 +84,7 @@ beforeEach(() => {
 afterEach(() => { globalThis.Worker = previousWorker })
 
 const run = async (documents: LessonDocuments, locale: string): Promise<LessonSessionState> => {
-  const session = createBrowserLessonSession(documents, locale, visualizerCatalog)
+  const session = createBrowserLessonSession(documents, locale, i18n.getFixedT(locale, 'translations'), visualizerCatalog)
   if (!session.ok) throw new Error(session.diagnostics[0]?.message)
   const result = await session.value.enter()
   session.value.dispose()
@@ -92,13 +94,13 @@ const run = async (documents: LessonDocuments, locale: string): Promise<LessonSe
 
 const renderSpn = async (locale: string, documents = teachingSpnDemoDocuments) => {
   const state = await run(documents, locale)
-  render(<RenderHost execution={state.snapshots.visualize} executionIdentity="spn" invocation={{ id: 'teaching-spn@1' }} locale={locale} dimensions={{ width: 1100, height: 700 }} reducedMotion />)
+  render(<I18nextProvider i18n={i18n.cloneInstance({ lng: locale })}><RenderHost execution={state.snapshots.visualize} executionIdentity="spn" invocation={{ id: 'teaching-spn@1' }}  dimensions={{ width: 1100, height: 700 }} reducedMotion /></I18nextProvider>)
   return state
 }
 
 const renderAvalanche = async (locale: string, documents = avalancheDocuments) => {
   const state = await run(documents, locale)
-  render(<RenderHost comparison={state.comparisons.compare} executionIdentity="avalanche" invocation={{ id: 'avalanche@1' }} locale={locale} dimensions={{ width: 1100, height: 700 }} reducedMotion />)
+  render(<I18nextProvider i18n={i18n.cloneInstance({ lng: locale })}><RenderHost comparison={state.comparisons.compare} executionIdentity="avalanche" invocation={{ id: 'avalanche@1' }}  dimensions={{ width: 1100, height: 700 }} reducedMotion /></I18nextProvider>)
   return state
 }
 
@@ -110,7 +112,7 @@ const spnLocales = [
 describe('Teaching SPN presentation adapter', () => {
   it('adapts the YAML trace into whole round keys, bit rows, lineage, and details', async () => {
     const state = await run(teachingSpnDemoDocuments, 'en-US')
-    const presentation = teachingSpnPresentation(state.snapshots.visualize, 'en-US', 'spn')
+    const presentation = teachingSpnPresentation(state.snapshots.visualize, i18n.getFixedT('en-US', 'visualizers'), 'spn')
     const rows = presentation.sections[0].rows
     expect(rows.map((row) => row.id)).toEqual([
       'plaintext', 'round.1/key', 'round.1/key-mix', 'round.1/substitute', 'round.1/permute', 'round.1/output',
@@ -187,7 +189,7 @@ describe('Teaching SPN presentation adapter', () => {
 describe('Avalanche presentation adapter', () => {
   it('adapts paired checkpoints into changed bits, whole keys, and summary rows', async () => {
     const state = await run(avalancheDocuments, 'en-US')
-    const presentation = avalanchePresentation(state.comparisons.compare, 'en-US', 'avalanche')
+    const presentation = avalanchePresentation(state.comparisons.compare, i18n.getFixedT('en-US', 'visualizers'), 'avalanche')
     const [flow, summary] = presentation.sections
     const plaintext = flow.rows[0]
     expect(plaintext.cells.map((cell) => cell.value)).toEqual(['0x0f0f | 0x00ff'])
@@ -241,7 +243,7 @@ describe('AES comparison and per-bit avalanche (#86)', () => {
       ])
     }
 
-    const session = createBrowserLessonSession(aes128CipherComparisonDocuments, 'en-US', visualizerCatalog)
+    const session = createBrowserLessonSession(aes128CipherComparisonDocuments, 'en-US', i18n.getFixedT('en-US', 'translations'), visualizerCatalog)
     expect(session.ok).toBe(true)
     if (!session.ok) return
     const entered = await session.value.enter()
@@ -289,7 +291,7 @@ describe('AES comparison and per-bit avalanche (#86)', () => {
     { locale: 'zh-CN' as const, summary: '比较摘要', stage: '轮密钥加 0', different: '不同' },
   ])('adapts $locale AES comparison into shared Learning rows with text/ARIA difference meaning', async (text) => {
     const state = await run(aes128CipherComparisonDocuments, text.locale)
-    const presentation = avalanchePresentation(state.comparisons['compare-plaintext'], text.locale, 'aes')
+    const presentation = avalanchePresentation(state.comparisons['compare-plaintext'], i18n.getFixedT(text.locale, 'visualizers'), 'aes')
     expect(presentation.sections[1]).toMatchObject({ kind: 'comparison', caption: text.summary })
     expect(presentation.initialSelection).toBe('plaintext#0')
     const addRoundKey = presentation.sections[0].rows.find((row) => row.id === 'cipher-0-add-round-key')

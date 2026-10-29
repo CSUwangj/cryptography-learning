@@ -1,44 +1,12 @@
+import { useTranslation } from 'react-i18next'
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { WorkerExecutionSnapshot } from '../src/crypto_graph'
-import { createBrowserLessonSession, type LessonSessionState } from '../src/lesson_runtime'
+import type { Diagnostic, WorkerExecutionSnapshot } from '../src/crypto_graph'
+import { lessonDiagnosticKeys, createBrowserLessonSession, type LessonSessionState } from '../src/lesson_runtime'
 import { learningColors } from '../src/ui/learning'
 import { RenderHost, visualizerCatalog } from '../src/visualizers'
 import { teachingSpnDemoDocuments } from './teachingSpnLesson'
 
-type Locale = 'en-US' | 'zh-CN'
-
 // PROTOTYPE: throwaway reference for the aligned key-expansion lane (issue #83).
-const copy = {
-  'en-US': {
-    title: 'SPN key expansion prototype',
-    subtitle: 'PROTOTYPE — select any round-key chip to show how the master key expands into round keys, aligned with the encryption trace.',
-    plaintext: 'Plaintext',
-    masterKey: 'Master key',
-    run: 'Run SPN',
-    failure: 'Could not run this SPN execution.',
-    expansion: 'Key expansion',
-    rule: 'Round key r is the 16-bit window of the master key starting at bit 4(r−1).',
-    close: 'Close key expansion',
-    chip: 'Key expansion round',
-    bit: 'bit',
-    // Must match the Teaching SPN renderer's round-key chip aria-label prefix.
-    traceKeys: 'Round keys',
-  },
-  'zh-CN': {
-    title: 'SPN 密钥扩展原型',
-    subtitle: '原型 — 选择任一轮密钥芯片，查看主密钥如何扩展为轮密钥，并与加密轨迹逐行对齐。',
-    plaintext: '明文',
-    masterKey: '主密钥',
-    run: '运行 SPN',
-    failure: '无法运行此 SPN 执行。',
-    expansion: '密钥扩展',
-    rule: '第 r 轮密钥是主密钥从第 4(r−1) 位开始的 16 位窗口。',
-    close: '关闭密钥扩展',
-    chip: '密钥扩展轮',
-    bit: '位',
-    traceKeys: '轮密钥',
-  },
-} as const
 
 const rounds = 2
 const windowStart = (round: number): number => 4 * (round - 1)
@@ -64,14 +32,14 @@ const labelWidth = 190
 const bitX = (bit: number): number => labelWidth + bit * cell + Math.floor(bit / 4) * 4
 
 const KeyExpansionOverlay: React.FC<{
-  readonly text: typeof copy[Locale]
   readonly layout: Layout
   readonly execution: WorkerExecutionSnapshot
   readonly bits: readonly number[]
   readonly masterKey: string
   readonly open: number
   readonly setOpen: (round: number | undefined) => void
-}> = ({ text, layout, execution, bits, masterKey, open, setOpen }) => {
+}> = ({ layout, execution, bits, masterKey, open, setOpen }) => {
+  const { t } = useTranslation('demos', { keyPrefix: 'keyExpansion' })
   const [selected, setSelected] = useState<number>()
   const rows = traceRows(execution)
   const masterRow = rows.findIndex((row) => row.stage === 'input')
@@ -83,7 +51,7 @@ const KeyExpansionOverlay: React.FC<{
       ? bit === selected ? learningColors.selected : learningColors.canvas
       : round === open || (round === undefined && inWindow(bit, open)) ? learningColors.related : learningColors.canvas
   const bitCell = (bit: number, row: number, round?: number) => <button
-    aria-label={`${round === undefined ? text.masterKey : `K${round}`} ${text.bit} ${round === undefined ? bit : bit - windowStart(round)}: ${bits[bit]}`}
+    aria-label={`${round === undefined ? t('masterKey') : `K${round}`} ${t('bit')} ${round === undefined ? bit : bit - windowStart(round)}: ${bits[bit]}`}
     aria-pressed={bit === selected}
     key={`${row}-${bit}`}
     onClick={() => setSelected(bit === selected ? undefined : bit)}
@@ -91,10 +59,10 @@ const KeyExpansionOverlay: React.FC<{
     type="button"
   >{bits[bit]}</button>
 
-  return <div aria-label={text.expansion} role="region" style={{ background: 'white', border: `1px solid ${learningColors.border}`, boxShadow: '0 2px 8px rgba(0,0,0,.2)', height: layout.height, left: layout.left, position: 'absolute', top: layout.top, width: layout.width, zIndex: 1 }}>
+  return <div aria-label={t('expansion')} role="region" style={{ background: 'white', border: `1px solid ${learningColors.border}`, boxShadow: '0 2px 8px rgba(0,0,0,.2)', height: layout.height, left: layout.left, position: 'absolute', top: layout.top, width: layout.width, zIndex: 1 }}>
     <div style={{ alignItems: 'center', display: 'flex', gap: 8, height: layout.header, padding: '0 8px' }}>
-      <strong>{text.expansion}</strong><small style={{ color: learningColors.mutedText }}>{text.rule}</small>
-      <button aria-label={text.close} onClick={() => setOpen(undefined)} style={{ marginLeft: 'auto' }} type="button">×</button>
+      <strong>{t('expansion')}</strong><small style={{ color: learningColors.mutedText }}>{t('rule')}</small>
+      <button aria-label={t('close')} onClick={() => setOpen(undefined)} style={{ marginLeft: 'auto' }} type="button">×</button>
     </div>
     <svg aria-hidden="true" height={layout.height} style={{ left: 0, pointerEvents: 'none', position: 'absolute', top: 0 }} width={layout.width}>
       {Array.from({ length: rounds }, (_, index) => index + 1).flatMap((round) => Array.from({ length: 16 }, (_, offset) => {
@@ -111,14 +79,14 @@ const KeyExpansionOverlay: React.FC<{
         />
       }))}
     </svg>
-    <span style={{ left: 8, position: 'absolute', top: middle(masterRow) - 9 }}>{text.masterKey} <code>{masterKey}</code></span>
+    <span style={{ left: 8, position: 'absolute', top: middle(masterRow) - 9 }}>{t('masterKey')} <code>{masterKey}</code></span>
     {bits.map((_, bit) => bitCell(bit, masterRow))}
     {Array.from({ length: rounds }, (_, index) => index + 1).map((round) => {
       const key = roundKeyHex(bits, round)
       return <React.Fragment key={round}>
         <span style={{ left: 8, position: 'absolute', top: middle(keyRow(round)) - 11 }}>
           <button
-            aria-label={`${text.chip} ${round}: ${key}`}
+            aria-label={`${t('chip')} ${round}: ${key}`}
             aria-pressed={round === open}
             onClick={() => setOpen(round === open ? undefined : round)}
             style={{ background: round === open ? learningColors.selected : undefined, borderColor: learningColors.border, color: learningColors.text }}
@@ -132,43 +100,48 @@ const KeyExpansionOverlay: React.FC<{
   </div>
 }
 
-export const KeyExpansionPrototype: React.FC<{ readonly locale: Locale }> = ({ locale }) => {
-  const text = copy[locale]
+export const KeyExpansionPrototype: React.FC = () => {
+  const { t: runtimeT } = useTranslation('translations')
+  const { t, i18n } = useTranslation('demos', { keyPrefix: 'keyExpansion' })
   const [plaintext, setPlaintext] = useState('0x1234')
   const [masterKey, setMasterKey] = useState('0x0f0f0f0f')
   const [run, setRun] = useState({ plaintext: '0x1234', masterKey: '0x0f0f0f0f' })
   const [state, setState] = useState<LessonSessionState>()
-  const [failure, setFailure] = useState<string>()
+  const [failure, setFailure] = useState<{ readonly diagnostic?: Diagnostic }>()
   const [invocation, setInvocation] = useState<{ readonly id: string }>()
   const [open, setOpen] = useState<number>()
   const [layout, setLayout] = useState<Layout>()
   const container = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    const created = createBrowserLessonSession(documentsFor(run.masterKey), locale, visualizerCatalog)
+    // UI language changes relabel retained results; only computation changes start a session.
+    const locale = i18n.resolvedLanguage ?? 'en-US'
+    const sessionT = i18n.getFixedT(locale, 'translations')
+    const created = createBrowserLessonSession(documentsFor(run.masterKey), locale, sessionT, visualizerCatalog)
     if (!created.ok) {
-      setFailure(created.diagnostics[0]?.message ?? text.failure)
+      setFailure({ diagnostic: created.diagnostics[0] })
       return
     }
     let active = true
     const updated = created.value.setInput('plaintext', run.plaintext)
     if (!updated.ok) {
-      setFailure(updated.diagnostics[0]?.message ?? text.failure)
+      setFailure({ diagnostic: updated.diagnostics[0] })
       return () => created.value.dispose()
     }
     setInvocation(created.value.lesson.steps[0].visualizer)
     void created.value.next().then((result) => {
       if (!active) return
       if (result.ok) {
-        setFailure(undefined)
         setState(result.value)
-      } else setFailure(result.diagnostics[0]?.message ?? text.failure)
+        const diagnostic = Object.values(result.value.executionDiagnostics)[0]
+        if (diagnostic) setFailure({ diagnostic })
+      } else setFailure({ diagnostic: result.diagnostics[0] })
     })
     return () => {
       active = false
       created.value.dispose()
     }
-  }, [locale, run, text.failure])
+  }, [run])
 
   const execution = state?.snapshots.visualize
 
@@ -198,38 +171,42 @@ export const KeyExpansionPrototype: React.FC<{ readonly locale: Locale }> = ({ l
     measure()
     window.addEventListener('resize', measure)
     return () => window.removeEventListener('resize', measure)
-  }, [open, execution])
+  }, [open, execution, t])
 
   // PROTOTYPE seam: the shared view exposes no chip-selection callback, so chip clicks are detected by aria-label.
   const onChipClick = (event: React.MouseEvent) => {
     const chip = (event.target as HTMLElement).closest('button')
     const label = chip?.getAttribute('aria-label') ?? ''
-    if (!label.startsWith(`${text.traceKeys}:`) || !container.current) return
-    const chips = [...container.current.querySelectorAll('button')].filter((button) => button.getAttribute('aria-label')?.startsWith(`${text.traceKeys}:`))
+    if (!label.startsWith(`${t('traceKeys')}:`) || !container.current) return
+    const chips = [...container.current.querySelectorAll('button')].filter((button) => button.getAttribute('aria-label')?.startsWith(`${t('traceKeys')}:`))
     const round = chips.indexOf(chip as HTMLButtonElement) + 1
     setOpen(round === open ? undefined : round)
   }
 
   return <main style={{ margin: '0 auto', maxWidth: 1200, padding: 20 }}>
-    <h1>{text.title}</h1>
-    <p>{text.subtitle}</p>
+    <h1>{t('title')}</h1>
+    <p>{t('subtitle')}</p>
     <form onSubmit={(event) => {
       event.preventDefault()
       setOpen(undefined)
+      setFailure(undefined)
       setRun({ plaintext, masterKey })
     }}>
-      <label>{text.plaintext} <input pattern="0x[0-9a-fA-F]{4}" required value={plaintext} onChange={(event) => setPlaintext(event.target.value)} /></label>{' '}
-      <label>{text.masterKey} <input pattern="0x[0-9a-fA-F]{8}" required value={masterKey} onChange={(event) => setMasterKey(event.target.value)} /></label>{' '}
-      <button type="submit">{text.run}</button>
+      <label>{t('plaintext')} <input pattern="0x[0-9a-fA-F]{4}" required value={plaintext} onChange={(event) => setPlaintext(event.target.value)} /></label>{' '}
+      <label>{t('masterKey')} <input pattern="0x[0-9a-fA-F]{8}" required value={masterKey} onChange={(event) => setMasterKey(event.target.value)} /></label>{' '}
+      <button type="submit">{t('run')}</button>
     </form>
-    {failure && <p role="alert">{failure}</p>}
+    {failure && <p role="alert">{failure.diagnostic
+      ? Object.hasOwn(lessonDiagnosticKeys, failure.diagnostic.code)
+        ? runtimeT(lessonDiagnosticKeys[failure.diagnostic.code], { defaultValue: failure.diagnostic.message })
+        : failure.diagnostic.message
+      : t('failure')}</p>}
     <div onClickCapture={onChipClick} ref={container} style={{ position: 'relative' }}>
       {execution && invocation && <RenderHost
         dimensions={{ width: 1100, height: 700 }}
         execution={execution}
         executionIdentity={state.executionIdentities.visualize ?? 'key-expansion-prototype'}
         invocation={invocation}
-        locale={locale}
         reducedMotion={window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false}
       />}
       {execution && open !== undefined && layout && <KeyExpansionOverlay
@@ -239,7 +216,6 @@ export const KeyExpansionPrototype: React.FC<{ readonly locale: Locale }> = ({ l
         masterKey={run.masterKey}
         open={open}
         setOpen={setOpen}
-        text={text}
       />}
     </div>
   </main>

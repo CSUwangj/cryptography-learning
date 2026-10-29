@@ -1,16 +1,23 @@
 // Local, throwaway acceptance check for #95 P0-A5/A6. Start prototype:learning-shell first.
 import assert from 'node:assert/strict'
 import { chromium, expect } from '@playwright/test'
+import { fileURLToPath } from 'node:url'
 
 const origin = process.env.PROTOTYPE_ORIGIN ?? 'http://127.0.0.1:4181'
+const resources = {}
+for (const locale of ['en-US', 'zh-CN']) {
+  resources[locale] = {}
+  for (const namespace of ['translations', 'demos']) {
+    const path = fileURLToPath(new URL('../src/app/i18n/locales/' + locale + '/' + namespace + '.json', import.meta.url))
+    const response = await fetch(origin + '/@fs' + path)
+    assert.ok(response.ok, 'Shared UI resources must be served by the prototype')
+    resources[locale][namespace] = await response.json()
+  }
+}
 const browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE, headless: true })
 const page = await browser.newPage()
 const errors = []
 page.on('pageerror', (error) => { errors.push(error.message); console.error(error.message) })
-const copy = {
-  'en-US': { learning: 'Learning', dialog: 'Learning Navigation', category: 'Foundations', blocks: 'Block ciphers', short: 'Exclusive OR', catalog: 'All Lessons', home: 'Home', practice: 'Practice', feedback: 'Feedback', trace: 'Initial round', completion: 'Completion Records' },
-  'zh-CN': { learning: '学习', dialog: '学习导航', category: '基础知识', blocks: '分组密码', short: '异或运算', catalog: '全部课程', home: '主页', practice: '实践', feedback: '反馈', trace: '初始轮', completion: '完成记录' },
-}
 const geometry = async () => {
   const metrics = await page.evaluate(() => {
     const main = document.querySelector('main')
@@ -38,7 +45,8 @@ const geometry = async () => {
 
 try {
   for (const locale of ['en-US', 'zh-CN']) {
-    const text = copy[locale]
+    const { translations: ui, demos } = resources[locale]
+    const content = { category: demos.learningShell.categoryNames.foundations, blocks: demos.learningShell.categoryNames['block-ciphers'], short: demos.learningShell.lessonTitles.xor }
     for (const width of [1440, 1100, 768, 521, 520, 390, 320]) {
       await page.setViewportSize({ width, height: 1000 })
       await page.goto(`${origin}/learning/aes-192-long?prototype=shell&lang=${locale}`)
@@ -46,7 +54,7 @@ try {
       await expect(page.locator('[data-prototype="learning-shell"]')).toBeVisible()
       await expect(page.locator('main h2')).toContainText('AES-192')
       const title = await page.locator('main h2').innerText()
-      const trigger = page.getByRole('button', { name: `${text.learning} > ${text.blocks} > ${title}`, exact: true })
+      const trigger = page.getByRole('button', { name: `${ui.nav.learning} > ${content.blocks} > ${title}`, exact: true })
       await expect(trigger).toBeVisible()
       const metrics = await geometry()
       const gutter = width <= 520 ? 16 : 24
@@ -56,11 +64,11 @@ try {
       assert.ok(metrics.traceScroll > metrics.traceWidth, 'Trace must keep its local scrollbar')
       assert.equal(metrics.traceWidth, width - 2 * gutter)
 
-      await page.getByRole('button', { name: text.home, exact: true }).focus()
+      await page.getByRole('button', { name: ui.nav.homeAction, exact: true }).focus()
       await page.keyboard.press('Tab')
       await expect(trigger).toBeFocused()
       await page.keyboard.press('Enter')
-      const dialog = page.getByRole('dialog', { name: text.dialog })
+      const dialog = page.getByRole('dialog', { name: ui.learningNavigation.label })
       await expect(dialog).toBeVisible()
       // Measure the final layout after Blueprint's CSS scale transition.
       await dialog.evaluate((element) => Promise.all(element.closest('.bp6-popover').getAnimations().map((animation) => animation.finished)))
@@ -74,19 +82,19 @@ try {
       await expect(dialog).not.toBeVisible()
 
       await trigger.click()
-      await dialog.getByRole('button', { name: text.category, exact: true }).click()
-      await dialog.getByRole('button', { name: text.short, exact: true }).focus()
+      await dialog.getByRole('button', { name: content.category, exact: true }).click()
+      await dialog.getByRole('button', { name: content.short, exact: true }).focus()
       await page.keyboard.press('Enter')
       await expect(dialog).not.toBeVisible()
-      await expect(page.locator('main h2')).toHaveText(text.short)
+      await expect(page.locator('main h2')).toHaveText(content.short)
       assert.equal(new URL(page.url()).pathname, '/learning/xor')
       await geometry()
       await page.locator('main nav a').click()
-      await expect(page.locator('main h2')).toHaveText(text.learning)
+      await expect(page.locator('main h2')).toHaveText(ui.nav.learning)
       await expect(page.locator('main a')).toHaveCount(4)
       await page.getByRole('link', { name: title, exact: true }).click()
       await expect(page.locator('main h2')).toHaveText(title)
-      const trace = page.getByRole('region', { name: text.trace, exact: true })
+      const trace = page.getByRole('region', { name: demos.learningShell.trace, exact: true })
       await trace.scrollIntoViewIfNeeded()
       await trace.evaluate((element) => { element.scrollLeft = element.scrollWidth })
       assert.ok(await trace.evaluate((element) => element.scrollLeft > 0))
@@ -104,38 +112,40 @@ try {
       }
       console.log(`${locale} ${width}px: navigation, keyboard, catalog, wrapping, trace selection/scroll passed`)
     }
-    await page.getByRole('button', { name: new RegExp(`^${text.learning}`) }).click()
-    await page.getByRole('dialog', { name: text.dialog }).getByRole('button', { name: text.catalog }).click()
+    await page.getByRole('button', { name: new RegExp(`^${ui.nav.learning}`) }).click()
+    await page.getByRole('dialog', { name: ui.learningNavigation.label }).getByRole('button', { name: ui.learning.title }).click()
     assert.equal(new URL(page.url()).pathname, '/learning')
-    await page.getByRole('button', { name: text.home, exact: true }).click()
+    await page.getByRole('button', { name: ui.nav.homeAction, exact: true }).click()
     await expect(page.locator('main h2')).toBeVisible()
     assert.equal(new URL(page.url()).pathname, '/')
-    await page.getByRole('button', { name: text.feedback, exact: true }).click()
-    await expect(page.locator('main h2')).toHaveText(text.feedback)
-    await page.getByRole('button', { name: text.practice, exact: true }).click()
-    await page.getByRole('button', { name: text.completion, exact: true }).click()
-    await expect(page.locator('main h2')).toHaveText(text.completion)
+    await page.getByRole('button', { name: ui.nav.feedback, exact: true }).click()
+    await expect(page.locator('main h2')).toHaveText(ui.nav.feedback)
+    await page.getByRole('button', { name: ui.nav.practice, exact: true }).click()
+    await page.getByRole('button', { name: ui.nav.completion, exact: true }).click()
+    await expect(page.locator('main h2')).toHaveText(ui.nav.completion)
     await page.reload()
     await expect(page.locator('[data-prototype="learning-shell"]')).toBeVisible()
   }
   await page.goto(`${origin}/learning/aes-192-long?prototype=shell&lang=en-US`)
-  await page.getByRole('button', { name: 'Language', exact: true }).click()
-  await page.getByRole('option', { name: /Chinese/ }).click()
-  await expect(page.locator('main h2')).toContainText('加密过程')
+  const english = resources['en-US'].translations
+  const chinese = resources['zh-CN']
+  await page.getByRole('button', { name: english.nav.language, exact: true }).click()
+  await page.getByRole('option', { name: english.i18n['zh-CN'] }).click()
+  await expect(page.locator('main h2')).toHaveText(resources['zh-CN'].demos.learningShell.lessonTitles['aes-192-long'])
   await expect(page).toHaveURL(/lang=zh-CN/)
-  await page.getByText(/^原型间距:/).click()
-  await page.getByLabel('窄屏留白（px）', { exact: true }).fill('20')
+  await page.getByText(new RegExp('^' + chinese.demos.learningShell.spacing + ':')).click()
+  await page.getByLabel(chinese.demos.learningShell.narrow, { exact: true }).fill('20')
   assert.equal((await geometry()).proseX, 20)
   await page.setViewportSize({ width: 1440, height: 1000 })
-  await page.getByLabel('桌面留白（px）', { exact: true }).fill('32')
-  await page.getByLabel('正文宽度（rem）', { exact: true }).fill('40')
+  await page.getByLabel(chinese.demos.learningShell.desktop, { exact: true }).fill('32')
+  await page.getByLabel(chinese.demos.learningShell.measure, { exact: true }).fill('40')
   const adjusted = await geometry()
   assert.equal(adjusted.proseX, (1440 - 640) / 2)
   assert.equal(adjusted.proseWidth, 640)
   assert.equal(adjusted.traceX, 32)
   assert.equal(adjusted.traceWidth, 1440 - 64)
   await page.reload()
-  await expect(page.getByText('原型间距: 24/16px · 60rem', { exact: true })).toBeVisible()
+  await expect(page.getByText(chinese.demos.learningShell.spacing + ': 24/16px · 60rem', { exact: true })).toBeVisible()
   assert.deepEqual(errors, [])
   console.log('Locale switch, existing destinations, reload, adjustable spacing passed; no browser errors.')
 } finally {

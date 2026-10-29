@@ -1,74 +1,84 @@
+import { useTranslation } from 'react-i18next'
 import React, { useEffect, useRef, useState } from 'react'
-import { createBrowserLessonSession, type BrowserLessonSession, type LessonSessionState } from '../src/lesson_runtime'
+import type { Diagnostic } from '../src/crypto_graph'
+import { lessonDiagnosticKeys, createBrowserLessonSession, type BrowserLessonSession, type LessonSessionState } from '../src/lesson_runtime'
 import { RenderHost, visualizerCatalog } from '../src/visualizers'
 import { teachingSpnDemoDocuments } from './teachingSpnLesson'
 
-const copy = {
-  'en-US': { title: 'Teaching SPN demo', plaintext: 'Plaintext', run: 'Run SPN', failure: 'Could not run this SPN execution.' },
-  'zh-CN': { title: '教学 SPN 演示', plaintext: '明文', run: '运行 SPN', failure: '无法运行此 SPN 执行。' },
-} as const
-
-export const SpnDemo: React.FC<{ readonly locale: 'en-US' | 'zh-CN' }> = ({ locale }) => {
-  const text = copy[locale]
+export const SpnDemo: React.FC = () => {
+  const { t: runtimeT } = useTranslation('translations')
+  const { t, i18n } = useTranslation('demos', { keyPrefix: 'spn' })
   const [plaintext, setPlaintext] = useState('0x1234')
   const [state, setState] = useState<LessonSessionState>()
-  const [failure, setFailure] = useState<string>()
+  const [failure, setFailure] = useState<{ readonly diagnostic?: Diagnostic }>()
   const session = useRef<BrowserLessonSession | undefined>(undefined)
 
   useEffect(() => {
-    const created = createBrowserLessonSession(teachingSpnDemoDocuments, locale, visualizerCatalog)
+    // UI language changes relabel retained results; only computation changes start a session.
+    const locale = i18n.resolvedLanguage ?? 'en-US'
+    const sessionT = i18n.getFixedT(locale, 'translations')
+    const created = createBrowserLessonSession(teachingSpnDemoDocuments, locale, sessionT, visualizerCatalog)
     if (!created.ok) {
-      setFailure(created.diagnostics[0]?.message ?? text.failure)
+      setFailure({ diagnostic: created.diagnostics[0] })
       return
     }
     session.current = created.value
     let active = true
     void created.value.next().then((result) => {
       if (!active) return
-      if (result.ok) setState(result.value)
-      else setFailure(result.diagnostics[0]?.message ?? text.failure)
+      if (result.ok) {
+        setState(result.value)
+        const diagnostic = Object.values(result.value.executionDiagnostics)[0]
+        if (diagnostic) setFailure({ diagnostic })
+      } else setFailure({ diagnostic: result.diagnostics[0] })
     })
     return () => {
       active = false
       created.value.dispose()
     }
-  }, [locale, text.failure])
+  }, [])
 
   const execution = state?.snapshots.visualize
   const executionIdentity = state?.executionIdentities.visualize ?? 'teaching-spn-demo'
   const invocation = session.current?.lesson.steps[0].visualizer
 
   return <main style={{ margin: '0 auto', maxWidth: 1200, padding: 20 }}>
-    <h1>{text.title}</h1>
+    <h1>{t('title')}</h1>
     <form onSubmit={(event) => {
       event.preventDefault()
       const current = session.current
       if (!current) {
-        setFailure(text.failure)
+        setFailure({})
         return
       }
       const updated = current.setInput('plaintext', plaintext)
       if (!updated.ok) {
-        setFailure(updated.diagnostics[0]?.message ?? text.failure)
+        setFailure({ diagnostic: updated.diagnostics[0] })
         return
       }
       setFailure(undefined)
       void current.next().then((result) => {
-        if (result.ok) setState(result.value)
-        else setFailure(result.diagnostics[0]?.message ?? text.failure)
+        if (result.ok) {
+          setState(result.value)
+          const diagnostic = Object.values(result.value.executionDiagnostics)[0]
+          if (diagnostic) setFailure({ diagnostic })
+        } else setFailure({ diagnostic: result.diagnostics[0] })
       })
     }}>
-      <label>{text.plaintext} <input pattern="0x[0-9a-fA-F]{4}" required value={plaintext} onChange={(event) => setPlaintext(event.target.value)} /></label>
-      <button type="submit">{text.run}</button>
+      <label>{t('plaintext')} <input pattern="0x[0-9a-fA-F]{4}" required value={plaintext} onChange={(event) => setPlaintext(event.target.value)} /></label>
+      <button type="submit">{t('run')}</button>
     </form>
     {execution && invocation && <RenderHost
       dimensions={{ width: 1100, height: 700 }}
       execution={execution}
       executionIdentity={executionIdentity}
       invocation={invocation}
-      locale={locale}
       reducedMotion={window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false}
     />}
-    {failure && <p role="alert">{failure}</p>}
+    {failure && <p role="alert">{failure.diagnostic
+      ? Object.hasOwn(lessonDiagnosticKeys, failure.diagnostic.code)
+        ? runtimeT(lessonDiagnosticKeys[failure.diagnostic.code], { defaultValue: failure.diagnostic.message })
+        : failure.diagnostic.message
+      : t('failure')}</p>}
   </main>
 }

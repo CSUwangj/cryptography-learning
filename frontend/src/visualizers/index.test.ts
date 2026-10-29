@@ -1,3 +1,5 @@
+import { I18nextProvider } from 'react-i18next'
+import i18n from '../app/i18n'
 import { describe, expect, it } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -36,7 +38,7 @@ const runCipherDemo = async (variant: 128 | 192 | 256, direction: 'encrypt' | 'd
   const previousWorker = globalThis.Worker
   globalThis.Worker = WorkerStub as unknown as typeof Worker
   try {
-    const session = createBrowserLessonSession(aesCipherDemoDocuments(variant), 'en-US', visualizerCatalog)
+    const session = createBrowserLessonSession(aesCipherDemoDocuments(variant), 'en-US', i18n.getFixedT('en-US', 'translations'), visualizerCatalog)
     if (!session.ok) throw new Error(session.diagnostics[0]?.message)
     // Advance to enter-input, then to the target direction step
     await session.value.next()
@@ -75,19 +77,19 @@ describe('Shared trace visuals', () => {
     })
     expect(response.kind).toBe('comparison')
     if (response.kind !== 'comparison') return
-    expect(() => render(React.createElement(AvalancheRenderer, {
+    expect(() => render(React.createElement(I18nextProvider, { i18n: i18n.cloneInstance({ lng: 'en-US' }) }, React.createElement(AvalancheRenderer, {
       comparison: response.comparison,
       executionIdentity: 'shared-visuals',
-      locale: 'en-US',
-    }))).not.toThrow()
-    const hosted = render(React.createElement(RenderHost, {
+
+    })))).not.toThrow()
+    const hosted = render(React.createElement(I18nextProvider, { i18n: i18n.cloneInstance({ lng: 'en-US' }) }, React.createElement(RenderHost, {
       comparison: response.comparison,
       dimensions: { width: 1100, height: 700 },
       executionIdentity: 'shared-visuals-host',
       invocation: { id: 'avalanche@1' },
-      locale: 'en-US',
+
       reducedMotion: true,
-    }))
+    })))
     expect(hosted.queryByRole('alert')).toBeNull()
   })
 })
@@ -153,7 +155,7 @@ describe('Visualizer Catalog (#32)', () => {
     const previousWorker = globalThis.Worker
     globalThis.Worker = WorkerStub as unknown as typeof Worker
     try {
-      const session = createBrowserLessonSession(teachingSpnDemoDocuments, 'en-US', visualizerCatalog)
+      const session = createBrowserLessonSession(teachingSpnDemoDocuments, 'en-US', i18n.getFixedT('en-US', 'translations'), visualizerCatalog)
       expect(session.ok).toBe(true)
       if (!session.ok) return
       const result = await session.value.enter()
@@ -186,7 +188,7 @@ describe('Visualizer Catalog (#32)', () => {
     const previousWorker = globalThis.Worker
     globalThis.Worker = WorkerStub as unknown as typeof Worker
     try {
-      const session = createBrowserLessonSession(aesKeyExpansionDemoDocuments, 'zh-CN', visualizerCatalog)
+      const session = createBrowserLessonSession(aesKeyExpansionDemoDocuments, 'zh-CN', i18n.getFixedT('zh-CN', 'translations'), visualizerCatalog)
       expect(session.ok).toBe(true)
       if (!session.ok) return
       const result = await session.value.enter()
@@ -196,7 +198,7 @@ describe('Visualizer Catalog (#32)', () => {
       const execution = result.value.snapshots['expand-key']
       expect(execution.trace.some((event) => 'word' in event && event.word !== undefined)).toBe(true)
 
-      const presentation = keyExpansionPresentation(execution, 'en-US', 'teaching-schedule', { algorithm: 'AES', variant: 128 })
+      const presentation = keyExpansionPresentation(execution, i18n.getFixedT('en-US', 'visualizers'), 'teaching-schedule', { algorithm: 'AES', variant: 128 })
       expect(presentation.sections[0].rows.map((row) => row.id)).toEqual([
         'input',
         'rot-word-0', 'sub-word-0', 'rcon-0', 'xor-0',
@@ -206,14 +208,14 @@ describe('Visualizer Catalog (#32)', () => {
         'round-key-1',
       ])
 
-      render(React.createElement(RenderHost, {
+      render(React.createElement(I18nextProvider, { i18n: i18n.cloneInstance({ lng: 'zh-CN' }) }, React.createElement(RenderHost, {
         dimensions: { width: 1100, height: 700 },
         execution,
         executionIdentity: 'teaching-schedule',
-        locale: 'zh-CN',
+
         presentation: { kind: 'key-expansion', algorithm: 'AES', variant: 128 },
         reducedMotion: true,
-      }))
+      })))
       expect(screen.queryByRole('alert')).toBeNull()
       expect(screen.getByRole('heading', { name: 'AES 风格教学密钥编排（64 位密钥，非 FIPS-197 变体）' })).toBeVisible()
       expect(screen.queryByRole('heading', { name: 'AES-128 密钥扩展' })).toBeNull()
@@ -301,14 +303,14 @@ steps:
       { input: 'A', output: 'C', sourcePosition: 0, targetPosition: 2, mapped: true },
       { input: 'b', output: 'b', mapped: false },
     ])
-    const rendered = render(React.createElement(RenderHost, {
+    const rendered = render(React.createElement(I18nextProvider, { i18n: i18n.cloneInstance({ lng: 'en-US' }) }, React.createElement(RenderHost, {
       invocation: { id: 'classical-cipher@1' },
       dimensions: { width: 600, height: 240 },
       executionIdentity: 'classical-cipher',
-      locale: 'en-US',
+
       reducedMotion: true,
       classicalCipher: { input, output, mapping, policy: alphabetPolicy('preserve'), policyLabel: 'Preserve unmapped characters' },
-    }))
+    })))
     expect(rendered.getByLabelText('Classical cipher position mapping')).toBeVisible()
     expect(rendered.getByText('Unmapped')).toBeVisible()
   })
@@ -374,7 +376,7 @@ describe('AES-128 encryption and decryption (#84)', () => {
     expect(response.kind).toBe('snapshot')
     if (response.kind !== 'snapshot') return
     expect(response.snapshot.traceStatus.truncated).toBe(true)
-    const presentation = blockCipherPresentation(response.snapshot, 'en-US', 'r4-cipher-truncated', { algorithm: 'AES', variant: 128, direction: 'encrypt' })
+    const presentation = blockCipherPresentation(response.snapshot, i18n.getFixedT('en-US', 'visualizers'), 'r4-cipher-truncated', { algorithm: 'AES', variant: 128, direction: 'encrypt' })
     // Machine-checkable (stable code/path/details), not only the human-readable "raw" gap row
     // rendered alongside it.
     expect(presentation.diagnostics).toEqual([{
@@ -390,7 +392,7 @@ describe('AES-128 encryption and decryption (#84)', () => {
     const labels = (graph: ReturnType<typeof aesCipherGraph>, input: string) => {
       const response = executeWorkerRequest({ requestId: 'order', kind: 'execute', payload: { graph, inputs: { [input]: bits(128, new Uint8Array(16)), ...zeroRoundKeys } } })
       if (response.kind !== 'snapshot') throw new Error('unreachable: execution must succeed')
-      return executionTracePresentation(response.snapshot, 'en-US', 'order').sections[0].rows.map((row) => row.label)
+      return executionTracePresentation(response.snapshot, i18n.getFixedT('en-US', 'visualizers'), 'order').sections[0].rows.map((row) => row.label)
     }
     expect(labels(aesCipherGraph(), 'plaintext.value').slice(0, 8)).toEqual([
       'Plaintext input', 'Round key 0', 'AddRoundKey 0', 'SubBytes 1', 'ShiftRows 1', 'MixColumns 1', 'Round key 1', 'AddRoundKey 1',
@@ -413,19 +415,19 @@ describe('AES-128 encryption and decryption (#84)', () => {
     })
     expect(response.kind).toBe('snapshot')
     if (response.kind !== 'snapshot') return
-    expect(executionTracePresentation(response.snapshot, 'en-US', 'generic').diagnostics).toEqual([{
+    expect(executionTracePresentation(response.snapshot, i18n.getFixedT('en-US', 'visualizers'), 'generic').diagnostics).toEqual([{
       code: 'trace.incomplete',
       message: expect.any(String),
       path: 'trace',
       details: { retained: 3, dropped: response.snapshot.traceStatus.dropped },
     }])
-    render(React.createElement(RenderHost, {
+    render(React.createElement(I18nextProvider, { i18n: i18n.cloneInstance({ lng: 'zh-CN' }) }, React.createElement(RenderHost, {
       dimensions: { width: 320, height: 200 },
       execution: response.snapshot,
       executionIdentity: 'generic-cipher-truncated',
-      locale: 'zh-CN',
+
       reducedMotion: true,
-    }))
+    })))
     expect(screen.queryByRole('alert')).toBeNull()
     expect(screen.getByRole('row', { name: /^明文输入 — 0x0{32}$/ })).toBeVisible()
     expect(screen.getByRole('row', { name: /^轮密钥 0 0 0x0{32}$/ })).toBeVisible()
@@ -445,13 +447,13 @@ describe('AES-128 encryption and decryption (#84)', () => {
       ],
       traceStatus: { truncated: false, retained: 2, dropped: 0 },
     }
-    expect(executionTracePresentation(snapshot, 'en-US', 'v2-en').sections[0].rows.map((row) => row.label)).toEqual([
+    expect(executionTracePresentation(snapshot, i18n.getFixedT('en-US', 'visualizers'), 'v2-en').sections[0].rows.map((row) => row.label)).toEqual([
       'Source 0', 'XOR 0',
     ])
-    expect(executionTracePresentation(snapshot, 'zh-CN', 'v2-zh').sections[0].rows.map((row) => row.label)).toEqual([
+    expect(executionTracePresentation(snapshot, i18n.getFixedT('zh-CN', 'visualizers'), 'v2-zh').sections[0].rows.map((row) => row.label)).toEqual([
       '输入 0', '异或 0',
     ])
-    expect(executionTracePresentation(snapshot, 'en-US', 'v2-en', { 'core.xor@1': 'Custom XOR' }).sections[0].rows.map((row) => row.label)).toEqual([
+    expect(executionTracePresentation(snapshot, i18n.getFixedT('en-US', 'visualizers'), 'v2-en', { 'core.xor@1': 'Custom XOR' }).sections[0].rows.map((row) => row.label)).toEqual([
       'Source 0', 'Custom XOR 0',
     ])
   })
@@ -468,10 +470,10 @@ describe('AES-128 encryption and decryption (#84)', () => {
     expect(response.kind).toBe('snapshot')
     if (response.kind !== 'snapshot') return
     const presentation = { kind: 'spn-cipher' as const, labels: { 'core.substitute-nibbles@1': 'substitute-label' } }
-    const props = { dimensions: { width: 320, height: 200 }, execution: response.snapshot, executionIdentity: 'v2-labels', locale: 'en-US', reducedMotion: true, presentation, lessonTexts: { 'substitute-label': 'Nibble substitution' } }
+    const props = { dimensions: { width: 320, height: 200 }, execution: response.snapshot, executionIdentity: 'v2-labels', reducedMotion: true, presentation, lessonTexts: { 'substitute-label': 'Nibble substitution' } }
     const english = render(React.createElement(RenderHost, props))
     expect(english.getByRole('row', { name: /Nibble substitution/ })).toBeVisible()
-    english.rerender(React.createElement(RenderHost, { ...props, locale: 'zh-CN', lessonTexts: { 'substitute-label': '半字节替换' } }))
+    english.rerender(React.createElement(I18nextProvider, { i18n: i18n.cloneInstance({ lng: 'zh-CN' }) }, React.createElement(RenderHost, { ...props,  lessonTexts: { 'substitute-label': '半字节替换' } })))
     expect(screen.getByRole('row', { name: /半字节替换/ })).toBeVisible()
   })
 
@@ -479,7 +481,7 @@ describe('AES-128 encryption and decryption (#84)', () => {
     const previousWorker = globalThis.Worker
     globalThis.Worker = WorkerStub as unknown as typeof Worker
     try {
-      const session = createBrowserLessonSession(aesCipherDemoDocuments(128), 'en-US', visualizerCatalog)
+      const session = createBrowserLessonSession(aesCipherDemoDocuments(128), 'en-US', i18n.getFixedT('en-US', 'translations'), visualizerCatalog)
       expect(session.ok).toBe(true)
       if (!session.ok) return
       await session.value.next() // enter-input -> expand-key
@@ -499,14 +501,14 @@ describe('AES-128 encryption and decryption (#84)', () => {
       expect(encryptPresentation).toEqual({ kind: 'block-cipher', algorithm: 'AES', variant: 128, direction: 'encrypt' })
       expect(decryptPresentation).toEqual({ kind: 'block-cipher', algorithm: 'AES', variant: 128, direction: 'decrypt' })
 
-      const encrypted = blockCipherPresentation(encryptSnapshot, 'en-US', 'aes-cipher-encrypt', encryptPresentation as BlockCipherPresentationMeta)
+      const encrypted = blockCipherPresentation(encryptSnapshot, i18n.getFixedT('en-US', 'visualizers'), 'aes-cipher-encrypt', encryptPresentation as BlockCipherPresentationMeta)
       const encryptedRow = (id: string) => encrypted.sections[0].rows.find((row) => row.id === id)
       expect(encrypted.title).toBe('AES-128 encryption')
       expect(encryptedRow('cipher-1-sub-bytes')).toMatchObject({ label: 'SubBytes 1', cells: [{ value: 1 }, { value: expect.stringMatching(/^0x/) }] })
       expect(encryptedRow('output')).toMatchObject({ label: 'Output', cells: [{ value: '—' }, { value: '0x69c4e0d86a7b0430d8cdb78070b4c55a' }] })
       expect(encryptedRow('cipher-10-mix-columns')).toBeUndefined()
 
-      const decryptedView = blockCipherPresentation(decryptSnapshot, 'zh-CN', 'aes-cipher-decrypt', decryptPresentation as BlockCipherPresentationMeta)
+      const decryptedView = blockCipherPresentation(decryptSnapshot, i18n.getFixedT('zh-CN', 'visualizers'), 'aes-cipher-decrypt', decryptPresentation as BlockCipherPresentationMeta)
       const decryptedRow = (id: string) => decryptedView.sections[0].rows.find((row) => row.id === id)
       expect(decryptedView.title).toBe('AES-128 解密')
       expect(decryptedRow('ciphertext')).toMatchObject({ label: '密文输入', cells: [{ value: '—' }, { value: '0x69c4e0d86a7b0430d8cdb78070b4c55a' }] })
@@ -514,13 +516,13 @@ describe('AES-128 encryption and decryption (#84)', () => {
 
       // Without presentation metadata the same execution renders the generic default view:
       // cipher state rows, no schedule word rows (because schedule is now executed separately).
-      const generic = render(React.createElement(RenderHost, {
+      const generic = render(React.createElement(I18nextProvider, { i18n: i18n.cloneInstance({ lng: 'en-US' }) }, React.createElement(RenderHost, {
         dimensions: { width: 900, height: 500 },
         execution: encryptSnapshot,
         executionIdentity: 'aes-cipher-generic',
-        locale: 'en-US',
+
         reducedMotion: true,
-      }))
+      })))
       expect(generic.getByRole('heading', { name: 'Execution trace' })).toBeVisible()
       expect(generic.getByRole('row', { name: /^SubBytes 1 1 0x/ })).toBeVisible()
       expect(generic.queryByRole('rowheader', { name: /^(Word XOR|RotWord|SubWord|Rcon)/ })).toBeNull()
@@ -529,13 +531,13 @@ describe('AES-128 encryption and decryption (#84)', () => {
       // it renders generic trace with the missing-mode diagnostic. Word rows are filtered
       // out in generic view (only non-word events are shown).
       const keyScheduleSnapshot = decrypted.value.snapshots['expand-key']
-      const scheduleGeneric = render(React.createElement(RenderHost, {
+      const scheduleGeneric = render(React.createElement(I18nextProvider, { i18n: i18n.cloneInstance({ lng: 'en-US' }) }, React.createElement(RenderHost, {
         dimensions: { width: 900, height: 500 },
         execution: keyScheduleSnapshot,
         executionIdentity: 'key-schedule-generic',
-        locale: 'en-US',
+
         reducedMotion: true,
-      }))
+      })))
       expect(scheduleGeneric.getByText(/declares no key-expansion presentation/)).toBeVisible()
       // Word events are filtered in generic view, so no Word XOR rowheaders
       expect(scheduleGeneric.queryByRole('rowheader', { name: /^Word XOR/ })).toBeNull()
@@ -557,7 +559,7 @@ describe('AES-192/256 Lesson paths (#85)', () => {
       const previousWorker = globalThis.Worker
       globalThis.Worker = WorkerStub as unknown as typeof Worker
       try {
-        const session = createBrowserLessonSession(aesCipherDemoDocuments(variant), 'en-US', visualizerCatalog)
+        const session = createBrowserLessonSession(aesCipherDemoDocuments(variant), 'en-US', i18n.getFixedT('en-US', 'translations'), visualizerCatalog)
         expect(session.ok).toBe(true)
         if (!session.ok) return
         await session.value.next() // enter-input -> expand-key
@@ -571,12 +573,12 @@ describe('AES-192/256 Lesson paths (#85)', () => {
         expect(hex(encryptSnapshot.outputs[`cipher-${kat[variant].rounds}-add-round-key.value`] as never)).toBe(`0x${kat[variant].ciphertext}`)
         expect(hex(decryptSnapshot.outputs['cipher-0-add-round-key.value'] as never)).toBe('0x00112233445566778899aabbccddeeff')
 
-        const encrypted = blockCipherPresentation(encryptSnapshot, 'en-US', `aes-${variant}-encrypt`, { algorithm: 'AES', variant, direction: 'encrypt' })
+        const encrypted = blockCipherPresentation(encryptSnapshot, i18n.getFixedT('en-US', 'visualizers'), `aes-${variant}-encrypt`, { algorithm: 'AES', variant, direction: 'encrypt' })
         expect(encrypted.title).toBe(`AES-${variant} encryption`)
         expect(encrypted.sections[0].rows.find((row) => row.id === 'cipher-1-sub-bytes')?.label).toBe('SubBytes 1')
         expect(encrypted.sections[0].rows.at(-1)).toMatchObject({ label: 'Output', cells: [{ value: '—' }, { value: `0x${kat[variant].ciphertext}` }] })
 
-        const decryptedView = blockCipherPresentation(decryptSnapshot, 'zh-CN', `aes-${variant}-decrypt`, { algorithm: 'AES', variant, direction: 'decrypt' })
+        const decryptedView = blockCipherPresentation(decryptSnapshot, i18n.getFixedT('zh-CN', 'visualizers'), `aes-${variant}-decrypt`, { algorithm: 'AES', variant, direction: 'decrypt' })
         expect(decryptedView.title).toBe(`AES-${variant} 解密`)
         expect(decryptedView.sections[0].rows[0]).toMatchObject({ label: '密文输入', cells: [{ value: '—' }, { value: `0x${kat[variant].ciphertext}` }] })
         session.value.dispose()
@@ -601,7 +603,7 @@ describe('AES-192/256 Lesson paths (#85)', () => {
     if (response.kind !== 'snapshot') return
     const presentation = blockCipherPresentation(
       response.snapshot,
-      'en-US',
+      i18n.getFixedT('en-US', 'visualizers'),
       'aes-192-truncated',
       { algorithm: 'AES', variant: 192, direction: 'encrypt' },
     )
@@ -613,14 +615,14 @@ describe('AES-192/256 Lesson paths (#85)', () => {
       path: 'trace',
       details: { retained: response.snapshot.traceStatus.retained, dropped: response.snapshot.traceStatus.dropped },
     }])
-    render(React.createElement(RenderHost, {
+    render(React.createElement(I18nextProvider, { i18n: i18n.cloneInstance({ lng: 'en-US' }) }, React.createElement(RenderHost, {
       dimensions: { width: 320, height: 200 },
       execution: response.snapshot,
       executionIdentity: 'aes-192-truncated',
       presentation: { kind: 'block-cipher', algorithm: 'AES', variant: 192, direction: 'encrypt' },
-      locale: 'en-US',
+
       reducedMotion: true,
-    }))
+    })))
     expect(screen.getByRole('heading', { name: 'AES-192 encryption' })).toBeVisible()
     expect(screen.getByRole('row', { name: /^Plaintext input — 0x0{32} / })).toBeVisible()
     expect(screen.getAllByText('Trace gap').length).toBeGreaterThan(0)
@@ -639,14 +641,14 @@ describe('Classical substitution and Vigenere Lessons (#87)', () => {
         expect(Object.keys(compiled.value.locales)).toEqual(['en-US', 'zh-CN'])
         expect(compiled.value.inputs.direction.type).toEqual({ family: 'alphabet-direction' })
         expect(compiled.value.steps[1].visualizer).toMatchObject({ id: 'classical-cipher@1' })
-        const english = createBrowserLessonSession(documents, 'en-US', visualizerCatalog)
+        const english = createBrowserLessonSession(documents, 'en-US', i18n.getFixedT('en-US', 'translations'), visualizerCatalog)
         expect(english.ok).toBe(true)
         if (!english.ok) continue
         const englishRun = await english.value.next()
         expect(englishRun.ok && englishRun.value.locale).toBe('en-US')
         expect(englishRun.ok && englishRun.value.snapshots.encrypt).toBeDefined()
         english.value.dispose()
-        const session = createBrowserLessonSession(documents, 'zh-CN', visualizerCatalog)
+        const session = createBrowserLessonSession(documents, 'zh-CN', i18n.getFixedT('zh-CN', 'translations'), visualizerCatalog)
         expect(session.ok).toBe(true)
         if (!session.ok) continue
         const result = await session.value.next()
@@ -661,12 +663,12 @@ describe('Classical substitution and Vigenere Lessons (#87)', () => {
         const input = result.value.inputs.plaintext
         const output = encrypt.outputs['cipher.text']
         if (typeof input === 'string' || !('symbols' in input) || !('symbols' in output)) continue
-        render(React.createElement(RenderHost, {
+        render(React.createElement(I18nextProvider, { i18n: i18n.cloneInstance({ lng: 'en-US' }) }, React.createElement(RenderHost, {
           invocation: { id: 'classical-cipher@1' },
           dimensions: { width: 600, height: 240 },
           execution: encrypt,
           executionIdentity: 'classical-encrypt',
-          locale: 'en-US',
+
           reducedMotion: true,
           classicalCipher: {
             input: input as AlphabetTextValue,
@@ -675,7 +677,7 @@ describe('Classical substitution and Vigenere Lessons (#87)', () => {
             policy: result.value.inputs.policy as ReturnType<typeof alphabetPolicy>,
             policyLabel: 'Preserve unmapped characters',
           },
-        }))
+        })))
         expect(screen.getByLabelText('Classical cipher position mapping')).toBeVisible()
         expect(screen.getByText('Preserve unmapped characters')).toBeVisible()
         expect(screen.getAllByText('[space] → [space]').length).toBeGreaterThan(0)
@@ -702,13 +704,13 @@ describe('Descriptor-free generic traces (ADR 0006)', () => {
     const response = executeWorkerRequest({ requestId: 'generic-spn', kind: 'execute', payload: { graph: teachingSpnGraph } })
     expect(response.kind).toBe('snapshot')
     if (response.kind !== 'snapshot') return
-    render(React.createElement(RenderHost, {
+    render(React.createElement(I18nextProvider, { i18n: i18n.cloneInstance({ lng: 'en-US' }) }, React.createElement(RenderHost, {
       dimensions: { width: 900, height: 500 },
       execution: response.snapshot,
       executionIdentity: 'generic-spn',
-      locale: 'en-US',
+
       reducedMotion: true,
-    }))
+    })))
     expect(screen.queryByRole('alert')).toBeNull()
     expect(screen.getByRole('columnheader', { name: 'Operation detail' })).toBeVisible()
     expect(screen.getByRole('row', { name: /^Key mixing 1 1 0x/ })).toBeVisible()
@@ -741,13 +743,13 @@ describe('Descriptor-free generic traces (ADR 0006)', () => {
     })
     expect(response.kind).toBe('snapshot')
     if (response.kind !== 'snapshot') return
-    render(React.createElement(RenderHost, {
+    render(React.createElement(I18nextProvider, { i18n: i18n.cloneInstance({ lng: 'zh-CN' }) }, React.createElement(RenderHost, {
       dimensions: { width: 320, height: 200 },
       execution: response.snapshot,
       executionIdentity: 'generic-caesar',
-      locale: 'zh-CN',
+
       reducedMotion: true,
-    }))
+    })))
     expect(screen.queryByRole('alert')).toBeNull()
     expect(screen.getByRole('heading', { name: '执行轨迹' })).toBeVisible()
     expect(screen.getByRole('row', { name: '输出 (cipher.text) — DEF' })).toBeVisible()
@@ -775,7 +777,7 @@ describe('Descriptor-free generic traces (ADR 0006)', () => {
     })
     expect(response.kind).toBe('snapshot')
     if (response.kind !== 'snapshot') return
-    render(React.createElement(RenderHost, { dimensions: { width: 320, height: 200 }, execution: response.snapshot, executionIdentity: 'generic-xor', locale: 'zh-CN', reducedMotion: true }))
+    render(React.createElement(I18nextProvider, { i18n: i18n.cloneInstance({ lng: 'zh-CN' }) }, React.createElement(RenderHost, { dimensions: { width: 320, height: 200 }, execution: response.snapshot, executionIdentity: 'generic-xor',  reducedMotion: true })))
     expect(screen.getByRole('row', { name: '输出 (xor.value) — 0x5a' })).toBeVisible()
   })
 })
@@ -791,7 +793,7 @@ describe('Full-state AES key-schedule detail (#91)', () => {
     const previousWorker = globalThis.Worker
     globalThis.Worker = WorkerStub as unknown as typeof Worker
     try {
-      const session = createBrowserLessonSession(aesCipherDemoDocuments(variant), 'en-US', visualizerCatalog)
+      const session = createBrowserLessonSession(aesCipherDemoDocuments(variant), 'en-US', i18n.getFixedT('en-US', 'translations'), visualizerCatalog)
       if (!session.ok) throw new Error(session.diagnostics[0]?.message)
       const result = await session.value.next() // enter-input -> expand-key
       session.value.dispose()
@@ -805,7 +807,7 @@ describe('Full-state AES key-schedule detail (#91)', () => {
   for (const variant of [128, 192, 256] as const) {
     it(`presents the real AES-${variant} schedule as complete bit<${variant}> operation rows with real lineage`, async () => {
       const execution = await expandThroughSession(variant)
-      const presentation = keyExpansionPresentation(execution, 'en-US', `aes-${variant}`, { algorithm: 'AES', variant })
+      const presentation = keyExpansionPresentation(execution, i18n.getFixedT('en-US', 'visualizers'), `aes-${variant}`, { algorithm: 'AES', variant })
       const isRoundKey = (row: { readonly id: string }) => /^round-key-\d+$/.test(row.id)
       const rows = presentation.sections[0].rows.filter((row) => !isRoundKey(row))
       const roundKeyRows = presentation.sections[0].rows.filter(isRoundKey)
@@ -855,7 +857,7 @@ describe('Full-state AES key-schedule detail (#91)', () => {
   }
 
   it('draws dense fan-in and keeps unaffected bits as pass-through', async () => {
-    const rows = keyExpansionPresentation(await expandThroughSession(128), 'en-US', 'aes-128', { algorithm: 'AES', variant: 128 }).sections[0].rows
+    const rows = keyExpansionPresentation(await expandThroughSession(128), i18n.getFixedT('en-US', 'visualizers'), 'aes-128', { algorithm: 'AES', variant: 128 }).sections[0].rows
     const fanIn = (rowId: string, bit: number) => rows.flatMap((row) => row.relationships ?? [])
       .filter((relationship) => relationship.to === `${rowId}#${bit}`).map((relationship) => relationship.from).sort()
     expect(fanIn('xor-1', 96)).toEqual(['input#96', 'rcon-1#0', 'rcon-1#32', 'rcon-1#64', 'rcon-1#96'])
@@ -870,15 +872,15 @@ describe('Full-state AES key-schedule detail (#91)', () => {
   it('renders every relationship by default, emphasizes on keyboard selection, groups bits, and localizes', async () => {
     const execution = await expandThroughSession(128)
     const user = userEvent.setup()
-    const view = render(React.createElement(RenderHost, {
+    const view = render(React.createElement(I18nextProvider, { i18n: i18n.cloneInstance({ lng: 'en-US' }) }, React.createElement(RenderHost, {
       dimensions: { width: 900, height: 500 },
       execution,
       executionIdentity: 'aes-128-detail',
       presentation: { kind: 'key-expansion', algorithm: 'AES', variant: 128 },
-      locale: 'en-US',
+
       reducedMotion: true,
-    }))
-    const relationships = keyExpansionPresentation(execution, 'en-US', 'aes-128-detail', { algorithm: 'AES', variant: 128 })
+    })))
+    const relationships = keyExpansionPresentation(execution, i18n.getFixedT('en-US', 'visualizers'), 'aes-128-detail', { algorithm: 'AES', variant: 128 })
       .sections[0].rows.reduce((count, row) => count + (row.relationships?.length ?? 0), 0)
     const lines = () => [...document.querySelectorAll('svg[data-lineage] line')]
     expect(lines()).toHaveLength(relationships)
@@ -899,7 +901,7 @@ describe('Full-state AES key-schedule detail (#91)', () => {
     expect(lines()).toHaveLength(relationships)
     view.unmount()
 
-    const zh = keyExpansionPresentation(execution, 'zh-CN', 'aes-128-detail-zh', { algorithm: 'AES', variant: 128 })
+    const zh = keyExpansionPresentation(execution, i18n.getFixedT('zh-CN', 'visualizers'), 'aes-128-detail-zh', { algorithm: 'AES', variant: 128 })
     expect(zh.title).toBe('AES-128 密钥扩展')
     expect(zh.sections[0].rows.slice(0, 7).map((row) => row.label)).toEqual(['输入', '轮密钥 0', '字循环移位 1', '字替换 1', '轮常量 1', '异或 1', '轮密钥 1'])
   }, 120_000)
@@ -911,7 +913,7 @@ describe('Full-state AES key-schedule detail (#91)', () => {
       payload: { graph: aesKeyExpansionGraph(128), inputs: { 'key.value': bits(128, new Uint8Array(16)) }, limits: { traceEvents: 18 } },
     })
     if (response.kind !== 'snapshot') throw new Error('unreachable: execution must succeed')
-    const presentation = keyExpansionPresentation(response.snapshot, 'zh-CN', 'truncated', { algorithm: 'AES', variant: 128 })
+    const presentation = keyExpansionPresentation(response.snapshot, i18n.getFixedT('zh-CN', 'visualizers'), 'truncated', { algorithm: 'AES', variant: 128 })
     const rows = presentation.sections[0].rows
     expect(rows.map((row) => row.id)).toEqual(['input', 'rot-word-1', 'sub-word-1', 'rcon-1', 'xor-1', 'rot-word-2', 'sub-word-2', 'rcon-2'])
     const ids = new Set(rows.flatMap((row) => (row.selectableBits ?? []).map((bit) => bit.id)))
@@ -927,7 +929,7 @@ describe('Full-state AES cipher detail and key-schedule overlay (#92)', () => {
     const previousWorker = globalThis.Worker
     globalThis.Worker = WorkerStub as unknown as typeof Worker
     try {
-      const session = createBrowserLessonSession(aesCipherDemoDocuments(variant), 'en-US', visualizerCatalog)
+      const session = createBrowserLessonSession(aesCipherDemoDocuments(variant), 'en-US', i18n.getFixedT('en-US', 'translations'), visualizerCatalog)
       if (!session.ok) throw new Error(session.diagnostics[0]?.message)
       await session.value.next() // enter-input -> expand-key
       await session.value.next() // expand-key -> encrypt
@@ -944,7 +946,7 @@ describe('Full-state AES cipher detail and key-schedule overlay (#92)', () => {
 
   it('presents encryption and decryption as full-state bit rows with structural lineage and real values', async () => {
     const snapshots = await runDemo(128)
-    const encryption = blockCipherPresentation(snapshots.encrypt, 'en-US', 'e', { algorithm: 'AES', variant: 128, direction: 'encrypt' }, snapshots['expand-key'])
+    const encryption = blockCipherPresentation(snapshots.encrypt, i18n.getFixedT('en-US', 'visualizers'), 'e', { algorithm: 'AES', variant: 128, direction: 'encrypt' }, snapshots['expand-key'])
     const rows = encryption.sections[0].rows
     expect(rows.slice(0, 8).map((row) => row.label)).toEqual([
       'Plaintext input', 'Round key 0', 'AddRoundKey 0', 'SubBytes 1', 'ShiftRows 1', 'MixColumns 1', 'Round key 1', 'AddRoundKey 1',
@@ -973,9 +975,9 @@ describe('Full-state AES cipher detail and key-schedule overlay (#92)', () => {
     expect(lane.rows.filter((row) => row.anchor).map((row) => row.anchor)).toEqual(['plaintext', ...Array.from({ length: 11 }, (_, round) => `round-key-${round}`)])
     expect(lane.rows.find((row) => row.anchor === 'plaintext')).toMatchObject({ label: 'Input', selectableBits: expect.arrayContaining([expect.objectContaining({ id: 'input#0' })]) })
     expect(lane.rows.some((row) => row.label === 'RotWord 1')).toBe(true)
-    expect(blockCipherPresentation(snapshots.encrypt, 'zh-CN', 'e', { algorithm: 'AES', variant: 128, direction: 'encrypt' }, snapshots['expand-key']).instructions).toContain('展开某轮密钥')
+    expect(blockCipherPresentation(snapshots.encrypt, i18n.getFixedT('zh-CN', 'visualizers'), 'e', { algorithm: 'AES', variant: 128, direction: 'encrypt' }, snapshots['expand-key']).instructions).toContain('展开某轮密钥')
 
-    const decryption = blockCipherPresentation(snapshots.decrypt, 'en-US', 'd', { algorithm: 'AES', variant: 128, direction: 'decrypt' }, snapshots['expand-key'])
+    const decryption = blockCipherPresentation(snapshots.decrypt, i18n.getFixedT('en-US', 'visualizers'), 'd', { algorithm: 'AES', variant: 128, direction: 'decrypt' }, snapshots['expand-key'])
     const inverse = decryption.sections[0].rows
     expect(inverse.slice(0, 8).map((row) => row.label)).toEqual([
       'Ciphertext input', 'Round key 10', 'AddRoundKey 10', 'InvShiftRows 9', 'InvSubBytes 9', 'Round key 9', 'AddRoundKey 9', 'InvMixColumns 9',
@@ -995,16 +997,16 @@ describe('Full-state AES cipher detail and key-schedule overlay (#92)', () => {
     // Rename the schedule Step: the overlay must follow the bindings.
     const renamed = Object.fromEntries(Object.entries(encrypt.execute!.bindings).map(([port, reference]) =>
       [port, 'step' in reference ? { ...reference, step: 'schedule' } : reference]))
-    const host = (bindings?: typeof renamed) => render(React.createElement(RenderHost, {
+    const host = (bindings?: typeof renamed) => render(React.createElement(I18nextProvider, { i18n: i18n.cloneInstance({ lng: 'en-US' }) }, React.createElement(RenderHost, {
       dimensions: { width: 1100, height: 700 },
       execution: snapshots.encrypt,
       allSnapshots: { encrypt: snapshots.encrypt, schedule: snapshots['expand-key'] },
       executionBindings: bindings,
       executionIdentity: `bindings-${bindings ? 'present' : 'absent'}`,
       presentation: encrypt.presentation,
-      locale: 'en-US',
+
       reducedMotion: true,
-    }))
+    })))
     const chips = (container: HTMLElement) => container.querySelectorAll('button[aria-label^="Round key 0:"]')
 
     const linked = host(renamed)

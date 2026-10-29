@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { bits, type WorkerRequest, type WorkerResponse, hex } from '../src/crypto_graph'
 import { createBrowserLessonSession, type LessonDocuments } from '../src/lesson_runtime'
 import { RenderHost } from '../src/visualizers'
+import i18n from '../src/app/i18n'
 
 const documents: LessonDocuments = {
   lesson: `version: 2
@@ -86,7 +87,8 @@ export const warmDefaultTraceBrowserWorker = async (): Promise<void> => {
 }
 
 export const runDefaultTraceBrowserProbe = async (locale: 'en-US' | 'zh-CN'): Promise<{ output: string; trace: readonly string[]; text: string }> => {
-  const created = createBrowserLessonSession(documents, locale)
+  await i18n.changeLanguage(locale)
+  const created = createBrowserLessonSession(documents, locale, i18n.getFixedT(locale, 'translations'))
   if (!created.ok) throw new Error(created.diagnostics[0]?.message)
   const result = await created.value.enter()
   if (!result.ok) throw new Error(result.diagnostics[0]?.message)
@@ -98,7 +100,7 @@ export const runDefaultTraceBrowserProbe = async (locale: 'en-US' | 'zh-CN'): Pr
   const element = document.createElement('div')
   document.body.append(element)
   const root = createRoot(element)
-  flushSync(() => root.render(<RenderHost execution={execution} executionIdentity={`browser-v2-${locale}`} locale={locale} dimensions={{ width: 640, height: 320 }} reducedMotion />))
+  flushSync(() => root.render(<RenderHost execution={execution} executionIdentity={`browser-v2-${locale}`} dimensions={{ width: 640, height: 320 }} reducedMotion />))
   const probe = {
     output: hex(execution.outputs['result.value'] as Parameters<typeof hex>[0]),
     trace: execution.trace.map((event) => event.path),
@@ -111,7 +113,8 @@ export const runDefaultTraceBrowserProbe = async (locale: 'en-US' | 'zh-CN'): Pr
 }
 
 export const runNamedTableBrowserProbe = async (locale: 'en-US' | 'zh-CN'): Promise<{ output: string; trace: readonly string[]; table: unknown; text: string }> => {
-  const created = createBrowserLessonSession(tableDocuments, locale)
+  await i18n.changeLanguage(locale)
+  const created = createBrowserLessonSession(tableDocuments, locale, i18n.getFixedT(locale, 'translations'))
   if (!created.ok) throw new Error(created.diagnostics[0]?.message)
   const result = await created.value.enter()
   if (!result.ok) throw new Error(result.diagnostics[0]?.message)
@@ -121,7 +124,7 @@ export const runNamedTableBrowserProbe = async (locale: 'en-US' | 'zh-CN'): Prom
   const element = document.createElement('div')
   document.body.append(element)
   const root = createRoot(element)
-  flushSync(() => root.render(<RenderHost execution={execution} executionIdentity={`browser-v2-table-${locale}`} locale={locale} dimensions={{ width: 640, height: 320 }} reducedMotion />))
+  flushSync(() => root.render(<RenderHost execution={execution} executionIdentity={`browser-v2-table-${locale}`} dimensions={{ width: 640, height: 320 }} reducedMotion />))
   const probe = { output: hex(execution.outputs['result.value'] as Parameters<typeof hex>[0]), trace: execution.trace.map((event) => event.path), table, text: element.textContent ?? '' }
   root.unmount()
   element.remove()

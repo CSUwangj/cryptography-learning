@@ -1,3 +1,4 @@
+import i18n from '../app/i18n'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -27,7 +28,7 @@ class WorkerStub {
 
 const run = async (variant: 192 | 256) => {
   vi.stubGlobal('Worker', WorkerStub)
-  const session = createBrowserLessonSession(documents(variant), 'en-US')
+  const session = createBrowserLessonSession(documents(variant), 'en-US', i18n.getFixedT('en-US', 'translations'))
   if (!session.ok) throw new Error(JSON.stringify(session.diagnostics))
   try {
     const schedule = await session.value.enter()

@@ -1,3 +1,5 @@
+import { I18nextProvider } from 'react-i18next'
+import i18n from '../app/i18n'
 import React from 'react'
 import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
@@ -9,8 +11,8 @@ import { alphabetText } from '../crypto_graph'
 describe('classical visualization readability', () => {
   it('keeps the symbol pair outside a vertical reel and settles on the target without reduced-motion animation', () => {
     const mapping = { id: 'latin', symbols: [...'abcdefghijklmnopqrstuvwxyz'] }
-    render(<ClassicalCipherRenderer mapping={mapping} policy={alphabetPolicy('preserve')} policyLabel="Preserve"
-      positions={classicalCipherPositions(alphabetText(mapping, 'z!'), alphabetText(mapping, 'c!'), mapping)} locale="en-US" reducedMotion motionDirection={1} />)
+    render(<I18nextProvider i18n={i18n.cloneInstance({ lng: "en-US" })}><ClassicalCipherRenderer mapping={mapping} policy={alphabetPolicy('preserve')} policyLabel="Preserve"
+      positions={classicalCipherPositions(alphabetText(mapping, 'z!'), alphabetText(mapping, 'c!'), mapping)}  reducedMotion motionDirection={1} /></I18nextProvider>)
     const viewport = screen.getByLabelText('z moves 25 2')
     expect(viewport).toHaveStyle({ overflow: 'hidden', height: '2rem' })
     expect(viewport.firstElementChild).toHaveStyle({ flexDirection: 'column', transform: 'translateY(-6rem)', transition: 'none' })
@@ -29,8 +31,8 @@ describe('classical visualization readability', () => {
   ])('follows the signed modular path $input → $output ($direction)', ({ input, output, direction, symbols, transform }) => {
     const mapping = { id: 'latin', symbols: [...'abcdefghijklmnopqrstuvwxyz'] }
     const positions = classicalCipherPositions(alphabetText(mapping, input), alphabetText(mapping, output), mapping)
-    const rendered = render(<ClassicalCipherRenderer mapping={mapping} policy={alphabetPolicy('preserve')} policyLabel="Preserve"
-      positions={positions} locale="en-US" reducedMotion motionDirection={direction} />)
+    const rendered = render(<I18nextProvider i18n={i18n.cloneInstance({ lng: "en-US" })}><ClassicalCipherRenderer mapping={mapping} policy={alphabetPolicy('preserve')} policyLabel="Preserve"
+      positions={positions}  reducedMotion motionDirection={direction} /></I18nextProvider>)
     const viewport = rendered.getByLabelText(`${input} moves ${positions[0].sourcePosition} ${positions[0].targetPosition}`)
     expect(viewport.firstElementChild?.textContent).toBe(symbols)
     expect(viewport.firstElementChild).toHaveStyle({ transform, transition: 'none' })
@@ -40,8 +42,8 @@ describe('classical visualization readability', () => {
   it.each(['en-US', 'zh-CN'])('makes preserved spaces visible in %s without changing the symbols', (locale) => {
     const mapping = { id: 'latin', symbols: [...'ABC'] }
     const positions = classicalCipherPositions(alphabetText(mapping, 'A B'), alphabetText(mapping, 'B C'), mapping)
-    render(<ClassicalCipherRenderer mapping={mapping} policy={alphabetPolicy('preserve')} policyLabel="Preserve"
-      positions={positions} locale={locale} reducedMotion />)
+    render(<I18nextProvider i18n={i18n.cloneInstance({ lng: locale })}><ClassicalCipherRenderer mapping={mapping} policy={alphabetPolicy('preserve')} policyLabel="Preserve"
+      positions={positions}  reducedMotion /></I18nextProvider>)
     const pair = screen.getByText(locale === 'zh-CN' ? '[空格] → [空格]' : '[space] → [space]')
     expect(pair).toBeVisible()
     expect(within(pair.parentElement!).getByText(locale === 'zh-CN' ? '未映射' : 'Unmapped')).toBeVisible()
@@ -65,7 +67,7 @@ describe('classical visualization readability', () => {
     if (!event || !('operation' in event) || !event.operation?.grid) throw new Error('Missing grid')
     expect(event.operation.grid.inputPositions).toEqual(direction === 'encrypt' ? [[0, 3], [1, 4], [2, null]] : [[0, 1], [2, 3], [4, null]])
     for (const locale of ['en-US', 'zh-CN']) {
-      const presentation = executionTracePresentation({ ...result.value, traceStatus: { truncated: false, retained: result.value.trace.length, dropped: 0 } }, locale, 'test')
+      const presentation = executionTracePresentation({ ...result.value, traceStatus: { truncated: false, retained: result.value.trace.length, dropped: 0 } }, i18n.getFixedT(locale, 'visualizers'), 'test')
       const section = presentation.sections[0]
       if (!('rows' in section)) throw new Error('Missing rows')
       const rendered = render(<>{section.rows.find((row) => row.detail)?.detail}</>)

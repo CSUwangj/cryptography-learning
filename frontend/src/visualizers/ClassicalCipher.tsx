@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import React, { useEffect, useState } from 'react'
 import { learningColors } from '../ui/learning'
 import type { AlphabetMapping, AlphabetPolicyValue, AlphabetTextValue } from '../crypto_graph'
@@ -31,15 +32,12 @@ export const ClassicalCipherRenderer: React.FC<{
   readonly policy: AlphabetPolicyValue
   readonly policyLabel: string
   readonly positions: readonly ClassicalCipherPosition[]
-  readonly locale: string
   readonly reducedMotion: boolean
   readonly motionDirection?: 1 | -1
-}> = ({ mapping, policy, policyLabel, positions, locale, reducedMotion, motionDirection }) => {
+}> = ({ mapping, policy, policyLabel, positions, reducedMotion, motionDirection }) => {
   const [settled, setSettled] = useState(reducedMotion)
-  const copy = locale === 'zh-CN'
-    ? { label: '古典密码位置映射', unmapped: '未映射', moves: '移动', space: '[空格]' }
-    : { label: 'Classical cipher position mapping', unmapped: 'Unmapped', moves: 'moves', space: '[space]' }
-  const symbolText = (symbol: string) => symbol === ' ' ? copy.space : symbol || '∅'
+  const { t } = useTranslation('visualizers', { keyPrefix: 'classicalCipher' })
+  const symbolText = (symbol: string) => symbol === ' ' ? t('space') : symbol || '∅'
   useEffect(() => {
     setSettled(reducedMotion)
     if (!reducedMotion) {
@@ -47,7 +45,7 @@ export const ClassicalCipherRenderer: React.FC<{
       return () => cancelAnimationFrame(frame)
     }
   }, [positions, reducedMotion, motionDirection])
-  return <section aria-label={copy.label} data-policy={policy.value}>
+  return <section aria-label={t('label')} data-policy={policy.value}>
     <p>{policyLabel}</p>
     {positions.map((position, index) => {
       const source = position.sourcePosition ?? 0
@@ -61,7 +59,7 @@ export const ClassicalCipherRenderer: React.FC<{
       return <div key={`${index}-${position.input}`} data-mapped={position.mapped}>
         <span>{symbolText(position.input)} → {symbolText(position.output)}</span>
         {position.mapped
-          ? <div aria-label={`${symbolText(position.input)} ${copy.moves} ${position.sourcePosition} ${position.targetPosition}`} style={{ overflow: 'hidden', boxSizing: 'content-box', height: '2rem', width: '3rem', border: `1px solid ${learningColors.border}`, borderRadius: '0.25rem', background: learningColors.selected }}>
+          ? <div aria-label={`${symbolText(position.input)} ${t('moves')} ${position.sourcePosition} ${position.targetPosition}`} style={{ overflow: 'hidden', boxSizing: 'content-box', height: '2rem', width: '3rem', border: `1px solid ${learningColors.border}`, borderRadius: '0.25rem', background: learningColors.selected }}>
               <div style={{
                 display: 'flex',
                 flexDirection: 'column',
@@ -72,7 +70,7 @@ export const ClassicalCipherRenderer: React.FC<{
                 {(direction === -1 ? path.reverse() : path).map((symbol, pathPosition) => <span key={pathPosition} style={{ height: '2rem', lineHeight: '2rem', flexShrink: 0 }} aria-current={pathPosition === endOffset ? 'true' : undefined}>{symbolText(symbol)}</span>)}
               </div>
             </div>
-          : <span> {copy.unmapped}</span>}
+          : <span> {t('unmapped')}</span>}
       </div>
     })}
   </section>

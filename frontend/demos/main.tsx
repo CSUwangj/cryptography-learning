@@ -1,4 +1,6 @@
-import React, { lazy, Suspense, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import i18n from '../src/app/i18n'
+import React, { lazy, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import { AesAvalancheDemo } from './AesAvalancheDemo'
 import { AesCipherDemo } from './AesCipherDemo'
@@ -11,7 +13,7 @@ const LearningShellPrototype = lazy(() => import('./LearningShellPrototype').the
 const UiOptimizationPrototype = lazy(() => import('./UiOptimizationPrototype').then((module) => ({ default: module.UiOptimizationPrototype })))
 
 const Demos: React.FC = () => {
-  const [locale, setLocale] = useState<'en-US' | 'zh-CN'>('en-US')
+  const { t, i18n } = useTranslation()
   if (import.meta.env.DEV && new URLSearchParams(window.location.search).get('prototype') === 'shell') {
     return <Suspense fallback={<div role="status" aria-busy="true" />}><LearningShellPrototype /></Suspense>
   }
@@ -31,13 +33,16 @@ const Demos: React.FC = () => {
   return <>
     <nav>
       <a href="/testspn">/testspn</a> · <a href="/testavalanche">/testavalanche</a> · <a href="/testkeyexpansion">/testkeyexpansion</a> · <a href="/testaescipher">/testaescipher</a> · <a href="/testaesavalanche">/testaesavalanche</a> ·{' '}
-      <label>Language / 语言 <select value={locale} onChange={(event) => setLocale(event.target.value as typeof locale)}>
-        <option value="en-US">English</option>
-        <option value="zh-CN">简体中文</option>
+      <label>{t('nav.language')} <select value={i18n.resolvedLanguage ?? 'en-US'} onChange={(event) => { void i18n.changeLanguage(event.target.value) }}>
+        <option value="en-US">{t('i18n.en-US')}</option>
+        <option value="zh-CN">{t('i18n.zh-CN')}</option>
       </select></label>
     </nav>
-    {Demo && <Demo locale={locale} />}
+    {Demo && <Demo />}
   </>
 }
+
+const requestedLanguage = new URLSearchParams(window.location.search).get('lang')
+if (requestedLanguage) await i18n.changeLanguage(requestedLanguage)
 
 createRoot(document.getElementById('root')!).render(<Demos />)

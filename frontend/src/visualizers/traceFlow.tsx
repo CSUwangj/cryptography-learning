@@ -1,26 +1,13 @@
+import type { TFunction } from 'i18next'
 import React from 'react'
 import { hex, type BitsValue, type TraceOperation, type TraceStage } from 'crypto_graph'
 import type { LearningRow } from '../ui/learning'
 import { PermutationVisual, SubstitutionVisual, XorVisual } from './OperationVisuals'
 
-const pathTokens = {
-  'zh-CN': {
-    plaintext: '明文',
-    ciphertext: '密文',
-    output: '输出',
-    repeat: '重复',
-    round: '轮',
-    key: '密钥',
-    'key-mix': '密钥混合',
-    substitute: '替换',
-    permute: '置换',
-  },
-} as const
+const pathKeys: Readonly<Record<string, string>> = {"plaintext": "tracePath.plaintext", "ciphertext": "tracePath.ciphertext", "output": "tracePath.output", "repeat": "tracePath.repeat", "round": "tracePath.round", "key": "tracePath.key", "key-mix": "tracePath.key-mix", "substitute": "tracePath.substitute", "permute": "tracePath.permute"}
 
-export const formatTracePath = (path: string, locale: string): string =>
-  path.split(/([./])/).map((token) => pathTokens['zh-CN'][token as keyof typeof pathTokens['zh-CN']] && locale === 'zh-CN'
-    ? pathTokens['zh-CN'][token as keyof typeof pathTokens['zh-CN']]
-    : token).join('')
+export const formatTracePath = (path: string, t: TFunction<'visualizers'>): string =>
+  path.split(/([./])/).map((token) => Object.hasOwn(pathKeys, token) ? t(pathKeys[token]) : token).join('')
 
 const range = (length: number, start = 0): readonly number[] => Array.from({ length }, (_, index) => start + index)
 

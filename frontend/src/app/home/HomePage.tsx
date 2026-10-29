@@ -113,7 +113,7 @@ export const HomePage: React.FC = () => {
   const history = useHistory()
 
   return <Container>
-    <Img src={logo} alt='Big Logo' />
+    <Img src={logo} alt={t('home.logo')} />
     <IntroBelowImg>
       <H1>{t('nav.home')}</H1>
       <H3>{t('introduction')}</H3>
@@ -144,8 +144,8 @@ export const HomePage: React.FC = () => {
     </FeaturesContainer>
     <BackContainer>
       <Gap />
-      <H5>Copyright © 2020-2021 <ExternalLink link='https://csuwangj.github.io/'>CSUwangj</ExternalLink></H5>
-      <H5>Created using <ExternalLink link='https://reactjs.org/'>React.js</ExternalLink> & <ExternalLink link='https://blueprintjs.com/'>Blueprint.js</ExternalLink></H5>
+      <H5>{t('home.copyright')} <ExternalLink link='https://csuwangj.github.io/'>CSUwangj</ExternalLink></H5>
+      <H5>{t('home.createdUsing')} <ExternalLink link='https://reactjs.org/'>React.js</ExternalLink> & <ExternalLink link='https://blueprintjs.com/'>Blueprint.js</ExternalLink></H5>
       <Gap />
     </BackContainer>
   </Container>

@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next'
 import {
   CryptoGraphWorkerClient,
   type AvalancheComparison,
@@ -28,31 +29,90 @@ export type LessonSessionState = {
 
 const diagnostic = (code: string, message: string, path: string): Diagnostic => ({ code, message, path, details: {} })
 
-const localized = (value: Diagnostic, locale: string): Diagnostic => ({
-  ...value,
-  message: locale === 'zh-CN'
-    ? ({
-        'lesson.execution-cancelled': '课程执行已取消。',
-        'lesson.invalid-input': '输入不符合声明的类型和编码。',
-        'lesson.invalid-step-reference': '课程步骤引用无效。',
-        'lesson.comparison-input-unavailable': '比较输入不可用。',
-        'lesson.missing-step-result': '引用的步骤结果不可用。',
-        'lesson.missing-text': '语言文件缺少引用的文本。',
-        'operation-failed': '操作执行失败。',
-        'lesson.unknown-field': '包含不支持的字段。',
-        'lesson.unsupported-version': '不支持的课程版本。',
-        'lesson.visualizer-unavailable': '可视化比较不可用。',
-        'lesson.yaml-restriction': 'YAML 使用了不支持的功能。',
-        'lesson.yaml-syntax': 'YAML 文档无效。',
-        'cipher.invalid-key': '密钥必须是安全整数。',
-        'cipher.invalid-transposition-rows': '转置行数必须是 2 到 12 之间的整数。',
-        'cipher.invalid-affine-key': '仿射密钥 a 必须与字母表长度互素。',
-        'cipher.invalid-substitution-key': '替换密码密钥必须是完整的无重复字母表。',
-        'cipher.invalid-vigenere-key': '维吉尼亚密钥无效。',
-        'cipher.unmapped-symbol': '严格字母表策略拒绝未映射字符。',
-      }[value.code] ?? '课程验证失败。')
-    : value.message,
-})
+export const lessonDiagnosticKeys: Readonly<Record<string, string>> = {
+  "lesson.execution-cancelled": "learning.runtime.lesson-execution-cancelled",
+  "lesson.invalid-input": "learning.runtime.lesson-invalid-input",
+  "lesson.invalid-step-reference": "learning.runtime.lesson-invalid-step-reference",
+  "lesson.comparison-input-unavailable": "learning.runtime.lesson-comparison-input-unavailable",
+  "lesson.missing-step-result": "learning.runtime.lesson-missing-step-result",
+  "lesson.missing-text": "learning.runtime.lesson-missing-text",
+  "operation-failed": "learning.runtime.operation-failed",
+  "lesson.unknown-field": "learning.runtime.lesson-unknown-field",
+  "lesson.unsupported-version": "learning.runtime.lesson-unsupported-version",
+  "lesson.visualizer-unavailable": "learning.runtime.lesson-visualizer-unavailable",
+  "lesson.yaml-restriction": "learning.runtime.lesson-yaml-restriction",
+  "lesson.yaml-syntax": "learning.runtime.lesson-yaml-syntax",
+  "cipher.invalid-key": "learning.runtime.cipher-invalid-key",
+  "cipher.invalid-transposition-rows": "learning.runtime.cipher-invalid-transposition-rows",
+  "cipher.invalid-affine-key": "learning.runtime.cipher-invalid-affine-key",
+  "cipher.invalid-substitution-key": "learning.runtime.cipher-invalid-substitution-key",
+  "cipher.invalid-vigenere-key": "learning.runtime.cipher-invalid-vigenere-key",
+  "cipher.unmapped-symbol": "learning.runtime.cipher-unmapped-symbol",
+  "lesson.v2-feature-in-v1": "learning.runtime.lesson-v2-feature-in-v1",
+  "lesson.v1-feature-in-v2": "learning.runtime.lesson-v1-feature-in-v2",
+  "lesson.v2-unsupported": "learning.runtime.lesson-v2-unsupported",
+  "lesson.unknown-constant": "learning.runtime.lesson-unknown-constant",
+  "lesson.invalid-constant-use": "learning.runtime.lesson-invalid-constant-use",
+  "lesson.unsafe-markdown": "learning.runtime.lesson-unsafe-markdown",
+  "table.entry-bits-out-of-range": "learning.runtime.table-entry-bits-out-of-range",
+  "table.entry-out-of-range": "learning.runtime.table-entry-out-of-range",
+  "table.length-mismatch": "learning.runtime.table-length-mismatch",
+  "aes.invalid-key-word-index": "learning.runtime.aes-invalid-key-word-index",
+  "aes.key-word-out-of-range": "learning.runtime.aes-key-word-out-of-range",
+  "aes.invalid-rcon-round": "learning.runtime.aes-invalid-rcon-round",
+  "cipher.invalid-mapping": "learning.runtime.cipher-invalid-mapping",
+  "cipher.transposition-short-input": "learning.runtime.cipher-transposition-short-input",
+  "comparison.incompatible-structure": "learning.runtime.comparison-incompatible-structure",
+  "comparison.incompatible-trace-level": "learning.runtime.comparison-incompatible-trace-level",
+  "comparison.incompatible-value": "learning.runtime.comparison-incompatible-value",
+  "comparison.v2-unsupported": "learning.runtime.comparison-v2-unsupported",
+  "execution.input-limit": "learning.runtime.execution-input-limit",
+  "execution.invalid-input": "learning.runtime.execution-invalid-input",
+  "execution.invalid-limit": "learning.runtime.execution-invalid-limit",
+  "execution.invalid-request": "learning.runtime.execution-invalid-request",
+  "execution.limit-exceeds-global": "learning.runtime.execution-limit-exceeds-global",
+  "execution.node-limit": "learning.runtime.execution-node-limit",
+  "execution.timeout": "learning.runtime.execution-timeout",
+  "execution.worker-error": "learning.runtime.execution-worker-error",
+  "graph.dynamic-loop": "learning.runtime.graph-dynamic-loop",
+  "graph.invalid-lineage": "learning.runtime.graph-invalid-lineage",
+  "graph.projection-empty-range": "learning.runtime.graph-projection-empty-range",
+  "graph.projection-invalid-format": "learning.runtime.graph-projection-invalid-format",
+  "graph.projection-out-of-bounds": "learning.runtime.graph-projection-out-of-bounds",
+  "graph.single-output-required": "learning.runtime.graph-single-output-required",
+  "graph.structural-mismatch": "learning.runtime.graph-structural-mismatch",
+  "graph.unbounded-repetition": "learning.runtime.graph-unbounded-repetition",
+  "graph.unresolved-type": "learning.runtime.graph-unresolved-type",
+  "operation.invalid-byte-width": "learning.runtime.operation-invalid-byte-width",
+  "operation.invalid-nibble-width": "learning.runtime.operation-invalid-nibble-width",
+  "operation.invalid-permutation": "learning.runtime.operation-invalid-permutation",
+  "operation.invalid-s-box": "learning.runtime.operation-invalid-s-box",
+  "operation.rotate-word-out-of-bounds": "learning.runtime.operation-rotate-word-out-of-bounds",
+  "operation.substitute-bytes-range-out-of-bounds": "learning.runtime.operation-substitute-bytes-range-out-of-bounds",
+  "operation.substitute-nibbles-range-out-of-bounds": "learning.runtime.operation-substitute-nibbles-range-out-of-bounds",
+  "operation.xor-constant-out-of-bounds": "learning.runtime.operation-xor-constant-out-of-bounds",
+  "operation.xor-words-out-of-bounds": "learning.runtime.operation-xor-words-out-of-bounds",
+  "spn.invalid-permutation": "learning.runtime.spn-invalid-permutation",
+  "spn.invalid-round-count": "learning.runtime.spn-invalid-round-count",
+  "spn.invalid-s-box": "learning.runtime.spn-invalid-s-box",
+  "trace.unsupported-level": "learning.runtime.trace-unsupported-level",
+  "duplicate-alphabet-mapping": "learning.runtime.duplicate-alphabet-mapping",
+  "duplicate-alphabet-symbol": "learning.runtime.duplicate-alphabet-symbol",
+  "duplicate-node-id": "learning.runtime.duplicate-node-id",
+  "graph-cycle": "learning.runtime.graph-cycle",
+  "incompatible-port-type": "learning.runtime.incompatible-port-type",
+  "invalid-alphabet-mapping": "learning.runtime.invalid-alphabet-mapping",
+  "invalid-alphabet-symbol": "learning.runtime.invalid-alphabet-symbol",
+  "invalid-execution-input": "learning.runtime.invalid-execution-input",
+  "invalid-parameter": "learning.runtime.invalid-parameter",
+  "invalid-value": "learning.runtime.invalid-value",
+  "missing-execution-input": "learning.runtime.missing-execution-input",
+  "missing-input": "learning.runtime.missing-input",
+  "unknown-alphabet-symbol": "learning.runtime.unknown-alphabet-symbol",
+  "unknown-input-port": "learning.runtime.unknown-input-port",
+  "unknown-operation": "learning.runtime.unknown-operation",
+  "unknown-output-port": "learning.runtime.unknown-output-port",
+}
 
 const cloneValue = (value: CryptoValue): CryptoValue => {
   if ('symbol' in value) return { type: { family: 'alphabet-symbol', mapping: value.type.mapping }, symbol: value.symbol }
@@ -90,6 +150,7 @@ export class BrowserLessonSession {
   constructor(
     public lesson: CompiledLesson,
     public locale: string,
+    private t: TFunction<'translations'>,
   ) {
     this.inputs = Object.fromEntries(Object.entries(lesson.inputs).map(([id, input]) => [id, cloneValue(input.default)]))
     for (const step of lesson.steps) if (step.bitFlip?.length) {
@@ -115,11 +176,12 @@ export class BrowserLessonSession {
     }
   }
 
-  updateDocuments(documents: LessonDocuments, requestedLocale: string, catalog?: VisualizerCatalog): Result<void> {
+  updateDocuments(documents: LessonDocuments, requestedLocale: string, t: TFunction<'translations'>, catalog?: VisualizerCatalog): Result<void> {
+    this.t = t
     const compiled = compileLesson(documents, catalog)
-    if (!compiled.ok) return { ok: false, diagnostics: compiled.diagnostics.map((item) => localized(item, requestedLocale)) }
+    if (!compiled.ok) return compiled
     if (compiled.value.id !== this.lesson.id) {
-      return { ok: false, diagnostics: [localized(diagnostic('lesson.invalid-input', 'Loaded Lesson does not match the current Lesson.', 'id'), requestedLocale)] }
+      return { ok: false, diagnostics: [diagnostic('lesson.invalid-input', this.t('learning.runtime.lessonMismatch', { lng: 'en-US' }), 'id')] }
     }
     const stepId = this.lesson.steps[this.index]?.id
     this.lesson = compiled.value
@@ -135,18 +197,17 @@ export class BrowserLessonSession {
       ? decodeLessonValue(input.type, input.encoding, value)
       : JSON.stringify(input.type) === JSON.stringify(value.type)
         ? { ok: true as const, value: cloneValue(value) }
-        : { ok: false as const, diagnostics: [diagnostic('lesson.invalid-input', 'Input does not match its declared type.', `inputs.${id}`)] })
+        : { ok: false as const, diagnostics: [diagnostic('lesson.invalid-input', this.t('learning.runtime.inputType', { lng: 'en-US' }), `inputs.${id}`)] })
     if (!decoded || !decoded.ok) {
       this.generation += 1
       this.worker.cancel()
       if (input) this.inputs[id] = value
       if (input) this.invalidateSnapshots(id)
       this.refreshBitFlips()
-      const diagnostics = (decoded?.diagnostics ?? [diagnostic('lesson.invalid-input', 'Input does not match its declared type.', `inputs.${id}`)])
+      const diagnostics = (decoded?.diagnostics ?? [diagnostic('lesson.invalid-input', this.t('learning.runtime.inputType', { lng: 'en-US' }), `inputs.${id}`)])
         .map((item) => this.lesson.id === 'transposition' && id === 'rows' && item.code === 'cipher.invalid-key'
-          ? { ...item, code: 'cipher.invalid-transposition-rows', message: 'Transposition rows must be an integer from 2 through 12.', path: `inputs.${id}`, details: { ...item.details, minimum: 2, maximum: 12 } }
+          ? { ...item, code: 'cipher.invalid-transposition-rows', message: this.t('learning.runtime.cipher-invalid-transposition-rows', { lng: 'en-US' }), path: `inputs.${id}`, details: { ...item.details, minimum: 2, maximum: 12 } }
           : item)
-        .map((item) => localized(item, this.locale))
       if (input) this.inputDiagnostics[id] = diagnostics[0]
       return { ok: false, diagnostics }
     }
@@ -164,7 +225,7 @@ export class BrowserLessonSession {
     const type = this.lesson.inputs[input]?.type
     if (!option || type?.family !== 'bits' || typeof type.size !== 'number' || !Number.isSafeInteger(bit) || bit < 0 || bit >= type.size
       || typeof this.inputs[input] === 'string') {
-      return { ok: false, diagnostics: [localized(diagnostic('lesson.invalid-input', 'Choose a valid source and bit index.', `steps.${stepId}.bit_flip`), this.locale)] }
+      return { ok: false, diagnostics: [diagnostic('lesson.invalid-input', this.t('learning.runtime.bitFlipSelection', { lng: 'en-US' }), `steps.${stepId}.bit_flip`)] }
     }
     this.generation += 1
     this.worker.cancel()
@@ -231,7 +292,7 @@ export class BrowserLessonSession {
     const compare = this.lesson.steps.find((step) => step.id === stepId)?.visualizer?.compare
     const graph = compare && this.lesson.graphs[compare.graph]
     if (!compare || !graph) {
-      return { ok: false, diagnostics: [localized(diagnostic('lesson.visualizer-unavailable', 'Visualizer comparison is unavailable.', `steps.${stepId}.visualizer`), this.locale)] }
+      return { ok: false, diagnostics: [diagnostic('lesson.visualizer-unavailable', this.t('learning.runtime.lesson-visualizer-unavailable', { lng: 'en-US' }), `steps.${stepId}.visualizer`)] }
     }
     const baseline: Record<string, CryptoValue> = {}
     const changed: Record<string, CryptoValue> = {}
@@ -239,10 +300,7 @@ export class BrowserLessonSession {
       const left = this.referenceValue(binding.baseline)
       const right = this.referenceValue(binding.changed)
       if (!left || !right) {
-        return { ok: false, diagnostics: [localized(
-          diagnostic('lesson.comparison-input-unavailable', 'Comparison input is unavailable.', `steps.${stepId}.visualizer.compare.bindings.${source}`),
-          this.locale,
-        )] }
+        return { ok: false, diagnostics: [diagnostic('lesson.comparison-input-unavailable', this.t('learning.runtime.lesson-comparison-input-unavailable', { lng: 'en-US' }), `steps.${stepId}.visualizer.compare.bindings.${source}`)] }
       }
       baseline[`${source}.value`] = cloneValue(left)
       changed[`${source}.value`] = cloneValue(right)
@@ -266,10 +324,10 @@ export class BrowserLessonSession {
     }
     if (response.kind === 'diagnostic') {
       const outcome = response.diagnostics[0]
-      if (outcome) this.executionDiagnostics.set(stepId, localized(outcome, this.locale))
+      if (outcome) this.executionDiagnostics.set(stepId, outcome)
       return { ok: true, value: this.state() }
     }
-    return { ok: false, diagnostics: [localized(diagnostic('lesson.execution-cancelled', 'Lesson execution was cancelled.', `steps.${stepId}`), this.locale)] }
+    return { ok: false, diagnostics: [diagnostic('lesson.execution-cancelled', this.t('learning.runtime.lesson-execution-cancelled', { lng: 'en-US' }), `steps.${stepId}`)] }
   }
 
   private evaluateCheck(stepId: string): void {
@@ -291,11 +349,11 @@ export class BrowserLessonSession {
     const step = this.lesson.steps[this.index]
     const check = step.check
     if (!check || check.kind !== 'choice') {
-      return { ok: false, diagnostics: [localized(diagnostic('lesson.invalid-input', 'Current Step has no choice check.', `steps.${step.id}.check`), this.locale)] }
+      return { ok: false, diagnostics: [diagnostic('lesson.invalid-input', this.t('learning.runtime.missingChoiceCheck', { lng: 'en-US' }), `steps.${step.id}.check`)] }
     }
     const option = check.options.find((item) => item.id === optionId)
     if (!option) {
-      return { ok: false, diagnostics: [localized(diagnostic('lesson.invalid-input', 'Choice option is invalid.', `steps.${step.id}.check.options`), this.locale)] }
+      return { ok: false, diagnostics: [diagnostic('lesson.invalid-input', this.t('learning.runtime.invalidChoice', { lng: 'en-US' }), `steps.${step.id}.check.options`)] }
     }
     this.checkResults.set(step.id, { kind: 'choice', selected: option.id, correct: option.id === check.correct, feedback: option.feedback })
     return { ok: true, value: this.state() }
@@ -362,10 +420,8 @@ export class BrowserLessonSession {
           })()
       if (!value || typeof value === 'string') {
         const inputDiagnostic = 'input' in binding ? this.inputDiagnostics[binding.input] : undefined
-        this.executionDiagnostics.set(step.id, inputDiagnostic ?? localized(
-          diagnostic('lesson.missing-step-result', 'Referenced Step result is unavailable.', `steps.${step.id}`),
-          this.locale,
-        ))
+        this.executionDiagnostics.set(step.id, inputDiagnostic ??
+          diagnostic('lesson.missing-step-result', this.t('learning.runtime.lesson-missing-step-result', { lng: 'en-US' }), `steps.${step.id}`))
         return { ok: true, value: this.state() }
       }
       inputs[targetPort] = cloneValue(value)
@@ -394,11 +450,11 @@ export class BrowserLessonSession {
         const diagnostics = step.acceptedErrorCodes?.includes(outcome.code)
           ? this.acceptedDiagnostics
           : this.executionDiagnostics
-        diagnostics.set(step.id, localized(outcome, this.locale))
+        diagnostics.set(step.id, outcome)
       }
       return { ok: true, value: this.state() }
     }
-    return { ok: false, diagnostics: [localized(diagnostic('lesson.execution-cancelled', 'Lesson execution was cancelled.', `steps.${step.id}`), this.locale)] }
+    return { ok: false, diagnostics: [diagnostic('lesson.execution-cancelled', this.t('learning.runtime.lesson-execution-cancelled', { lng: 'en-US' }), `steps.${step.id}`)] }
   }
 
   dispose(): void {
@@ -409,10 +465,11 @@ export class BrowserLessonSession {
 export const createBrowserLessonSession = (
   documents: LessonDocuments,
   requestedLocale: string,
+  t: TFunction<'translations'>,
   catalog?: VisualizerCatalog,
 ): Result<BrowserLessonSession> => {
   const compiled = compileLesson(documents, catalog)
-  if (!compiled.ok) return { ok: false, diagnostics: compiled.diagnostics.map((item) => localized(item, requestedLocale)) }
+  if (!compiled.ok) return compiled
   const locale = compiled.value.locales[requestedLocale] ? requestedLocale : compiled.value.defaultLocale
-  return { ok: true, value: new BrowserLessonSession(compiled.value, locale) }
+  return { ok: true, value: new BrowserLessonSession(compiled.value, locale, t) }
 }

@@ -1,6 +1,7 @@
 import React, { useEffect, useCallback, Fragment, useState } from 'react'
 import { CombinedGraphQLErrors, ServerError } from '@apollo/client'
 import { Alert, Intent } from '@blueprintjs/core'
+import { useTranslation } from 'react-i18next'
 import { useToggle } from './useToggle'
 import { applicationIcons } from './icons'
 
@@ -68,6 +69,7 @@ export const ShowError: React.FC<{
   errContext?: ErrorContext
   onRefetch?: () => void
 }> = ({ noBorder, error, errContext, onRefetch }) => {
+  const { t } = useTranslation('translations', { keyPrefix: 'errorDialog' })
   const [ visible, setVisible, resetVisible ] = useToggle(false)
   const getDescription = useErrorToDescription()
   
@@ -94,8 +96,8 @@ export const ShowError: React.FC<{
     icon={applicationIcons.state.danger}
     intent={Intent.DANGER}
     onClose={onClose}
-    cancelButtonText='Retry'
-    confirmButtonText='Cancel'
+    cancelButtonText={t('retry')}
+    confirmButtonText={t('cancel')}
   >
     { err }
   </Alert>

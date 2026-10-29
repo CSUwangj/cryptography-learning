@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next'
 import React, { useEffect, useRef, useState } from 'react'
 import { ApolloClient, ApolloLink, InMemoryCache } from '@apollo/client'
 import { ApolloProvider } from '@apollo/client/react'
@@ -25,74 +26,55 @@ type Locale = 'en-US' | 'zh-CN'
 type Theme = 'light' | 'dark'
 type Surface = 'learning' | 'practice'
 type Variant = 'A' | 'B' | 'C' | 'D'
-type PrototypeI18n = typeof productionI18n
 
 const THEME_STORAGE_KEY = 'cryptography-learning-ui-theme-prototype'
 
-// Public local fixture data; the real pages render it without a backend.
-const labContent: Record<Locale, string> = {
-  'en-US': `# Affine Cipher
-
-Baseline Lab Description for characterization tests.
-
-Ciphertext: \`baseline-affine-en\``,
-  'zh-CN': `# 仿射加密
-
-用于布局预览的公开实验示例。
-
-密文： \`baseline-affine-zh\``,
-}
-
-const learningCatalog = (language: Locale) => ({
+const learningCatalog = (t: TFunction<'demos'>) => ({
   lessonCategories: [{
     id: 'block-ciphers',
-    name: [
-      { lang: 'en-US', text: 'Block ciphers' },
-      { lang: 'zh-CN', text: '分组密码' },
-    ],
-    lessons: [{ id: 'aes-256-preview', title: language === 'zh-CN' ? 'AES-256 — 轮密钥加与字节替换' : 'AES-256 — AddRoundKey and SubBytes' }],
+    name: ['en-US', 'zh-CN'].map((lang) => ({ lang, text: t('uiOptimization.learningCategory', { lng: lang }) })),
+    lessons: [{ id: 'aes-256-preview', title: t('uiOptimization.lessonTitle') }],
   }],
 })
 
-const practiceCatalog = {
+const practiceCatalog = (t: TFunction<'demos'>) => ({
   __typename: 'Practice',
   labCategories: [{
     __typename: 'LabCategory',
     id: 'classical',
-    name: [
-      { __typename: 'Translation', lang: 'en-US', text: 'Classical' },
-      { __typename: 'Translation', lang: 'zh-CN', text: '古典密码学' },
-    ],
+    name: ['en-US', 'zh-CN'].map((lang) => ({
+      __typename: 'Translation', lang, text: t('uiOptimization.practiceCategory', { lng: lang }),
+    })),
     labs: [{
       __typename: 'Lab',
       id: 'affine',
       wsEndpoints: [],
       tcpEndpoints: [{ __typename: 'Endpoint', host: 'lab.example.invalid', port: 19000 }],
-      resources: [
-        { __typename: 'ResourceWithTranslation', lang: 'en-US', name: 'Affine Cipher' },
-        { __typename: 'ResourceWithTranslation', lang: 'zh-CN', name: '仿射加密' },
-      ],
+      resources: ['en-US', 'zh-CN'].map((lang) => ({
+        __typename: 'ResourceWithTranslation', lang, name: t('uiOptimization.labTitle', { lng: lang }),
+      })),
     }],
   }],
-}
+})
 
 const createFixtureClient = (): ApolloClient => new ApolloClient({
   cache: new InMemoryCache(),
   link: new ApolloLink((operation) => {
     const language: Locale = operation.variables?.language === 'zh-CN' ? 'zh-CN' : 'en-US'
+    const t = productionI18n.getFixedT(language, 'demos')
     switch (operation.operationName) {
       case 'LearningCatalog':
-        return of({ data: { learning: learningCatalog(language) } })
+        return of({ data: { learning: learningCatalog(t) } })
       case 'LessonDocuments':
         return of({ data: { lessonDocuments: { lesson, locale: lessonLocales[language] } } })
       case 'Practices':
-        return of({ data: { practice: practiceCatalog } })
+        return of({ data: { practice: practiceCatalog(t) } })
       case 'Lab':
         return of({ data: { lab: {
           __typename: 'LabInstance',
           lang: language,
-          name: language === 'zh-CN' ? '仿射加密' : 'Affine Cipher',
-          content: labContent[language],
+          name: t('uiOptimization.labTitle'),
+          content: t('uiOptimization.labContent'),
           wsEndpoints: [],
           tcpEndpoints: [{ __typename: 'Endpoint', host: 'lab.example.invalid', port: 19000 }],
         } } })
@@ -110,37 +92,19 @@ const readTheme = (): Theme => {
   if (saved === 'dark' || saved === 'light') return saved
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
-const copy = {
-  'en-US': {
-    prototype: 'UI prototype', previous: 'Previous layout', next: 'Next layout',
-    layouts: { A: 'Compact top navigation', B: 'Side navigation', C: 'Context in one bar', D: 'Confirmation · A body + C navbar' },
-    breadcrumb: 'Page breadcrumb', moreLevels: 'Show earlier levels',
-    completion: 'Completion data is outside this layout preview.',
-  },
-  'zh-CN': {
-    prototype: 'UI 原型', previous: '上一个布局', next: '下一个布局',
-    layouts: { A: '紧凑顶栏', B: '左侧导航', C: '单行上下文栏', D: '确认版 · A 主体 + C 导航' },
-    breadcrumb: '页面导航路径', moreLevels: '显示上级路径',
-    completion: '此布局原型不展示完成记录数据。',
-  },
-}
 
-const catalogItem = (surface: Surface, locale: Locale) => {
-  if (surface === 'learning') {
-    const category = learningCatalog(locale).lessonCategories[0]
-    return { category: category.name.find((entry) => entry.lang === locale)!.text, title: category.lessons[0].title, path: LEARNING_PATH }
-  }
-  const category = practiceCatalog.labCategories[0]
-  return { category: category.name.find((entry) => entry.lang === locale)!.text, title: category.labs[0].resources.find((entry) => entry.lang === locale)!.name, path: PRACTICE_PATH }
-}
+const catalogItem = (surface: Surface, t: TFunction<'demos'>) => surface === 'learning'
+  ? { category: t('uiOptimization.learningCategory'), title: t('uiOptimization.lessonTitle'), path: LEARNING_PATH }
+  : { category: t('uiOptimization.practiceCategory'), title: t('uiOptimization.labTitle'), path: PRACTICE_PATH }
 
 // Only the navigation presentation and outer spacing are replaced in this prototype.
 // The two-column category/entry interaction follows the existing navigation panels.
-const NavigationMenu: React.FC<{ surface: Surface; locale: Locale; pathname: string; go: (path: string) => void; fullPath?: boolean; iconOnly?: boolean }> = ({ surface, locale, pathname, go, fullPath, iconOnly }) => {
+const NavigationMenu: React.FC<{ surface: Surface; pathname: string; go: (path: string) => void; fullPath?: boolean; iconOnly?: boolean }> = ({ surface, pathname, go, fullPath, iconOnly }) => {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [selected, setSelected] = useState(false)
-  const item = catalogItem(surface, locale)
+  const { t: demoT } = useTranslation('demos')
+  const item = catalogItem(surface, demoT)
   const active = pathname.startsWith(`/${surface}`) || (surface === 'practice' && pathname === '/completion')
   const parts = [t(`nav.${surface}`), ...(fullPath && pathname === item.path ? [item.category, item.title] : []), ...(fullPath && pathname === '/completion' && surface === 'practice' ? [t('nav.completion')] : [])]
   const navigate = (path: string) => { setOpen(false); go(path) }
@@ -170,17 +134,18 @@ const NavigationMenu: React.FC<{ surface: Surface; locale: Locale; pathname: str
   </div>
 }
 
-const PageBreadcrumb: React.FC<{ surface: Surface; locale: Locale; pathname: string; go: (path: string) => void }> = ({ surface, locale, pathname, go }) => {
+const PageBreadcrumb: React.FC<{ surface: Surface; pathname: string; go: (path: string) => void }> = ({ surface, pathname, go }) => {
   const { t } = useTranslation()
   const location = useLocation()
-  const item = catalogItem(surface, locale)
+  const { t: demoT } = useTranslation('demos')
+  const item = catalogItem(surface, demoT)
   const isEntry = pathname === item.path
   const isCompletion = pathname === '/completion'
   const rootText = t(surface === 'learning' && isEntry ? 'learning.backToCatalog' : `nav.${surface}`)
-  return <nav className="ui-page-breadcrumb" aria-label={copy[locale].breadcrumb}>
+  return <nav className="ui-page-breadcrumb" aria-label={t('uiOptimization.breadcrumb', { ns: 'demos' })}>
     <Breadcrumbs minVisibleItems={1}
-      overflowListProps={{ navigationAriaLabel: copy[locale].breadcrumb }}
-      overflowButtonProps={{ 'aria-label': copy[locale].moreLevels }}
+      overflowListProps={{ navigationAriaLabel: t('uiOptimization.breadcrumb', { ns: 'demos' }) }}
+      overflowButtonProps={{ 'aria-label': t('uiOptimization.moreLevels', { ns: 'demos' }) }}
       items={[
         { text: rootText, ...((isEntry || isCompletion) ? { href: `/${surface}${location.search}`, onClick: (event: React.MouseEvent<HTMLAnchorElement>) => { if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && event.button === 0) { event.preventDefault(); go(`/${surface}`) } } } : {}) },
         ...(isEntry ? [{ text: item.category }, { text: item.title }] : []),
@@ -287,8 +252,8 @@ body[data-ui-prototype-theme='dark'] .ui-real-prototype [data-lineage] line:is([
 }
 `
 
-const PrototypeApp: React.FC<{ i18n: PrototypeI18n }> = ({ i18n }) => {
-  const { t } = useTranslation()
+const PrototypeApp: React.FC = () => {
+  const { t, i18n } = useTranslation()
   const location = useLocation()
   const history = useHistory()
   const locale: Locale = i18n.language === 'zh-CN' ? 'zh-CN' : 'en-US'
@@ -337,7 +302,7 @@ const PrototypeApp: React.FC<{ i18n: PrototypeI18n }> = ({ i18n }) => {
   })
 
   const home = <Button className="ui-home" minimal icon={applicationIcons.navigation.home} aria-label={t('nav.homeAction')} title={t('nav.homeAction')} onClick={() => go('/')} />
-  const navigation = <div className="ui-primary-actions">{(['learning', 'practice'] as const).map((entry) => <NavigationMenu key={entry} surface={entry} locale={locale} pathname={location.pathname} go={go} fullPath={(variant === 'C' || variant === 'D') && entry === surface} iconOnly={variant === 'C' && entry !== surface} />)}</div>
+  const navigation = <div className="ui-primary-actions">{(['learning', 'practice'] as const).map((entry) => <NavigationMenu key={entry} surface={entry} pathname={location.pathname} go={go} fullPath={(variant === 'C' || variant === 'D') && entry === surface} iconOnly={variant === 'C' && entry !== surface} />)}</div>
   const utilities = <div className="ui-utilities">
     <Button className="ui-feedback" minimal icon={applicationIcons.navigation.feedback} text={variant === 'D' ? t('nav.feedback') : undefined} aria-label={t('nav.feedback')} title={t('nav.feedback')} onClick={() => go('/feedback')} />
     <Button minimal icon={theme === 'dark' ? applicationIcons.state.lightTheme : applicationIcons.state.darkTheme} aria-label={t(theme === 'dark' ? 'light' : 'dark')} title={t(theme === 'dark' ? 'light' : 'dark')} onClick={toggleTheme} />
@@ -353,7 +318,7 @@ const PrototypeApp: React.FC<{ i18n: PrototypeI18n }> = ({ i18n }) => {
     <Shell><Switch>
       <Route exact path="/" component={HomePage} />
       <Route path="/feedback" component={FeedbackPage} />
-      <Route path="/completion"><H2>{t('nav.completion')}</H2><p>{copy[locale].completion}</p></Route>
+      <Route path="/completion"><H2>{t('nav.completion')}</H2><p>{t('uiOptimization.completion', { ns: 'demos' })}</p></Route>
     </Switch></Shell>
   </div>
 
@@ -363,7 +328,7 @@ const PrototypeApp: React.FC<{ i18n: PrototypeI18n }> = ({ i18n }) => {
       {variant === 'B' ? <Card className="ui-sidebar">{home}{navigation}{utilities}</Card> : <Navbar className="ui-header">{home}{navigation}{utilities}</Navbar>}
       <div className="ui-main">
         <Card className="ui-page-root" data-surface={surface}>
-          {surface && variant !== 'C' && <PageBreadcrumb surface={surface} locale={locale} pathname={location.pathname} go={go} />}
+          {surface && variant !== 'C' && <PageBreadcrumb surface={surface} pathname={location.pathname} go={go} />}
           <div className="ui-page-content"><Switch>
             <Route exact path="/learning/xor-intro"><Redirect to={{ pathname: LEARNING_PATH, search }} /></Route>
             <Route path="/learning" component={LearningPage} />
@@ -372,21 +337,17 @@ const PrototypeApp: React.FC<{ i18n: PrototypeI18n }> = ({ i18n }) => {
         </Card>
       </div>
     </div>
-    <Card elevation={2} className="ui-prototype-switcher" aria-label={copy[locale].prototype}>
-      <Button minimal icon="chevron-left" aria-label={copy[locale].previous} onClick={() => cycle(-1)} />
+    <Card elevation={2} className="ui-prototype-switcher" aria-label={t('uiOptimization.prototype', { ns: 'demos' })}>
+      <Button minimal icon="chevron-left" aria-label={t('uiOptimization.previous', { ns: 'demos' })} onClick={() => cycle(-1)} />
       {variants.map((value) => <Button key={value} minimal active={variant === value} aria-pressed={variant === value} onClick={() => changeVariant(value)}>{value}</Button>)}
-      <small>{copy[locale].layouts[variant]} · {locale} · {theme}</small>
-      <Button minimal icon="chevron-right" aria-label={copy[locale].next} onClick={() => cycle(1)} />
+      <small>{t(`uiOptimization.layouts.${variant}`, { ns: 'demos' })} · {locale} · {t(theme)}</small>
+      <Button minimal icon="chevron-right" aria-label={t('uiOptimization.next', { ns: 'demos' })} onClick={() => cycle(1)} />
     </Card>
   </div>
 }
 
 /** Throwaway #116 UI study on real Learning and Practice pages. */
 export const UiOptimizationPrototype: React.FC = () => {
-  const [i18n] = useState(() => productionI18n.cloneInstance({
-    lng: new URLSearchParams(window.location.search).get('lang') === 'zh-CN' ? 'zh-CN' : 'en-US',
-    detection: { caches: [] }, debug: false,
-  }))
   const [client] = useState(createFixtureClient)
-  return <I18nextProvider i18n={i18n}><BrowserRouter><OverlaysProvider><ApolloProvider client={client}><PrototypeApp i18n={i18n} /></ApolloProvider></OverlaysProvider></BrowserRouter></I18nextProvider>
+  return <I18nextProvider i18n={productionI18n}><BrowserRouter><OverlaysProvider><ApolloProvider client={client}><PrototypeApp /></ApolloProvider></OverlaysProvider></BrowserRouter></I18nextProvider>
 }
