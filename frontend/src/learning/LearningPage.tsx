@@ -26,10 +26,9 @@ const LearningFrame = styled(Card)`
   border-radius: 0;
   box-sizing: border-box;
   margin: 24px auto;
-  max-width: 1000px;
   min-width: 0;
   overflow-wrap: anywhere;
-  padding: 24px 28px;
+  padding: 24px;
   width: 100%;
 
   .learning-prose {
@@ -50,7 +49,7 @@ const LearningFrame = styled(Card)`
 
   @media (max-width: 520px) {
     margin-block: 0;
-    padding: 16px 12px;
+    padding: 16px;
   }
 `
 
@@ -274,6 +273,8 @@ const LessonView: React.FC = () => {
   const current = session.current!
   const state = load.state
   const step = current.lesson.steps[state.stepIndex]
+  const scheduleStep = step.overlay && current.lesson.steps.find((candidate) => candidate.id === step.overlay!.step)
+  const scheduleExecution = step.overlay && state.snapshots[step.overlay.step]
   const locale = current.lesson.locales[state.locale]
   const refresh = () => setLoad({ status: 'ready', state: current.state() })
   const checkResult = state.checkResults[step.id]
@@ -381,6 +382,12 @@ const LessonView: React.FC = () => {
         invocation={step.visualizer}
         presentation={step.presentation}
         compiledGraph={step.execute ? current.lesson.graphs[step.execute.graph] : undefined}
+        overlay={step.overlay && scheduleStep?.execute && scheduleExecution ? {
+          anchors: step.overlay.anchors,
+          execution: scheduleExecution,
+          graph: current.lesson.graphs[scheduleStep.execute.graph],
+          presentation: scheduleStep.presentation,
+        } : undefined}
         lessonTexts={locale.texts}
         reducedMotion={reducedMotion}
         classicalCipher={cipher && {

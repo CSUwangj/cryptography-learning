@@ -1,0 +1,10 @@
+title: 通过三个共享轮密钥锚点检查逆序消耗与精确依赖的小型密钥编排
+summary: 用于检查消耗顺序和精确依赖的合成网络。
+texts:
+  key-prompt: 密钥
+  state-prompt: 状态
+  input-label: 输入
+  rot-label: 字旋转
+  sub-label: 字替换
+  rcon-label: 轮常量
+  xor-label: 异或

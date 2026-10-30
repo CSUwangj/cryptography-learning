@@ -1,4 +1,4 @@
-import { HTMLSelect } from '@blueprintjs/core'
+import { Button, HTMLSelect } from '@blueprintjs/core'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 
 export type LearningState = 'default' | 'changed' | 'selected' | 'related' | 'related-changed' | 'warning' | 'incomplete'
@@ -141,6 +141,9 @@ export type KeyExpansionLane = {
   readonly caption: string
   readonly closeLabel: string
   readonly rows: readonly KeyExpansionLaneRow[]
+  /** V2 openers control visibility while preserving the exact bit origin. */
+  readonly sharedSelection?: { readonly toggleLabel: string; readonly clearLabel: string }
+  readonly originalOrder?: LearningSection
 }
 
 export type LearningSelection = { readonly kind: 'bit' | 'key'; readonly id: string; readonly bitIds?: readonly string[] }
@@ -178,6 +181,8 @@ export type LearningPresentation = {
     readonly detailsLabel: string
   }
   readonly keyExpansionLane?: KeyExpansionLane
+  /** Equal-width bit identities used for traversal only, never drawn as lineage edges. */
+  readonly bitCorrespondence?: readonly LearningRelationship[]
   /** Notified on every bit/chip selection change, including chip open/close/reselect. Lets a
    * caller observe or react to key-expansion lane chip selection without owning the state. */
   readonly onSelectionChange?: (selection: LearningSelection | undefined) => void
@@ -218,6 +223,10 @@ export const relatedBitIds = (presentation: LearningPresentation, selected: stri
     for (let size = 0; size !== reached.size;) {
       size = reached.size
       for (const relationship of relationships) if (reached.has(relationship[source])) reached.add(relationship[target])
+      for (const pair of presentation.bitCorrespondence ?? []) {
+        if (reached.has(pair.from)) reached.add(pair.to)
+        if (reached.has(pair.to)) reached.add(pair.from)
+      }
     }
     return reached
   }
@@ -326,14 +335,16 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
   // Wider rows carry longer diagonal lines, so give them proportionally more vertical room.
   const rows = presentation.sections.flatMap((section) => section.rows)
   const laneRows = presentation.keyExpansionLane?.rows ?? []
-  const lineageGap = Math.max(6, ...[...rows, ...laneRows].map((row) => Math.ceil((row.selectableBits?.length ?? 0) / (unitSizes[row.id] ?? 1))))
+  const laneOpen = openKeyId !== undefined && presentation.keyExpansionLane !== undefined
+  const spacingRows = laneOpen || !presentation.keyExpansionLane?.sharedSelection ? [...rows, ...laneRows] : rows
+  const lineageGap = Math.max(6, ...spacingRows.map((row) => Math.ceil((row.selectableBits?.length ?? 0) / (unitSizes[row.id] ?? 1))))
   const rawSelectedTarget = selected?.kind === 'bit'
     ? [...rows, ...laneRows].flatMap((row) => row.selectableBits ?? []).find((bit) => bit.id === selected.id)
     : rows.map((row) => row.selectableKey).find((key) => key?.id === selected?.id)
-  const sourceRow = presentation.unitSelection && rows.find((row) => row.selectableBits?.some((bit) => bit.id === selected?.id))
+  const sourceRow = presentation.unitSelection && [...rows, ...laneRows].find((row) => row.selectableBits?.some((bit) => bit.id === selected?.id))
   const sourceBits = sourceRow?.selectableBits?.filter((bit) => selected?.bitIds?.includes(bit.id)) ?? []
   const selectedTarget = rawSelectedTarget && sourceRow && sourceBits.length > 1
-    ? { ...rawSelectedTarget, ariaLabel: presentation.unitSelection!.rangeLabel(sourceRow, sourceBits[0].bit, sourceBits[sourceBits.length - 1].bit, sourceBits.map((bit) => bit.value).join('')) }
+    ? { ...rawSelectedTarget, ariaLabel: presentation.unitSelection!.rangeLabel(sourceRow as LearningRow, sourceBits[0].bit, sourceBits[sourceBits.length - 1].bit, sourceBits.map((bit) => bit.value).join('')) }
     : rawSelectedTarget
   const lineageContainer = useRef<HTMLDivElement>(null)
   const targets = useRef(new Map<string, HTMLElement>())
@@ -347,7 +358,6 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
     if (target) targets.current.set(id, target)
     else targets.current.delete(id)
   }
-  const laneOpen = openKeyId !== undefined && presentation.keyExpansionLane !== undefined
   const select = (next: LearningSelection | undefined): void => {
     setSelected(next)
     presentation.onSelectionChange?.(next)
@@ -369,7 +379,7 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
       onClick={() => {
         const closing = openKeyId === key.id
         setOpenKeyId(closing ? undefined : key.id)
-        select(closing ? undefined : { kind: 'key', id: key.id })
+        if (!presentation.keyExpansionLane?.sharedSelection) select(closing ? undefined : { kind: 'key', id: key.id })
       }}
       ref={targetRef(key.id)}
       style={{ ...stateStyles[state], borderColor: learningColors.border, color: learningColors.text, position: 'relative' }}
@@ -493,6 +503,10 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
     {presentation.instructions && <p>{presentation.instructions}</p>}
     {presentation.diagnostics?.filter((item) => item.message !== presentation.instructions).map((item) => <p data-diagnostic-code={item.code} key={`${item.code}-${item.path}`}>{item.message}</p>)}
     {presentation.selectionStatus && <p aria-live="polite" role="status">{presentation.selectionStatus(selectedTarget)}</p>}
+    {presentation.keyExpansionLane?.sharedSelection && <div role="toolbar" aria-label={presentation.keyExpansionLane.caption}>
+      <Button active={laneOpen} aria-pressed={laneOpen} onClick={() => setOpenKeyId(laneOpen ? undefined : 'schedule')}>{presentation.keyExpansionLane.sharedSelection.toggleLabel}</Button>
+      <Button onClick={() => select(undefined)}>{presentation.keyExpansionLane.sharedSelection.clearLabel}</Button>
+    </div>}
     {presentation.sections.filter((section) => section.rows.some((row) => row.state === 'incomplete'))
       .map((section) => <p key={`${section.kind}-${section.caption}`} role="status">{section.caption}</p>)}
     <div ref={lineageContainer} style={{ minWidth: '100%', position: 'relative', width: 'max-content' }}>
@@ -556,11 +570,19 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
         </TraceTable>
         return lane
           ? <div aria-label={lane.caption} key={key} role="region">
-              <button onClick={() => { setOpenKeyId(undefined); select(undefined) }} type="button">{lane.closeLabel}</button>
+              <button onClick={() => { setOpenKeyId(undefined); if (!lane.sharedSelection) select(undefined) }} type="button">{lane.closeLabel}</button>
               {table}
             </div>
           : table
       })}
     </div>
+    {laneOpen && presentation.keyExpansionLane?.originalOrder && <details>
+      <summary>{presentation.keyExpansionLane.originalOrder.caption}</summary>
+      <TraceTable caption={presentation.keyExpansionLane.originalOrder.caption} headers={presentation.keyExpansionLane.originalOrder.headers}>
+        {presentation.keyExpansionLane.originalOrder.rows.map((row) => <ComparisonRow key={row.id} label={row.label} rowId={row.id}>
+          {row.cells.map((cell, index) => <ValueCell key={index}>{cell.value}</ValueCell>)}
+        </ComparisonRow>)}
+      </TraceTable>
+    </details>}
   </section>
 }

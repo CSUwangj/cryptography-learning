@@ -98,6 +98,17 @@
     "encrypt": "{{algorithm}} encryption",
     "decrypt": "{{algorithm}} decryption"
   },
+  "overlay": {
+    "generation": "Generation row {{index}}",
+    "originalOrder": "Original generation order",
+    "toggle": "Show key schedule",
+    "clear": "Clear selection",
+    "cipher": "Cipher",
+    "schedule": "Key schedule",
+    "title": "Key schedule overlay",
+    "close": "Close key schedule",
+    "openKey": "Open key schedule: {{row}}"
+  },
   "schedule": {
     "instructions": "Select a bit or a whole unit to inspect structural dependencies, not individual causation. Group boundaries are authored independently of selection units.",
     "unit": "Selection unit",

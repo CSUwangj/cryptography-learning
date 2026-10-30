@@ -1,0 +1,10 @@
+title: A small reversed schedule with three shared round-key anchors
+summary: A synthetic network for inspecting consumption order and exact dependencies.
+texts:
+  key-prompt: Key
+  state-prompt: State
+  input-label: Input
+  rot-label: RotWord
+  sub-label: SubWord
+  rcon-label: Rcon
+  xor-label: XOR

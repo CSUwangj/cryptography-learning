@@ -1,0 +1,43 @@
+version: 2
+id: overlay-three-anchor
+default_locale: en-US
+inputs:
+  key: {type: {family: bits, size: 64}, encoding: hex, default: '0x0001020304050607'}
+  plaintext: {type: {family: bits, size: 32}, encoding: hex, default: '0x00112233'}
+constants:
+  sbox: {kind: table, entryBits: 4, value: [14,4,13,1,2,15,11,8,3,10,6,12,5,9,0,7]}
+graphs:
+  schedule:
+    nodes:
+      - {id: input, operation: core.source@1, parameters: {type: {family: bits, size: 64}}, role: state, unit: 32}
+      - {id: rot, operation: core.rotate-word@1, inputs: {value: {node: input, port: value}}, parameters: {target: 1, amount: 8}, role: state, iteration: 1, unit: 32}
+      - {id: sub, operation: core.substitute-nibbles@1, inputs: {value: {node: rot, port: value}}, parameters: {sBox: {constant: sbox}}, role: state, iteration: 1, unit: 32}
+      - {id: rcon, operation: core.xor-constant@1, inputs: {value: {node: sub, port: value}}, parameters: {target: 1, constant: 16777216}, role: state, iteration: 1, unit: 32}
+      - {id: xor, operation: aes.xor-words@1, inputs: {state: {node: input, port: value}, temp: {node: rcon, port: value, bits: [32,32]}}, parameters: {start: 0, count: 2}, role: state, iteration: 1, unit: 32}
+      - {id: rk0, operation: core.output@1, inputs: {value: {node: input, port: value, bits: [0,32]}}, role: round-key, round: 0, unit: 32}
+      - {id: rk1, operation: core.concat@1, inputs: {left: {node: input, port: value, bits: [32,16]}, right: {node: xor, port: value, bits: [0,16]}}, role: round-key, round: 1, unit: 32}
+      - {id: rk2, operation: core.output@1, inputs: {value: {node: xor, port: value, bits: [16,32]}}, role: round-key, round: 2, unit: 32}
+    outputs: [{node: rk0, port: value}, {node: rk1, port: value}, {node: rk2, port: value}]
+  cipher:
+    nodes:
+      - {id: state, operation: core.source@1, parameters: {type: {family: bits, size: 32}}, role: state, round: 3, unit: 8}
+      - {id: key2, operation: core.source@1, parameters: {type: {family: bits, size: 32}}, role: round-key, round: 2, unit: 32}
+      - {id: mix2, operation: core.xor@1, inputs: {left: {node: state, port: value}, right: {node: key2, port: value}}, role: state, round: 2, unit: 8}
+      - {id: key1, operation: core.source@1, parameters: {type: {family: bits, size: 32}}, role: round-key, round: 1, unit: 32}
+      - {id: mix1, operation: core.xor@1, inputs: {left: {node: mix2, port: value}, right: {node: key1, port: value}}, role: state, round: 1, unit: 8}
+      - {id: key0, operation: core.source@1, parameters: {type: {family: bits, size: 32}}, role: round-key, round: 0, unit: 32}
+      - {id: mix0, operation: core.xor@1, inputs: {left: {node: mix1, port: value}, right: {node: key0, port: value}}, role: state, round: 0, unit: 8}
+    outputs: [{node: mix0, port: value}]
+steps:
+  - id: schedule
+    presentation: {kind: spn-cipher, mode: key-expansion, labels: {core.source@1: input-label, core.rotate-word@1: rot-label, core.substitute-nibbles@1: sub-label, core.xor-constant@1: rcon-label, aes.xor-words@1: xor-label}}
+    execute: {graph: schedule, bindings: {input.value: {input: key}}}
+  - id: cipher
+    presentation: {kind: spn-cipher, direction: decrypt, overlay: true}
+    execute:
+      graph: cipher
+      bindings:
+        state.value: {input: plaintext}
+        key2.value: {step: schedule, output: rk2.value}
+        key1.value: {step: schedule, output: rk1.value}
+        key0.value: {step: schedule, output: rk0.value}

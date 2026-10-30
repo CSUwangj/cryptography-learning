@@ -7,7 +7,7 @@ import { classicalCipherPositions, ClassicalCipherRenderer } from './ClassicalCi
 import { TeachingSpnRenderer } from './TeachingSpn'
 import { BlockCipherRenderer } from './BlockCipher'
 import { KeyExpansionRenderer } from './KeyExpansion'
-import { ExecutionTraceRenderer } from './ExecutionTrace'
+import { ExecutionTraceRenderer, type ExecutionTraceRendererProps } from './ExecutionTrace'
 
 export type RenderHostProps = {
   /** Absent for descriptor-free Steps, whose execution renders as a generic trace. */
@@ -22,6 +22,7 @@ export type RenderHostProps = {
   readonly allSnapshots?: Readonly<Record<string, WorkerExecutionSnapshot>>
   /** bindings map from the Step that produced `execution`, for deriving the schedule step. */
   readonly executionBindings?: Readonly<Record<string, LessonValueReference>>
+  readonly overlay?: ExecutionTraceRendererProps['overlay']
   readonly comparison?: AvalancheComparison
   readonly execution?: WorkerExecutionSnapshot
   readonly dimensions: { readonly width: number; readonly height: number }
@@ -112,6 +113,10 @@ export const RenderHost: React.FC<RenderHostProps> = (props) => {
               executionIdentity={props.executionIdentity}
               primitiveLabels={presentation.labels}
               spn={{ graph: props.compiledGraph, presentation }}
+              overlay={props.overlay && { ...props.overlay, presentation: props.overlay.presentation && {
+                ...props.overlay.presentation,
+                ...(props.overlay.presentation.labels && props.lessonTexts ? { labels: Object.fromEntries(Object.entries(props.overlay.presentation.labels).map(([identity, textId]) => [identity, props.lessonTexts![textId] ?? textId])) } : {}),
+              } }}
             />
         : !props.invocation && props.execution
         ? <ExecutionTraceRenderer

@@ -98,6 +98,17 @@
     "encrypt": "{{algorithm}} 加密",
     "decrypt": "{{algorithm}} 解密"
   },
+  "overlay": {
+    "generation": "生成行 {{index}}",
+    "originalOrder": "原始生成顺序",
+    "toggle": "显示密钥编排",
+    "clear": "清除选择",
+    "cipher": "密码",
+    "schedule": "密钥编排",
+    "title": "密钥编排覆盖层",
+    "close": "关闭密钥编排",
+    "openKey": "打开密钥编排：{{row}}"
+  },
   "schedule": {
     "instructions": "选择单个位或整个单位以检查结构依赖，而非单个位的因果关系。分组边界独立于选择单位。",
     "unit": "选择单位",

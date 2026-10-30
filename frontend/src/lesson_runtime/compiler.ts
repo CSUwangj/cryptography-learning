@@ -111,6 +111,7 @@ export type CompiledStep = {
   readonly inputs?: readonly { readonly input: string; readonly prompt: string; readonly type: PortType }[]
   readonly execute?: { readonly graph: string; readonly bindings: Readonly<Record<string, LessonValueReference>> }
   readonly presentation?: LessonPresentation
+  readonly overlay?: { readonly step: string; readonly anchors: readonly { readonly cipherRow: string; readonly scheduleRow: string; readonly round: number }[] }
   readonly visualizer?: {
     readonly id: string
     readonly bindings?: Readonly<Record<string, unknown>>
@@ -898,7 +899,7 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
       continue
     }
     stepIds.add(step.id)
-    const compiled: { id: string; prose?: string; bitFlip?: CompiledStep['bitFlip']; inputs?: { input: string; prompt: string; type: PortType }[]; execute?: { graph: string; bindings: Record<string, LessonValueReference> }; presentation?: LessonPresentation; visualizer?: CompiledStep['visualizer']; acceptedErrorCodes?: string[]; check?: LessonCheck } = { id: step.id }
+    const compiled: { id: string; prose?: string; bitFlip?: CompiledStep['bitFlip']; inputs?: { input: string; prompt: string; type: PortType }[]; execute?: { graph: string; bindings: Record<string, LessonValueReference> }; presentation?: LessonPresentation; overlay?: CompiledStep['overlay']; visualizer?: CompiledStep['visualizer']; acceptedErrorCodes?: string[]; check?: LessonCheck } = { id: step.id }
     if (typeof step.prose === 'string') {
       compiled.prose = step.prose
       textIds.add(step.prose)
@@ -990,8 +991,10 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
     if (step.presentation !== undefined) {
       const presentation = requireMap(step.presentation, `${path}.presentation`, lesson.spans, diagnostics)
       if (presentation) {
-        checkFields(presentation, ['kind', 'algorithm', 'variant', 'direction', 'labels', 'mode'], `${path}.presentation`, lesson.spans, diagnostics)
+        checkFields(presentation, ['kind', 'algorithm', 'variant', 'direction', 'labels', 'mode', 'overlay'], `${path}.presentation`, lesson.spans, diagnostics)
         const kind = presentation.kind
+        if (presentation.overlay !== undefined && typeof presentation.overlay !== 'boolean') diagnostics.push(diagnostic('lesson.invalid-input', 'Overlay must be a boolean.', `${path}.presentation.overlay`, lesson.spans.get(`${path}.presentation.overlay`)))
+        if (presentation.overlay === true && (!isV2 || kind !== 'spn-cipher' || presentation.mode === 'key-expansion')) diagnostics.push(diagnostic('lesson.invalid-overlay-kind', 'Only a v2 spn-cipher presentation supports an overlay.', `${path}.presentation.overlay`, lesson.spans.get(`${path}.presentation.overlay`)))
         if (presentation.mode !== undefined && (!isV2 || kind !== 'spn-cipher' || presentation.mode !== 'key-expansion')) diagnostics.push(diagnostic('lesson.invalid-input', 'Standalone schedule mode requires a v2 spn-cipher presentation.', `${path}.presentation.mode`, lesson.spans.get(`${path}.presentation.mode`)))
         const algorithm = presentation.algorithm
         const variant = presentation.variant
@@ -1024,6 +1027,36 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
             ...(typeof variant === 'number' ? { variant } : {}),
             ...(direction === 'encrypt' || direction === 'decrypt' ? { direction } : {}),
             ...(labels ? { labels: labels as Record<string, string> } : {}),
+          }
+          if (presentation.overlay === true && compiled.execute) {
+            const graph = graphInfo[compiled.execute.graph].graph
+            const keys = graph.graph.nodes.filter((node) => node.role === 'round-key')
+              .sort((left, right) => rows?.ok ? rows.value.indexOf(`${left.id}.value`) - rows.value.indexOf(`${right.id}.value`) : 0)
+            const bindings = keys.flatMap((node) => {
+              const reference = compiled.execute!.bindings[`${node.id}.value`]
+              return reference && 'step' in reference ? [{ node, reference, scheduleRow: executionSteps.get(reference.step)?.graph.outputAliases?.[reference.output] ?? reference.output }] : []
+            })
+            if (!bindings.length) diagnostics.push(diagnostic('lesson.overlay-without-schedule-binding', 'Overlay requires a cross-Step round-key binding.', `${path}.presentation.overlay`, lesson.spans.get(`${path}.presentation.overlay`)))
+            if (bindings.length !== keys.length) diagnostics.push(diagnostic('overlay.unbound-round-key', 'Every cipher round key must bind to the schedule.', `${path}.execute.bindings`, lesson.spans.get(`${path}.execute.bindings`)))
+            if (new Set(bindings.map(({ reference }) => reference.step)).size > 1) diagnostics.push(diagnostic('overlay.multiple-schedule-steps', 'Overlay round keys must come from one schedule Step.', `${path}.execute.bindings`, lesson.spans.get(`${path}.execute.bindings`)))
+            if (new Set(bindings.map(({ reference, scheduleRow }) => `${reference.step}:${scheduleRow}`)).size !== bindings.length) diagnostics.push(diagnostic('overlay.duplicate-anchor', 'A schedule anchor cannot bind to multiple cipher keys.', `${path}.execute.bindings`, lesson.spans.get(`${path}.execute.bindings`)))
+            for (const { node, reference, scheduleRow } of bindings) {
+              const schedule = executionSteps.get(reference.step)
+              const nodeId = scheduleRow.slice(0, scheduleRow.lastIndexOf('.'))
+              if (schedule && (!schedule.outputTypes[reference.output] || schedule.graph.graph.nodes.find((node) => node.id === nodeId)?.role !== 'round-key')) diagnostics.push(diagnostic('overlay.not-round-key', 'A schedule anchor must be an exported round-key output.', `${path}.execute.bindings`, lesson.spans.get(`${path}.execute.bindings`)))
+              const source = schedule?.outputTypes[reference.output]
+              const target = graph.outputTypes?.[`${node.id}.value`]
+              if (source && target && !equalTypes(source, target)) diagnostics.push(diagnostic('overlay.width-mismatch', 'Overlay anchors must have equal bit widths.', `${path}.execute.bindings`, lesson.spans.get(`${path}.execute.bindings`)))
+            }
+            const scheduleKeys = executionSteps.get(bindings[0]?.reference.step)?.graph.graph.nodes.filter((node) => node.role === 'round-key')
+              .sort((left, right) => (left.round ?? 0) - (right.round ?? 0)) ?? []
+            const positions = bindings.map(({ scheduleRow }) => scheduleKeys.findIndex((node) => `${node.id}.value` === scheduleRow))
+            const differences = positions.slice(1).map((position, index) => position - positions[index])
+            if (differences.some((difference) => difference > 0) && differences.some((difference) => difference < 0)) diagnostics.push(diagnostic('overlay.schedule-order-inconsistent', 'Schedule anchors must follow forward or reversed generation order.', `${path}.execute.bindings`, lesson.spans.get(`${path}.execute.bindings`)))
+            if (bindings.length) compiled.overlay = {
+              step: bindings[0].reference.step,
+              anchors: bindings.map(({ node, scheduleRow }) => ({ cipherRow: `${node.id}.value`, scheduleRow, round: node.round! })),
+            }
           }
         } else {
           diagnostics.push(diagnostic('lesson.invalid-input', 'Presentation metadata is invalid.', `${path}.presentation`, lesson.spans.get(`${path}.presentation`)))

@@ -129,7 +129,7 @@ steps:
       graph: schedule
       bindings: {key.value: {input: key}}
   - id: cipher
-    presentation: {kind: spn-cipher, algorithm: AES, variant: 192, direction: encrypt}
+    presentation: {kind: spn-cipher, algorithm: AES, variant: 192, direction: encrypt, overlay: true}
     prose: cipher-description
     execute:
       graph: cipher

@@ -75,6 +75,8 @@
     "baselineChanged": "Baseline / changed",
     "runtime": {
       "lesson": {
+        "invalid-overlay-kind": "Only a v2 spn-cipher presentation supports an overlay.",
+        "overlay-without-schedule-binding": "Overlay requires a cross-Step round-key binding.",
         "execution-cancelled": "Lesson execution was cancelled.",
         "invalid-input": "Input does not match its declared type and encoding.",
         "invalid-step-reference": "Invalid Lesson Step reference.",
@@ -92,6 +94,14 @@
         "unknown-constant": "The referenced constant is not declared.",
         "invalid-constant-use": "Table constants can only be used as operation parameters.",
         "unsafe-markdown": "Lesson prose contains unsupported HTML or links."
+      },
+      "overlay": {
+        "not-round-key": "A schedule anchor must be an exported round-key output.",
+        "schedule-order-inconsistent": "Schedule anchors must follow forward or reversed generation order.",
+        "duplicate-anchor": "A schedule anchor cannot bind to multiple cipher keys.",
+        "unbound-round-key": "Every cipher round key must bind to the schedule.",
+        "multiple-schedule-steps": "Overlay round keys must come from one schedule Step.",
+        "width-mismatch": "Overlay anchors must have equal bit widths."
       },
       "presentation": {
         "spn-role-required": "Cipher presentation requires bit-valued state and round-key roles on its execution nodes.",

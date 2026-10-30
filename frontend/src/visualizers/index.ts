@@ -72,3 +72,4 @@ export const visualizerCatalog = Object.freeze({
 
 export type VisualizerCatalog = typeof visualizerCatalog
 export { RenderHost } from './RenderHost'
+export type { RenderHostProps } from './RenderHost'

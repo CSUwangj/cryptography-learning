@@ -11,6 +11,12 @@ export type ExecutionTraceRendererProps = {
   readonly executionIdentity: string
   readonly primitiveLabels?: Readonly<Record<string, string>>
   readonly spn?: { readonly graph: CompiledGraph; readonly presentation: Extract<LessonPresentation, { kind: 'spn-cipher' }> }
+  readonly overlay?: {
+    readonly anchors: readonly { readonly cipherRow: string; readonly scheduleRow: string; readonly round: number }[]
+    readonly execution: WorkerExecutionSnapshot
+    readonly graph: CompiledGraph
+    readonly presentation?: LessonPresentation
+  }
 }
 
 const valueText = (value: CryptoValue | undefined): string => {
@@ -148,6 +154,7 @@ const spnPresentation = (execution: WorkerExecutionSnapshot, t: TFunction<'visua
   return {
     ...base,
     title,
+    executionIdentity: `${executionIdentity}:${presentation.direction ?? presentation.mode ?? 'spn'}`,
     instructions: t('schedule.instructions'),
     unitSelection: {
       label: t('schedule.unit'),
@@ -179,8 +186,60 @@ const spnPresentation = (execution: WorkerExecutionSnapshot, t: TFunction<'visua
   }
 }
 
-export const ExecutionTraceRenderer: React.FC<ExecutionTraceRendererProps> = ({ execution, executionIdentity, primitiveLabels, spn }) => {
+const overlayPresentation = (base: LearningPresentation, overlay: NonNullable<ExecutionTraceRendererProps['overlay']>, spn: NonNullable<ExecutionTraceRendererProps['spn']>, t: TFunction<'visualizers'>): LearningPresentation => {
+  const presentation = overlay.presentation?.kind === 'spn-cipher' ? overlay.presentation : { kind: 'spn-cipher' as const, mode: 'key-expansion' as const }
+  const schedule = spnPresentation(overlay.execution, t, base.executionIdentity!, { graph: overlay.graph, presentation: { ...presentation, mode: 'key-expansion' } }, presentation.labels)
+  const rows = schedule.sections[0].rows
+  const byId = new Map(rows.map((row) => [row.id, row]))
+  const nodes = new Map(overlay.graph.graph.nodes.map((node) => [node.id, node]))
+  const visited = new Set<string>()
+  const visit = (id: string): LearningRow[] => {
+    if (visited.has(id)) return []
+    visited.add(id)
+    const node = nodes.get(id)
+    const parents = Object.values(node?.inputs ?? {}).flatMap((input) => visit(input.node))
+    const row = byId.get(`${id}.value`)
+    return row ? [...parents, row] : parents
+  }
+  const keys = [...nodes.values()].filter((node) => node.role === 'round-key').sort((left, right) => (left.round ?? 0) - (right.round ?? 0))
+  const blocks = keys.map((node) => visit(node.id))
+  const remaining = [...nodes.keys()].flatMap(visit)
+  const generation = [...blocks.flat(), ...remaining]
+  const positions = overlay.anchors.map((anchor) => keys.findIndex((node) => `${node.id}.value` === anchor.scheduleRow))
+  const ordered = [...(positions[0] > positions[positions.length - 1] ? blocks.toReversed() : blocks).flat(), ...remaining]
+  const anchors = new Map(overlay.anchors.map((anchor) => [anchor.scheduleRow, spn.presentation.rowOrder?.[spn.presentation.rowOrder.indexOf(anchor.cipherRow) + 1]]))
+  const laneRows = ordered.map((row) => ({
+    ...row, id: `schedule:${row.id}`,
+    anchor: anchors.get(row.id),
+    label: `${t('overlay.generation', { index: generation.indexOf(row) + 1 })}; ${row.label} (${row.id}) [${row.cells[0].value}] ${row.cells[1].value}`,
+    selectableBits: row.selectableBits?.map((bit) => ({ ...bit, id: `schedule:${bit.id}` })),
+    relationships: row.relationships?.map((edge) => ({ from: `schedule:${edge.from}`, to: `schedule:${edge.to}` })),
+  }))
+  return {
+    ...base,
+    bitCorrespondence: overlay.anchors.flatMap((anchor) => {
+      const type = spn.graph.outputTypes?.[anchor.cipherRow]
+      const width = type?.family === 'bits' ? type.size : undefined
+      return typeof width === 'number' ? Array.from({ length: width }, (_, bit) => ({ from: `${anchor.cipherRow}#${bit}`, to: `schedule:${anchor.scheduleRow}#${bit}` })) : []
+    }),
+    keyExpansionLane: {
+      caption: t('overlay.title'), closeLabel: t('overlay.close'), rows: laneRows,
+      sharedSelection: { toggleLabel: t('overlay.toggle'), clearLabel: t('overlay.clear') },
+      originalOrder: { kind: 'raw', caption: t('overlay.originalOrder'), headers: schedule.sections[0].headers.slice(0, 3), rows: generation },
+    },
+    selectionStatus: (selected) => selected ? `${t(selected.id.startsWith('schedule:') ? 'overlay.schedule' : 'overlay.cipher')}: ${selected.ariaLabel}` : t('keyExpansion.none'),
+    sections: base.sections.map((section) => ({ ...section, rows: section.rows.map((row) => ({
+      ...row,
+      ...(overlay.anchors.some((anchor) => anchor.cipherRow === row.id) ? { selectableKey: { id: `opener:${row.id}`, value: t('overlay.openKey', { row: row.label }), ariaLabel: t('overlay.openKey', { row: row.label }) } } : {}),
+    })) })),
+  }
+}
+
+export const ExecutionTraceRenderer: React.FC<ExecutionTraceRendererProps> = ({ execution, executionIdentity, primitiveLabels, spn, overlay }) => {
   const { t } = useTranslation('visualizers')
-  const presentation = useMemo(() => spn ? spnPresentation(execution, t, executionIdentity, spn, primitiveLabels) : executionTracePresentation(execution, t, executionIdentity, primitiveLabels), [execution, t, executionIdentity, primitiveLabels, spn])
+  const presentation = useMemo(() => {
+    const base = spn ? spnPresentation(execution, t, executionIdentity, spn, primitiveLabels) : executionTracePresentation(execution, t, executionIdentity, primitiveLabels)
+    return overlay && spn ? overlayPresentation(base, overlay, spn, t) : base
+  }, [execution, t, executionIdentity, primitiveLabels, spn, overlay])
   return <LearningPresentationView presentation={presentation} />
 }
