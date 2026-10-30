@@ -197,7 +197,7 @@ const LessonView: React.FC = () => {
     setLoad((previous) => {
       const presentation = previous.status === 'ready' && activeLesson.current === lessonId
         ? session.current?.lesson.steps[previous.state.stepIndex].presentation : undefined
-      return presentation?.kind === 'spn-cipher' && presentation.mode === 'key-expansion' ? previous : { status: 'loading' }
+      return presentation?.kind === 'spn-cipher' ? previous : { status: 'loading' }
     })
     const apply = async (documents: RuntimeLessonDocuments) => {
       if (activeLesson.current === lessonId && session.current) {

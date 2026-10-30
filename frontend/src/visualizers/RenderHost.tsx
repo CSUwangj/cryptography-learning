@@ -106,12 +106,12 @@ export const RenderHost: React.FC<RenderHostProps> = (props) => {
               executionIdentity={props.executionIdentity}
               presentation={presentation}
             />
-        : presentation?.kind === 'spn-cipher' && presentation.mode === 'key-expansion' && props.execution && props.compiledGraph
+        : presentation?.kind === 'spn-cipher' && (presentation.mode === 'key-expansion' || presentation.rowOrder) && props.execution && props.compiledGraph
           ? <ExecutionTraceRenderer
               execution={props.execution}
               executionIdentity={props.executionIdentity}
               primitiveLabels={presentation.labels}
-              schedule={{ graph: props.compiledGraph, algorithm: presentation.algorithm, variant: presentation.variant }}
+              spn={{ graph: props.compiledGraph, presentation }}
             />
         : !props.invocation && props.execution
         ? <ExecutionTraceRenderer

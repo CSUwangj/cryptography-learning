@@ -1,0 +1,31 @@
+version: 2
+id: teaching-spn-render
+default_locale: en-US
+inputs:
+  state: {type: {family: bits, size: 16}, encoding: hex, default: "0x1234"}
+constants:
+  key: {type: {family: bits, size: 16}, encoding: hex, value: "0x0f0f"}
+graphs:
+  cipher:
+    nodes:
+      - {id: key, operation: core.source@1, parameters: {type: {family: bits, size: 16}}, role: round-key, round: 1, unit: 4}
+      - {id: state, operation: core.source@1, parameters: {type: {family: bits, size: 16}}, role: state, round: 0, unit: 4}
+      - {id: mix, operation: core.xor@1, inputs: {left: {node: state, port: value}, right: {node: key, port: value}}, role: state, round: 1, unit: 4}
+      - id: substitute
+        operation: core.substitute-nibbles@1
+        inputs: {value: {node: mix, port: value}}
+        parameters: {sBox: [14, 4, 13, 1, 2, 15, 11, 8, 3, 10, 6, 12, 5, 9, 0, 7]}
+        role: state
+        round: 1
+        unit: 4
+      - {id: permute, operation: spn.permute-gather@1, inputs: {value: {node: substitute, port: value}}, parameters: {permutation: [3, 0, 1, 2]}, role: state, round: 1, unit: 4}
+      - {id: result, operation: core.output@1, inputs: {value: {node: permute, port: value}}, role: state, round: 1, unit: 4}
+    outputs: [{node: result, port: value}]
+steps:
+  - id: cipher
+    presentation:
+      kind: spn-cipher
+      labels:
+        core.substitute-nibbles@1: substitute-label
+        spn.permute-gather@1: permute-label
+    execute: {graph: cipher, bindings: {state.value: {input: state}, key.value: {constant: key}}}

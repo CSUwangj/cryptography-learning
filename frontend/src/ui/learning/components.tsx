@@ -255,6 +255,7 @@ export type LineageDiagramProps = {
   readonly height: number
   readonly related: ReadonlySet<string>
   readonly selected?: LearningSelection
+  readonly aggregate?: boolean
 }
 
 export type LineageLocation = { readonly x: number; readonly y: number }
@@ -267,7 +268,7 @@ const lineageStroke = (state: LearningState): string => {
   return learningColors.mutedText
 }
 
-export const LineageDiagram = ({ relationships, locations, width, height, related, selected }: LineageDiagramProps): ReactNode => {
+export const LineageDiagram = ({ relationships, locations, width, height, related, selected, aggregate }: LineageDiagramProps): ReactNode => {
   if (!relationships.length) return null
   const lines = relationships.map((relationship) => ({
     relationship,
@@ -277,8 +278,20 @@ export const LineageDiagram = ({ relationships, locations, width, height, relate
         ? 'related' as const
         : relationship.state ?? 'default',
   }))
+  const paths = new Map<LearningState, string[]>()
+  if (aggregate) for (const { relationship, state } of lines) {
+    const from = locations.get(relationship.from)
+    const to = locations.get(relationship.to)
+    if (!from || !to) continue
+    if (!paths.has(state)) paths.set(state, [])
+    paths.get(state)!.push(`M${from.x},${from.y}L${to.x},${to.y}`)
+  }
   return <svg aria-hidden="true" data-lineage height={height} style={{ left: 0, pointerEvents: 'none', position: 'absolute', top: 0 }} viewBox={`0 0 ${width} ${height}`} width={width}>
-    {[...lines.filter((line) => line.state === 'default'), ...lines.filter((line) => line.state !== 'default')].map(({ relationship, state }) => {
+    {/* Batch unit-view geometry without changing the bit relationships used for traversal. */}
+    {aggregate ? [...paths].sort(([left], [right]) => Number(left !== 'default') - Number(right !== 'default')).map(([state, segments]) => <path
+      d={segments.join(' ')} data-state={state} fill="none" key={state}
+      stroke={lineageStroke(state)} strokeOpacity={state === 'default' && selected ? 0.15 : 0.6} strokeWidth={state === 'default' ? 1 : 3}
+    />) : [...lines.filter((line) => line.state === 'default'), ...lines.filter((line) => line.state !== 'default')].map(({ relationship, state }) => {
       const from = locations.get(relationship.from)
       const to = locations.get(relationship.to)
       if (!from || !to) return null
@@ -486,6 +499,7 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
       {/* Remount per measurement, drawing only this presentation's locations: inserting tens of
           thousands of lines into a mounted SVG is quadratic in React. */}
       <LineageDiagram
+        aggregate={!!presentation.unitSelection}
         height={lineage.height}
         key={presentation.unitSelection ? `${lineage.measure}-${selected?.id}-${selected?.bitIds?.length}` : lineage.measure}
         locations={lineage.presentation === presentation ? lineage.locations : new Map()}

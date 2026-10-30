@@ -2,6 +2,7 @@ import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import React, { useMemo } from 'react'
 import { hex, type CompiledGraph, type BitsValue, type CryptoValue, type TraceCheckpoint, type TraceEvent, type WorkerExecutionSnapshot } from 'crypto_graph'
+import type { LessonPresentation } from '../lesson_runtime'
 import { learningColors, LearningPresentationView, type LearningDiagnostic, type LearningPresentation, type LearningRow } from '../ui/learning'
 import { PermutationVisual } from './OperationVisuals'
 
@@ -9,7 +10,7 @@ export type ExecutionTraceRendererProps = {
   readonly execution: WorkerExecutionSnapshot
   readonly executionIdentity: string
   readonly primitiveLabels?: Readonly<Record<string, string>>
-  readonly schedule?: { readonly graph: CompiledGraph; readonly algorithm?: string; readonly variant?: number }
+  readonly spn?: { readonly graph: CompiledGraph; readonly presentation: Extract<LessonPresentation, { kind: 'spn-cipher' }> }
 }
 
 const valueText = (value: CryptoValue | undefined): string => {
@@ -126,21 +127,27 @@ export const executionTracePresentation = (execution: WorkerExecutionSnapshot, t
   }
 }
 
-const schedulePresentation = (execution: WorkerExecutionSnapshot, t: TFunction<'visualizers'>, executionIdentity: string, schedule: NonNullable<ExecutionTraceRendererProps['schedule']>, primitiveLabels?: Readonly<Record<string, string>>): LearningPresentation => {
+const spnPresentation = (execution: WorkerExecutionSnapshot, t: TFunction<'visualizers'>, executionIdentity: string, spn: NonNullable<ExecutionTraceRendererProps['spn']>, primitiveLabels?: Readonly<Record<string, string>>): LearningPresentation => {
   const base = executionTracePresentation(execution, t, executionIdentity, primitiveLabels)
+  const { graph, presentation } = spn
+  const schedule = presentation.mode === 'key-expansion'
   const events = execution.trace.filter((event): event is TraceEvent & { value: BitsValue } =>
     'value' in event && event.value?.type.family === 'bits' && 'bytes' in event.value)
-  // Authored operation order within each generation, followed by numeric exported-key order.
-  const order = new Map(schedule.graph.graph.nodes.map((node, index) => [`${node.id}.value`, index]))
-  events.sort((left, right) => Number(left.role === 'round-key') - Number(right.role === 'round-key')
+  const order = new Map((schedule ? graph.graph.nodes.map((node) => `${node.id}.value`) : presentation.rowOrder ?? []).map((path, index) => [path, index]))
+  // Schedules retain generation/export order; cipher rows use the compiler's state-chain order.
+  events.sort((left, right) => schedule ? Number(left.role === 'round-key') - Number(right.role === 'round-key')
     || (left.role === 'round-key' ? (left.round ?? 0) - (right.round ?? 0) : (left.iteration ?? -1) - (right.iteration ?? -1))
-    || (order.get(left.path) ?? 0) - (order.get(right.path) ?? 0))
+    || (order.get(left.path) ?? 0) - (order.get(right.path) ?? 0)
+    : order.get(left.path)! - order.get(right.path)!)
   const retained = new Set(events.map((event) => event.path))
-  const relationships = (schedule.graph.lineage ?? []).filter((edge) => retained.has(edge.source) && retained.has(edge.target))
+  const relationships = (graph.lineage ?? []).filter((edge) => retained.has(edge.source) && retained.has(edge.target))
     .map((edge) => ({ from: `${edge.source}#${edge.sourceBit}`, to: `${edge.target}#${edge.targetBit}` }))
+  const title = schedule
+    ? presentation.algorithm && presentation.variant ? t('keyExpansion.title', presentation) : t('keyExpansion.flow')
+    : t(`spnCipher.${presentation.direction ?? 'title'}`, { algorithm: `${presentation.algorithm ?? 'SPN'}${presentation.variant === undefined ? '' : `-${presentation.variant}`}` })
   return {
     ...base,
-    title: schedule.algorithm && schedule.variant ? t('keyExpansion.title', schedule) : t('keyExpansion.flow'),
+    title,
     instructions: t('schedule.instructions'),
     unitSelection: {
       label: t('schedule.unit'),
@@ -152,7 +159,7 @@ const schedulePresentation = (execution: WorkerExecutionSnapshot, t: TFunction<'
     },
     selectionStatus: (selected) => selected ? `${t('keyExpansion.selected')}: ${selected.ariaLabel}` : t('keyExpansion.none'),
     sections: [{
-      kind: 'trace', caption: t('keyExpansion.flow'),
+      kind: 'trace', caption: schedule ? t('keyExpansion.flow') : t('teachingSpn.flow'),
       headers: [t('keyExpansion.stage'), t('keyExpansion.round'), t('keyExpansion.value'), t('keyExpansion.bits')],
       rows: events.map((event, index) => {
         const label = event.role === 'round-key' ? `${t('keyExpansion.roundKey')} ${event.round}` : stageLabel(event, t, execution.outputs, primitiveLabels)
@@ -172,8 +179,8 @@ const schedulePresentation = (execution: WorkerExecutionSnapshot, t: TFunction<'
   }
 }
 
-export const ExecutionTraceRenderer: React.FC<ExecutionTraceRendererProps> = ({ execution, executionIdentity, primitiveLabels, schedule }) => {
+export const ExecutionTraceRenderer: React.FC<ExecutionTraceRendererProps> = ({ execution, executionIdentity, primitiveLabels, spn }) => {
   const { t } = useTranslation('visualizers')
-  const presentation = useMemo(() => schedule ? schedulePresentation(execution, t, executionIdentity, schedule, primitiveLabels) : executionTracePresentation(execution, t, executionIdentity, primitiveLabels), [execution, t, executionIdentity, primitiveLabels, schedule])
+  const presentation = useMemo(() => spn ? spnPresentation(execution, t, executionIdentity, spn, primitiveLabels) : executionTracePresentation(execution, t, executionIdentity, primitiveLabels), [execution, t, executionIdentity, primitiveLabels, spn])
   return <LearningPresentationView presentation={presentation} />
 }

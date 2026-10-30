@@ -1,0 +1,5 @@
+title: Teaching SPN render fixture
+summary: Inspect one substitution-permutation round.
+texts:
+  substitute-label: Nibble substitution
+  permute-label: Nibble gather

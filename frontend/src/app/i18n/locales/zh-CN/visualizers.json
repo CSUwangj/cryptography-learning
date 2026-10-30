@@ -93,6 +93,11 @@
       "xor": "异或"
     }
   },
+  "spnCipher": {
+    "title": "{{algorithm}} 密码",
+    "encrypt": "{{algorithm}} 加密",
+    "decrypt": "{{algorithm}} 解密"
+  },
   "schedule": {
     "instructions": "选择单个位或整个单位以检查结构依赖，而非单个位的因果关系。分组边界独立于选择单位。",
     "unit": "选择单位",

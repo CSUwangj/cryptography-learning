@@ -99,9 +99,46 @@ runtime constants. The compiled main-thread graph exposes structural lineage;
 worker messages and snapshots do not carry it because the worker recompiles the
 authored graph.
 
-Selectable units, overlays, and comparison presentations belong to later tickets.
-Algorithm-specific renderer dispatch is excluded. Authors should keep v1
-declarations until the relevant v2 capability is available.
+## SPN teaching rows
+
+An executing v2 Step can request `presentation: {kind: spn-cipher}`. Optional
+`algorithm`, `variant`, `direction` and localized `labels` supply teaching labels;
+they do not choose row placement or bit dependencies. `mode: key-expansion`
+requests the independent schedule view instead.
+
+The supported cipher teaching order is deliberately structural:
+
+- Every node has a bit-valued output, a `state` or `round-key` role, and a round.
+- State nodes form one chain starting at a single input-free state source. Each
+  following state has exactly one distinct state predecessor. Forks and merges
+  have no supported cipher teaching order.
+- Round keys are input-free sources. Follow the state chain in dependency order;
+  insert a round key immediately before its first consumer. Each consumer may
+  introduce at most one new key, and every key must be consumed. A key's round
+  annotation matches its consuming state round. Round numbers keep their source
+  identity; they are not sorted to determine consumption order.
+- Every output bit of a transform with inputs needs compiled upstream lineage.
+  This requirement applies to the requested presentation, not raw graph execution.
+
+The compiler records this order on the main thread. Renaming nodes, changing
+algorithm labels or reordering declarations cannot change it. Unsupported roles,
+rounds, ordering and lineage report `presentation.spn-role-required`,
+`presentation.spn-round-required`, `presentation.spn-order-unsupported` and
+`presentation.spn-lineage-required`, respectively. Correct the authored graph or
+use its descriptor-free trace, then reload/rerun the existing Lesson workflow.
+
+Both cipher and standalone schedule views reuse exact bit/unit selection.
+Related counts and details preserve exact positions; highlighting a containing
+unit never adds its other bits. Node `unit` annotations draw grouping boundaries
+independently of the selected unit size. Rendering uses retained execution values
+and compiled lineage, never rerunning the graph. Missing trace endpoints omit
+their edges while retained rows remain visible.
+
+Overlay integration and v2 comparison presentations remain outside this slice.
+The small Teaching SPN render fixture is test content, not a published variant
+demo or first-real-page product acceptance. Algorithm-specific renderer dispatch
+is excluded. Authors should keep v1 declarations until the relevant v2 capability
+is available.
 
 To validate a Lesson, run the existing validation command or call
 `validateLessonDocuments`. Fix authored YAML diagnostics, then rerun the same

@@ -100,6 +100,8 @@ export type LessonPresentation =
     readonly variant?: number
     readonly direction?: 'encrypt' | 'decrypt'
     readonly labels?: Readonly<Record<string, string>>
+    /** Compiled teaching order; not an authorable field or Worker payload. */
+    readonly rowOrder?: readonly string[]
   }
 
 export type CompiledStep = {
@@ -750,6 +752,53 @@ const forbiddenAcceptedCode = (code: string): boolean =>
 
 const acceptedOperationErrorCodes = new Set(['operation-failed'])
 
+const spnCipherRows = (graph: CompiledGraph | undefined, path: string, span?: SourceOrigin): Result<readonly string[]> => {
+  const nodes = graph?.graph.nodes ?? []
+  if (!nodes.some((node) => node.role === 'state') || !nodes.some((node) => node.role === 'round-key')
+    || nodes.some((node) => !node.role || graph?.outputTypes?.[`${node.id}.value`]?.family !== 'bits')) {
+    return { ok: false, diagnostics: [diagnostic('presentation.spn-role-required', 'Cipher presentation requires bit-valued state and round-key roles on its execution nodes.', path, span)] }
+  }
+  const byId = new Map(nodes.map((node) => [node.id, node]))
+  if (nodes.some((node) => node.round === undefined || Object.values(node.inputs ?? {}).some((input) =>
+    byId.get(input.node)?.role === 'round-key' && byId.get(input.node)?.round !== node.round))) {
+    return { ok: false, diagnostics: [diagnostic('presentation.spn-round-required', 'Cipher rows need round annotations, and round keys must match their consuming state round.', path, span)] }
+  }
+  const lineageTargets = new Set(graph?.lineage?.map((edge) => `${edge.target}#${edge.targetBit}`))
+  for (const node of nodes.filter((node) => Object.keys(node.inputs ?? {}).length)) {
+    const type = graph?.outputTypes?.[`${node.id}.value`]
+    if (type?.family === 'bits' && Array.from({ length: type.size as number }, (_, bit) => bit)
+      .some((bit) => !lineageTargets.has(`${node.id}.value#${bit}`))) {
+      return { ok: false, diagnostics: [diagnostic('presentation.spn-lineage-required', 'Cipher transforms require compiled bit lineage for every output bit.', path, span, { node: node.id })] }
+    }
+  }
+  const states = nodes.filter((node) => node.role === 'state')
+  const keys = nodes.filter((node) => node.role === 'round-key')
+  const parents = (node: typeof nodes[number]) => [...new Set(Object.values(node.inputs ?? {})
+    .filter((input) => byId.get(input.node)?.role === 'state').map((input) => input.node))]
+  const roots = states.filter((node) => parents(node).length === 0)
+  const successors = new Map<string, typeof nodes[number]>()
+  const unsupported = (): Result<readonly string[]> => ({ ok: false, diagnostics: [diagnostic(
+    'presentation.spn-order-unsupported', 'Cipher teaching order requires one state chain, with at most one new round-key source at each consumer.', path, span,
+  )] })
+  if (roots.length !== 1 || Object.keys(roots[0].inputs ?? {}).length || keys.some((node) => Object.keys(node.inputs ?? {}).length)) return unsupported()
+  for (const node of states.filter((node) => node !== roots[0])) {
+    const inputs = parents(node)
+    if (inputs.length !== 1 || successors.has(inputs[0])) return unsupported()
+    successors.set(inputs[0], node)
+  }
+  const rows: string[] = []
+  const placedKeys = new Set<string>()
+  // State dependencies establish consumption order; source declarations and IDs never break ties.
+  for (let state: typeof nodes[number] | undefined = roots[0]; state; state = successors.get(state.id)) {
+    const newKeys = [...new Set(Object.values(state.inputs ?? {}).filter((input) => byId.get(input.node)?.role === 'round-key')
+      .map((input) => input.node))].filter((id) => !placedKeys.has(id))
+    if (newKeys.length > 1) return unsupported()
+    for (const id of newKeys) { rows.push(`${id}.value`); placedKeys.add(id) }
+    rows.push(`${state.id}.value`)
+  }
+  return rows.length === nodes.length ? { ok: true, value: rows } : unsupported()
+}
+
 export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCatalog): Result<CompiledLesson> => {
   const parsedLesson = parseYaml('lesson.yaml', documents.lesson)
   const parsedLocales = Object.entries(documents.locales)
@@ -963,8 +1012,13 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
         } else if (kind === 'key-expansion' && algorithm === 'AES' && validVariant && direction === undefined) {
           compiled.presentation = { kind, algorithm, variant, ...(labels ? { labels: labels as Record<string, string> } : {}) }
         } else if (isV2 && kind === 'spn-cipher') {
+          const rows = presentation.mode !== 'key-expansion' ? spnCipherRows(
+            compiled.execute ? graphInfo[compiled.execute.graph]?.graph : undefined, `${path}.presentation`, lesson.spans.get(`${path}.presentation`),
+          ) : undefined
+          if (rows && !rows.ok) diagnostics.push(...rows.diagnostics)
           compiled.presentation = {
             kind,
+            ...(rows?.ok ? { rowOrder: rows.value } : {}),
             ...(presentation.mode === 'key-expansion' ? { mode: 'key-expansion' as const } : {}),
             ...(typeof algorithm === 'string' ? { algorithm } : {}),
             ...(typeof variant === 'number' ? { variant } : {}),

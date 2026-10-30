@@ -93,6 +93,12 @@
         "invalid-constant-use": "表常量只能用作运算参数。",
         "unsafe-markdown": "课程正文包含不支持的 HTML 或链接。"
       },
+      "presentation": {
+        "spn-role-required": "密码视图要求执行节点具有位值类型以及状态或轮密钥角色。",
+        "spn-round-required": "密码行需要轮次标注，轮密钥的轮次必须与使用它的状态轮次一致。",
+        "spn-order-unsupported": "密码教学行要求单条状态链，每个使用轮密钥的节点最多引入一个新的轮密钥源。",
+        "spn-lineage-required": "密码变换的每个输出位都需要编译得到的位谱系。"
+      },
       "operation-failed": "操作执行失败。",
       "cipher": {
         "invalid-key": "密钥必须是安全整数。",

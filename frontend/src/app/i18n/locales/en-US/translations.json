@@ -93,6 +93,12 @@
         "invalid-constant-use": "Table constants can only be used as operation parameters.",
         "unsafe-markdown": "Lesson prose contains unsupported HTML or links."
       },
+      "presentation": {
+        "spn-role-required": "Cipher presentation requires bit-valued state and round-key roles on its execution nodes.",
+        "spn-round-required": "Cipher rows need round annotations, and round keys must match their consuming state round.",
+        "spn-order-unsupported": "Cipher teaching order requires one state chain, with at most one new round-key source at each consumer.",
+        "spn-lineage-required": "Cipher transforms require compiled bit lineage for every output bit."
+      },
       "operation-failed": "Operation execution failed.",
       "cipher": {
         "invalid-key": "Cipher keys must be safe integers.",
