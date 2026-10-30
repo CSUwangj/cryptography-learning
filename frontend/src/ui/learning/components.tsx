@@ -1,3 +1,4 @@
+import { HTMLSelect } from '@blueprintjs/core'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 
 export type LearningState = 'default' | 'changed' | 'selected' | 'related' | 'related-changed' | 'warning' | 'incomplete'
@@ -142,7 +143,7 @@ export type KeyExpansionLane = {
   readonly rows: readonly KeyExpansionLaneRow[]
 }
 
-export type LearningSelection = { readonly kind: 'bit' | 'key'; readonly id: string }
+export type LearningSelection = { readonly kind: 'bit' | 'key'; readonly id: string; readonly bitIds?: readonly string[] }
 
 /**
  * A structured issue about the presentation's underlying data (e.g. a truncated trace), kept as
@@ -168,6 +169,14 @@ export type LearningPresentation = {
   readonly initialSelection?: string
   readonly initialKeySelection?: string
   readonly selectionStatus?: (selected: LearningBit | LearningRoundKey | undefined) => ReactNode
+  readonly unitSelection?: {
+    readonly label: string
+    readonly sizeLabel: (size: number) => string
+    readonly rangeLabel: (row: LearningRow, start: number, end: number, value: string) => string
+    readonly relatedLabel: (count: number, size: number, positions: string) => string
+    readonly selectedLabel: string
+    readonly detailsLabel: string
+  }
   readonly keyExpansionLane?: KeyExpansionLane
   /** Notified on every bit/chip selection change, including chip open/close/reselect. Lets a
    * caller observe or react to key-expansion lane chip selection without owning the state. */
@@ -201,11 +210,11 @@ const laneLayout = (rows: readonly LearningRow[], lane: readonly KeyExpansionLan
   })
 }
 
-export const relatedBitIds = (presentation: LearningPresentation, selected: string | undefined): ReadonlySet<string> => {
+export const relatedBitIds = (presentation: LearningPresentation, selected: string | readonly string[] | undefined): ReadonlySet<string> => {
   if (!selected) return new Set()
   const relationships = relationshipsFor(presentation)
   const reach = (source: 'from' | 'to', target: 'from' | 'to'): ReadonlySet<string> => {
-    const reached = new Set([selected])
+    const reached = new Set(typeof selected === 'string' ? [selected] : selected)
     for (let size = 0; size !== reached.size;) {
       size = reached.size
       for (const relationship of relationships) if (reached.has(relationship[source])) reached.add(relationship[target])
@@ -230,7 +239,7 @@ const initialSelectionFor = (presentation: LearningPresentation): LearningSelect
       : undefined
 
 const bitState = (bit: LearningBit, selected: LearningSelection | undefined, related: ReadonlySet<string>): LearningState =>
-  selected?.kind === 'bit' && bit.id === selected.id
+  selected?.kind === 'bit' && (selected.bitIds?.includes(bit.id) ?? bit.id === selected.id)
     ? 'selected'
     : related.has(bit.id) ? (bit.state === 'changed' ? 'related-changed' : 'related') : bit.state ?? 'default'
 
@@ -289,23 +298,30 @@ export const LineageDiagram = ({ relationships, locations, width, height, relate
 }
 
 export const LearningPresentationView = ({ presentation }: { readonly presentation: LearningPresentation }): ReactNode => {
+  const [unitSizes, setUnitSizes] = useState<Readonly<Record<string, number>>>({})
   const [selected, setSelected] = useState<LearningSelection | undefined>(() => initialSelectionFor(presentation))
   // Which round key's lane is open. Tracked separately from `selected` so that selecting a bit
   // inside the open lane (to inspect its lineage) highlights that bit without closing the lane.
   const [openKeyId, setOpenKeyId] = useState<string | undefined>(() => presentation.initialKeySelection)
   useEffect(() => {
+    setUnitSizes({})
     setSelected(initialSelectionFor(presentation))
     setOpenKeyId(presentation.initialKeySelection)
   }, [presentation.executionIdentity])
-  const related = useMemo(() => relatedBitIds(presentation, selected?.id), [presentation, selected])
+  const related = useMemo(() => relatedBitIds(presentation, selected?.bitIds ?? selected?.id), [presentation, selected])
   const relationships = relationshipsFor(presentation)
   // Wider rows carry longer diagonal lines, so give them proportionally more vertical room.
   const rows = presentation.sections.flatMap((section) => section.rows)
   const laneRows = presentation.keyExpansionLane?.rows ?? []
-  const lineageGap = Math.max(6, ...[...rows, ...laneRows].map((row) => row.selectableBits?.length ?? 0))
-  const selectedTarget = selected?.kind === 'bit'
+  const lineageGap = Math.max(6, ...[...rows, ...laneRows].map((row) => Math.ceil((row.selectableBits?.length ?? 0) / (unitSizes[row.id] ?? 1))))
+  const rawSelectedTarget = selected?.kind === 'bit'
     ? [...rows, ...laneRows].flatMap((row) => row.selectableBits ?? []).find((bit) => bit.id === selected.id)
     : rows.map((row) => row.selectableKey).find((key) => key?.id === selected?.id)
+  const sourceRow = presentation.unitSelection && rows.find((row) => row.selectableBits?.some((bit) => bit.id === selected?.id))
+  const sourceBits = sourceRow?.selectableBits?.filter((bit) => selected?.bitIds?.includes(bit.id)) ?? []
+  const selectedTarget = rawSelectedTarget && sourceRow && sourceBits.length > 1
+    ? { ...rawSelectedTarget, ariaLabel: presentation.unitSelection!.rangeLabel(sourceRow, sourceBits[0].bit, sourceBits[sourceBits.length - 1].bit, sourceBits.map((bit) => bit.value).join('')) }
+    : rawSelectedTarget
   const lineageContainer = useRef<HTMLDivElement>(null)
   const targets = useRef(new Map<string, HTMLElement>())
   const [lineage, setLineage] = useState<{ readonly measure: number; readonly presentation?: LearningPresentation; readonly width: number; readonly height: number; readonly locations: ReadonlyMap<string, LineageLocation> }>({
@@ -348,7 +364,66 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
     >{key.value}</button>
   }
 
-  const renderBits = (row: Pick<LearningRow, 'selectableBits' | 'bitGrouping'>): ReactNode => bitGroups(row).map((group, index) => {
+  const renderUnits = (row: LearningRow): ReactNode => {
+    const copy = presentation.unitSelection!
+    const bits = row.selectableBits ?? []
+    const size = unitSizes[row.id] ?? 1
+    const units = Array.from({ length: bits.length / size }, (_, index) => bits.slice(index * size, (index + 1) * size))
+    return <>
+      <HTMLSelect
+        aria-label={`${row.label} (${row.id}): ${copy.label}`}
+        onChange={(event) => {
+          const next = Number(event.target.value)
+          if (next === size) return
+          setUnitSizes((previous) => ({ ...previous, [row.id]: next }))
+          select(undefined)
+        }}
+        options={Array.from({ length: bits.length }, (_, index) => index + 1).filter((candidate) => bits.length % candidate === 0).map((candidate) => ({ value: candidate, label: copy.sizeLabel(candidate) }))}
+        value={size}
+      />{' '}
+      <span style={{ display: 'inline-flex' }}>
+        {units.map((unit, unitIndex) => {
+          const first = unit[0]
+          const start = unitIndex * size
+          const groupSize = row.bitGrouping?.size
+          const group = groupSize && start % groupSize === 0 ? start / groupSize : undefined
+          const positions = unit.filter((bit) => related.has(bit.id)).map((bit) => bit.bit)
+          const isSelected = selected?.kind === 'bit' && selected.id === first.id && selected.bitIds?.length === unit.length
+          const state: LearningState = isSelected ? 'selected' : positions.length ? 'related' : 'default'
+          const label = size === 1 ? first.ariaLabel : copy.rangeLabel(row, first.bit, unit[unit.length - 1].bit, unit.map((bit) => bit.value).join(''))
+          const relatedLabel = positions.length ? copy.relatedLabel(positions.length, size, positions.join(', ')) : ''
+          const description = `${label}${isSelected ? `; ${copy.selectedLabel}` : ''}${relatedLabel ? `; ${relatedLabel}` : ''}`
+          return <button
+            aria-label={description}
+            aria-pressed={isSelected}
+            data-bit-group={group}
+            data-state={state}
+            key={first.id}
+            onClick={() => select({ kind: 'bit', id: first.id, bitIds: unit.map((bit) => bit.id) })}
+            ref={(target) => {
+              for (const bit of unit) {
+                if (target) targets.current.set(bit.id, target)
+                else targets.current.delete(bit.id)
+              }
+            }}
+            style={{ ...stateStyles[state], borderColor: learningColors.border, boxShadow: group ? `-2px 0 0 ${learningColors.text}` : undefined, color: learningColors.text, position: 'relative', minWidth: size === 1 ? undefined : '8ch', outline: isSelected ? `2px solid ${learningColors.text}` : undefined }}
+            title={description}
+            type="button"
+          >{unit.map((bit, index) => index && groupSize && (start + index) % groupSize === 0
+            ? <span data-bit-group={(start + index) / groupSize} key={bit.id} style={{ boxShadow: `-2px 0 0 ${learningColors.text}` }}>{bit.value}</span>
+            : bit.value)}{positions.length > 0 && <small style={{ display: 'block' }}>{positions.length}/{size}</small>}</button>
+        })}
+      </span>
+      {units.some((unit) => unit.some((bit) => related.has(bit.id))) && <details>
+        <summary>{copy.detailsLabel}</summary>
+        {units.map((unit) => {
+          const positions = unit.filter((bit) => related.has(bit.id)).map((bit) => bit.bit)
+          return positions.length ? <p key={unit[0].id}>{copy.rangeLabel(row, unit[0].bit, unit[unit.length - 1].bit, unit.map((bit) => bit.value).join(''))}; {copy.relatedLabel(positions.length, size, positions.join(', '))}</p> : null
+        })}
+      </details>}
+    </>
+  }
+  const renderBits = (row: Pick<LearningRow, 'selectableBits' | 'bitGrouping'> & Partial<Pick<LearningRow, 'id' | 'label'>>): ReactNode => presentation.unitSelection && row.id && row.selectableBits?.length ? renderUnits(row as LearningRow) : bitGroups(row).map((group, index) => {
     const buttons = group.map((bit, position) => {
       const state = bitState(bit, selected, related)
       return <button
@@ -398,7 +473,7 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
     const observer = new ResizeObserver(measure)
     observer.observe(container)
     return () => observer.disconnect()
-  }, [presentation, laneOpen])
+  }, [presentation, laneOpen, unitSizes])
 
   return <section aria-label={presentation.title} style={{ overflowX: 'auto' }}>
     <h3>{presentation.title}</h3>
@@ -412,18 +487,18 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
           thousands of lines into a mounted SVG is quadratic in React. */}
       <LineageDiagram
         height={lineage.height}
-        key={lineage.measure}
+        key={presentation.unitSelection ? `${lineage.measure}-${selected?.id}-${selected?.bitIds?.length}` : lineage.measure}
         locations={lineage.presentation === presentation ? lineage.locations : new Map()}
         relationships={relationships}
         related={related}
         selected={selected}
         width={lineage.width}
       />
-      {presentation.sections.map((section) => {
+      {presentation.sections.map((section, sectionIndex) => {
         const hasControls = section.rows.some((row) => row.selectableBits?.length || row.selectableKey)
         const hasDetails = section.rows.some((row) => row.detail)
         const lane = laneOpen && hasControls && section.kind === 'trace' ? presentation.keyExpansionLane : undefined
-        const key = `${section.kind}-${section.caption}`
+        const key = presentation.unitSelection ? `${section.kind}-${sectionIndex}` : `${section.kind}-${section.caption}`
         const table = <TraceTable caption={section.caption} headers={section.headers} joinRows={!!lane} key={key}>
           {lane
             ? (() => {

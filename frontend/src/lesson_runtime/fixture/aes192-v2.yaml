@@ -123,6 +123,7 @@ graphs:
     outputs: [{"node":"add-round-key-12","port":"value"}]
 steps:
   - id: schedule
+    presentation: {kind: spn-cipher, mode: key-expansion, algorithm: AES, variant: 192}
     prose: schedule-description
     execute:
       graph: schedule

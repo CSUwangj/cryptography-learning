@@ -1,3 +1,4 @@
+import { readFileSync, writeFileSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
 import { aesKeyExpansionDemoDocuments } from '../demos/aesKeyExpansionLesson'
 import { aesOverlayFixturePresentation } from './aes-learning-fixture'
@@ -422,5 +423,177 @@ test.describe('Shared AES presentation fixtures (#121)', () => {
     await lane.getByRole('button', { name: 'Close key expansion' }).click()
     await expect(lane).toBeHidden()
     await expect(section.locator('[data-lane-row="schedule-round-key-0"]')).toHaveCount(0)
+  })
+})
+
+
+// Dense full-state traces retain screenshots/logs without per-action DOM recording.
+const scheduleTest = test.extend({ trace: 'off' })
+scheduleTest.describe('Independent AES-192 schedule (#106)', () => {
+  const scheduleLesson = readFileSync(new URL('../src/lesson_runtime/fixture/aes192-v2.yaml', import.meta.url), 'utf8').split('  - id: cipher\n')[0]
+  const scheduleLocales = {
+    'en-US': readFileSync(new URL('../src/lesson_runtime/fixture/aes192-v2-locales/en-US.yaml', import.meta.url), 'utf8'),
+    'zh-CN': readFileSync(new URL('../src/lesson_runtime/fixture/aes192-v2-locales/zh-CN.yaml', import.meta.url), 'utf8'),
+  }
+
+  scheduleTest('keeps authored group boundaries aligned when counts change unit widths', async ({ page }, testInfo) => {
+    test.setTimeout(180000)
+    test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses the public synthetic Lesson through the real Worker')
+    await page.addInitScript(() => localStorage.setItem('i18nextLng', 'en-US'))
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await page.goto('/', { waitUntil: 'networkidle' })
+    await page.evaluate(async () => {
+      const fixture = await import('/e2e/v2-default-trace-browser.tsx')
+      await fixture.warmDefaultTraceBrowserWorker()
+    })
+    await mockLessonDocuments(page, (language) => ({ lesson: scheduleLesson, locale: scheduleLocales[language] }))
+    await page.goto('/learning/aes192-v2-kat')
+    const section = page.getByRole('region', { name: 'AES-192 key expansion', exact: true })
+    await expect(section).toBeVisible({ timeout: 15000 })
+    const source = section.locator('[data-row-id="key.value"]')
+    const expectBoundariesAligned = async (phase: string) => {
+      const geometry = await source.evaluate((row) => {
+        const size = Number(row.querySelector('select')!.value)
+        const buttons = row.querySelectorAll('button')
+        return [32, 64, 96, 128, 160].map((bit) => {
+          const marker = row.querySelector(`[data-bit-group="${bit / 32}"]`)!
+          const button = buttons[Math.floor(bit / size)]
+          let expected = bit % size ? undefined : button.getBoundingClientRect().left
+          let offset = bit % size
+          if (offset) {
+            // Measure the actual bit glyph inside a larger unit, excluding its related-count text.
+            const text = document.createTreeWalker(button, NodeFilter.SHOW_TEXT)
+            for (let node = text.nextNode(); node; node = text.nextNode()) {
+              if (node.parentElement?.closest('small')) continue
+              const length = node.textContent?.length ?? 0
+              if (offset >= length) { offset -= length; continue }
+              const range = document.createRange()
+              range.setStart(node, offset)
+              range.setEnd(node, offset + 1)
+              expected = range.getBoundingClientRect().left
+              break
+            }
+          }
+          if (expected === undefined) throw new Error(`Source bit ${bit} has no rendered glyph`)
+          const actual = marker.getBoundingClientRect().left
+          return { bit, size, actual, expected, delta: actual - expected }
+        })
+      })
+      writeFileSync(testInfo.outputPath(`${phase}.json`), JSON.stringify(geometry, null, 2))
+      for (const boundary of geometry) expect(Math.abs(boundary.delta), `${phase}, source bit ${boundary.bit}`).toBeLessThanOrEqual(1)
+    }
+    await expectBoundariesAligned('unit-1-before-selection')
+    const projected = section.locator('[data-row-id="round-key-1.value"]').getByRole('button').nth(64)
+    await projected.click()
+    await expect(projected).toHaveAttribute('aria-pressed', 'true')
+    await expect(source.locator('button[data-state="related"]')).toHaveCount(9)
+    await expectBoundariesAligned('unit-1-related-counts')
+    await source.getByRole('combobox').selectOption('64')
+    const selected = source.getByRole('button').nth(2)
+    await selected.focus()
+    await selected.press('Enter')
+    await expect(selected).toBeFocused()
+    await expect(selected).toHaveAttribute('aria-pressed', 'true')
+    await expect(section.getByRole('status')).toContainText('Bits 128–191')
+    await expectBoundariesAligned('unit-64-selected')
+    for (const colorScheme of ['light', 'dark'] as const) {
+      await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' })
+      await expectBoundariesAligned(`unit-64-${colorScheme}`)
+      await selected.evaluate((element) => element.scrollIntoView({ block: 'center', inline: 'center' }))
+      await page.screenshot({ path: testInfo.outputPath(`grouping-${colorScheme}.png`) })
+    }
+  })
+
+  for (const locale of ['en-US', 'zh-CN'] as const) scheduleTest(`inspects actual Worker lineage in ${locale}`, async ({ page }, testInfo) => {
+    test.setTimeout(180000)
+    test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses the public synthetic Lesson through the real Worker')
+    await page.addInitScript((language) => localStorage.setItem('i18nextLng', language), locale)
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    const workers: string[] = []
+    page.on('worker', (worker) => workers.push(worker.url()))
+    await page.goto('/', { waitUntil: 'networkidle' })
+    await page.evaluate(async () => {
+      const fixture = await import('/e2e/v2-default-trace-browser.tsx')
+      await fixture.warmDefaultTraceBrowserWorker()
+    })
+    workers.length = 0
+    await mockLessonDocuments(page, (language) => ({ lesson: scheduleLesson, locale: scheduleLocales[language] }))
+    await page.goto('/learning/aes192-v2-kat')
+    const zh = locale === 'zh-CN'
+    const section = page.getByRole('region', { name: zh ? 'AES-192 密钥扩展' : 'AES-192 key expansion', exact: true })
+    await expect(section).toBeVisible({ timeout: 15000 })
+    expect(workers.some((url) => url.includes('worker'))).toBe(true)
+    const row = (id: string) => section.locator(`[data-row-id="${id}.value"]`)
+    await expect(row('batch-7').getByRole('button')).toHaveCount(192)
+    await expect(row('round-key-12').getByRole('button')).toHaveCount(128)
+    await expect(row('round-key-1')).toContainText('0x10111213141516175846f2f95c43f4fe')
+    await expect(section.locator('[data-lane-row]')).toHaveCount(0)
+    await expect(section.getByRole('heading', { name: /encryption|decryption|加密|解密/ })).toHaveCount(0)
+    const sourceMode = row('key').getByRole('combobox')
+    await expect(sourceMode).toHaveAccessibleName(zh ? '输入 (key.value): 选择单位' : 'Source (key.value): Selection unit')
+    await sourceMode.selectOption('32')
+    const key1 = row('round-key-1').getByRole('button')
+    // rk1's first half is the original-key tail, not batch 0.
+    await key1.nth(0).focus()
+    await key1.nth(0).press('Enter')
+    await expect(key1.nth(0)).toBeFocused()
+    await expect(key1.nth(0)).toHaveAttribute('aria-pressed', 'true')
+    await expect(row('key').getByRole('button').nth(4)).toHaveText(/1\/32/)
+    await expect(row('batch-0').locator('button[data-state="related"]')).toHaveCount(0)
+    // The second half projects batch 0; ancestors must not seed sibling descendants.
+    await key1.nth(64).focus()
+    await key1.nth(64).press(' ')
+    await expect(key1.nth(64)).toHaveAccessibleName(zh ? /轮密钥 1.*位 64: 0.*主动选择.*关联位 1\/1：64/ : /Round key 1.*Bit 64: 0.*Deliberately selected.*Related bits 1\/1: 64/)
+    await expect(row('batch-0').locator('button[data-state="related"]')).toHaveCount(1)
+    await expect(row('batch-1').locator('button[data-state="related"]')).toHaveCount(0)
+    await expect(row('round-key-0').locator('button[data-state="related"]')).toHaveCount(0)
+    const partial = row('key').getByRole('button').nth(5)
+    await expect(partial).toHaveText(/8\/32/)
+    await expect(partial).toHaveAttribute('aria-pressed', 'false')
+    await expect(partial).toHaveAccessibleName(zh ? /关联位 8\/32：168, 169, 170, 171, 172, 173, 174, 175/ : /Related bits 8\/32: 168, 169, 170, 171, 172, 173, 174, 175/)
+    await expect(partial).toHaveAttribute('title', /168, 169, 170, 171, 172, 173, 174, 175/)
+    await row('key').locator('summary').click()
+    await expect(row('key').locator('details')).toContainText('168, 169, 170, 171, 172, 173, 174, 175')
+    await sourceMode.selectOption('32')
+    await expect(key1.nth(64)).toHaveAttribute('aria-pressed', 'true')
+    await partial.focus()
+    await partial.press('Enter')
+    await expect(partial).toBeFocused()
+    await expect(partial).toHaveAttribute('aria-pressed', 'true')
+    await expect(partial).toHaveText(/32\/32/)
+    await expect(row('batch-0').locator('button[data-state="related"]')).toHaveCount(192)
+    await page.setViewportSize({ width: 390, height: 844 })
+    await expect(partial).toBeFocused()
+    await expect(partial).toHaveAttribute('aria-pressed', 'true')
+    await expect(row('key').locator('[data-bit-group]')).toHaveCount(6)
+    expect(await section.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true)
+    await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' })
+    await expect(partial).toHaveAttribute('aria-pressed', 'true')
+    await page.screenshot({ path: testInfo.outputPath(`schedule-${locale}-dark-narrow.png`) })
+    await page.getByRole('button', { name: zh ? '语言' : 'Language', exact: true }).click()
+    await page.getByRole('option', { name: zh ? /en-US/ : /zh-CN/ }).click()
+    const switched = page.getByRole('region', { name: zh ? 'AES-192 key expansion' : 'AES-192 密钥扩展', exact: true })
+    // Dense locale/layout updates can outlast the default wait; establish readiness before counting descendants.
+    await expect(switched).toBeVisible({ timeout: 30000 })
+    const switchedSource = switched.locator('[data-row-id="key.value"]')
+    await expect(switchedSource).toBeVisible()
+    await expect(switchedSource.getByRole('combobox')).toHaveValue('32')
+    const selectedSource = switchedSource.locator('button[aria-pressed="true"]')
+    await expect(selectedSource).toHaveCount(1)
+    await expect(selectedSource).toHaveAccessibleName(zh
+      ? /Source \(key.value\), Bits 160–191: 00010100000101010001011000010111.*Deliberately selected/
+      : /输入 \(key.value\)，位 160–191：00010100000101010001011000010111.*主动选择/)
+    await expect(switched.getByRole('status')).toContainText(zh ? 'Bits 160–191' : '位 160–191')
+    await switchedSource.getByRole('combobox').selectOption('8')
+    await expect(switched.locator('button[aria-pressed="true"]')).toHaveCount(0)
+    await expect(switched.locator('[data-row-id="key.value"] [data-bit-group]')).toHaveCount(6)
+    await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' })
+    await page.screenshot({ path: testInfo.outputPath(`schedule-${locale}-light-narrow.png`) })
+    // A new Lesson entry must start without a selection.
+    await switched.locator('[data-row-id="key.value"]').getByRole('button').first().click()
+    await page.reload()
+    const reentered = page.getByRole('region', { name: /AES-192/ })
+    await expect(reentered).toBeVisible({ timeout: 15000 })
+    await expect(reentered.locator('button[aria-pressed="true"]')).toHaveCount(0)
   })
 })

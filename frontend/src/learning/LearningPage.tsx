@@ -194,7 +194,11 @@ const LessonView: React.FC = () => {
 
   useEffect(() => {
     let disposed = false
-    setLoad({ status: 'loading' })
+    setLoad((previous) => {
+      const presentation = previous.status === 'ready' && activeLesson.current === lessonId
+        ? session.current?.lesson.steps[previous.state.stepIndex].presentation : undefined
+      return presentation?.kind === 'spn-cipher' && presentation.mode === 'key-expansion' ? previous : { status: 'loading' }
+    })
     const apply = async (documents: RuntimeLessonDocuments) => {
       if (activeLesson.current === lessonId && session.current) {
         const updated = session.current.updateDocuments(documents, i18n.language, t, visualizerCatalog)
@@ -376,6 +380,7 @@ const LessonView: React.FC = () => {
         executionIdentity={state.executionIdentities[step.id] ?? step.id}
         invocation={step.visualizer}
         presentation={step.presentation}
+        compiledGraph={step.execute ? current.lesson.graphs[step.execute.graph] : undefined}
         lessonTexts={locale.texts}
         reducedMotion={reducedMotion}
         classicalCipher={cipher && {

@@ -93,6 +93,15 @@
       "xor": "XOR"
     }
   },
+  "schedule": {
+    "instructions": "Select a bit or a whole unit to inspect structural dependencies, not individual causation. Group boundaries are authored independently of selection units.",
+    "unit": "Selection unit",
+    "unitSize": "{{size}} bits",
+    "range": "{{row}} ({{id}}), Bits {{start}}–{{end}}: {{value}}",
+    "related": "Related bits {{count}}/{{size}}: {{positions}}",
+    "selected": "Deliberately selected",
+    "details": "Lineage details"
+  },
   "executionTrace": {
     "title": "Execution trace",
     "flow": "Traced state",

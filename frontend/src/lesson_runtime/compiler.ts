@@ -95,6 +95,7 @@ export type LessonPresentation =
   }
   | {
     readonly kind: 'spn-cipher'
+    readonly mode?: 'key-expansion'
     readonly algorithm?: string
     readonly variant?: number
     readonly direction?: 'encrypt' | 'decrypt'
@@ -940,8 +941,9 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
     if (step.presentation !== undefined) {
       const presentation = requireMap(step.presentation, `${path}.presentation`, lesson.spans, diagnostics)
       if (presentation) {
-        checkFields(presentation, ['kind', 'algorithm', 'variant', 'direction', 'labels'], `${path}.presentation`, lesson.spans, diagnostics)
+        checkFields(presentation, ['kind', 'algorithm', 'variant', 'direction', 'labels', 'mode'], `${path}.presentation`, lesson.spans, diagnostics)
         const kind = presentation.kind
+        if (presentation.mode !== undefined && (!isV2 || kind !== 'spn-cipher' || presentation.mode !== 'key-expansion')) diagnostics.push(diagnostic('lesson.invalid-input', 'Standalone schedule mode requires a v2 spn-cipher presentation.', `${path}.presentation.mode`, lesson.spans.get(`${path}.presentation.mode`)))
         const algorithm = presentation.algorithm
         const variant = presentation.variant
         const direction = presentation.direction
@@ -963,6 +965,7 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
         } else if (isV2 && kind === 'spn-cipher') {
           compiled.presentation = {
             kind,
+            ...(presentation.mode === 'key-expansion' ? { mode: 'key-expansion' as const } : {}),
             ...(typeof algorithm === 'string' ? { algorithm } : {}),
             ...(typeof variant === 'number' ? { variant } : {}),
             ...(direction === 'encrypt' || direction === 'decrypt' ? { direction } : {}),

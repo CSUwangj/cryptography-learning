@@ -86,7 +86,7 @@ const featureBlock = (page: Page, title: string) =>
   page.getByRole('heading', { name: title, exact: true }).locator('..')
 
 const expectLogoContained = async (page: Page, viewportWidth: number) => {
-  const logo = page.getByRole('img', { name: 'Big Logo' })
+  const logo = page.getByRole('img', { name: '密码学学习平台标志' })
   await expect(logo).toBeVisible()
   expect(await logo.evaluate((image) => image.complete && image.naturalWidth > 0)).toBe(true)
   const box = await withinHorizontalViewport(logo, viewportWidth)
@@ -112,7 +112,7 @@ test.describe('Home layout (#59)', () => {
       await page.goto('/')
 
       await expectLogoContained(page, viewport.width)
-      const home = page.getByRole('img', { name: 'Big Logo' }).locator('..')
+      const home = page.getByRole('img', { name: '密码学学习平台标志' }).locator('..')
       const blocks = features.map(({ title }) => featureBlock(page, title))
       const boxes = []
       for (const [index, feature] of features.entries()) {

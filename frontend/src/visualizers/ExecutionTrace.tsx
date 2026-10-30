@@ -1,7 +1,7 @@
 import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import React, { useMemo } from 'react'
-import { hex, type CryptoValue, type TraceCheckpoint, type TraceEvent, type WorkerExecutionSnapshot } from 'crypto_graph'
+import { hex, type CompiledGraph, type BitsValue, type CryptoValue, type TraceCheckpoint, type TraceEvent, type WorkerExecutionSnapshot } from 'crypto_graph'
 import { learningColors, LearningPresentationView, type LearningDiagnostic, type LearningPresentation, type LearningRow } from '../ui/learning'
 import { PermutationVisual } from './OperationVisuals'
 
@@ -9,6 +9,7 @@ export type ExecutionTraceRendererProps = {
   readonly execution: WorkerExecutionSnapshot
   readonly executionIdentity: string
   readonly primitiveLabels?: Readonly<Record<string, string>>
+  readonly schedule?: { readonly graph: CompiledGraph; readonly algorithm?: string; readonly variant?: number }
 }
 
 const valueText = (value: CryptoValue | undefined): string => {
@@ -125,8 +126,54 @@ export const executionTracePresentation = (execution: WorkerExecutionSnapshot, t
   }
 }
 
-export const ExecutionTraceRenderer: React.FC<ExecutionTraceRendererProps> = ({ execution, executionIdentity, primitiveLabels }) => {
+const schedulePresentation = (execution: WorkerExecutionSnapshot, t: TFunction<'visualizers'>, executionIdentity: string, schedule: NonNullable<ExecutionTraceRendererProps['schedule']>, primitiveLabels?: Readonly<Record<string, string>>): LearningPresentation => {
+  const base = executionTracePresentation(execution, t, executionIdentity, primitiveLabels)
+  const events = execution.trace.filter((event): event is TraceEvent & { value: BitsValue } =>
+    'value' in event && event.value?.type.family === 'bits' && 'bytes' in event.value)
+  // Authored operation order within each generation, followed by numeric exported-key order.
+  const order = new Map(schedule.graph.graph.nodes.map((node, index) => [`${node.id}.value`, index]))
+  events.sort((left, right) => Number(left.role === 'round-key') - Number(right.role === 'round-key')
+    || (left.role === 'round-key' ? (left.round ?? 0) - (right.round ?? 0) : (left.iteration ?? -1) - (right.iteration ?? -1))
+    || (order.get(left.path) ?? 0) - (order.get(right.path) ?? 0))
+  const retained = new Set(events.map((event) => event.path))
+  const relationships = (schedule.graph.lineage ?? []).filter((edge) => retained.has(edge.source) && retained.has(edge.target))
+    .map((edge) => ({ from: `${edge.source}#${edge.sourceBit}`, to: `${edge.target}#${edge.targetBit}` }))
+  return {
+    ...base,
+    title: schedule.algorithm && schedule.variant ? t('keyExpansion.title', schedule) : t('keyExpansion.flow'),
+    instructions: t('schedule.instructions'),
+    unitSelection: {
+      label: t('schedule.unit'),
+      sizeLabel: (size) => t('schedule.unitSize', { size }),
+      rangeLabel: (row, start, end, value) => t('schedule.range', { row: row.label, id: row.id, start, end, value }),
+      relatedLabel: (count, size, positions) => t('schedule.related', { count, size, positions }),
+      selectedLabel: t('schedule.selected'),
+      detailsLabel: t('schedule.details'),
+    },
+    selectionStatus: (selected) => selected ? `${t('keyExpansion.selected')}: ${selected.ariaLabel}` : t('keyExpansion.none'),
+    sections: [{
+      kind: 'trace', caption: t('keyExpansion.flow'),
+      headers: [t('keyExpansion.stage'), t('keyExpansion.round'), t('keyExpansion.value'), t('keyExpansion.bits')],
+      rows: events.map((event, index) => {
+        const label = event.role === 'round-key' ? `${t('keyExpansion.roundKey')} ${event.round}` : stageLabel(event, t, execution.outputs, primitiveLabels)
+        return {
+          id: event.path, label,
+          cells: [{ value: event.round ?? event.iteration ?? '—' }, { value: hex(event.value) }],
+          selectableBits: Array.from({ length: event.value.type.size }, (_, bit) => {
+            const packed = event.value.bytes.length * 8 - event.value.type.size + bit
+            const value = (event.value.bytes[Math.floor(packed / 8)] >> (7 - packed % 8)) & 1
+            return { id: `${event.path}#${bit}`, bit, value, ariaLabel: `${label} (${event.path}), ${t('keyExpansion.bit')} ${bit}: ${value}` }
+          }),
+          ...(event.unit ? { bitGrouping: { size: event.unit } } : {}),
+          ...(index === 0 ? { relationships } : {}),
+        }
+      }),
+    }],
+  }
+}
+
+export const ExecutionTraceRenderer: React.FC<ExecutionTraceRendererProps> = ({ execution, executionIdentity, primitiveLabels, schedule }) => {
   const { t } = useTranslation('visualizers')
-  const presentation = useMemo(() => executionTracePresentation(execution, t, executionIdentity, primitiveLabels), [execution, t, executionIdentity, primitiveLabels])
+  const presentation = useMemo(() => schedule ? schedulePresentation(execution, t, executionIdentity, schedule, primitiveLabels) : executionTracePresentation(execution, t, executionIdentity, primitiveLabels), [execution, t, executionIdentity, primitiveLabels, schedule])
   return <LearningPresentationView presentation={presentation} />
 }

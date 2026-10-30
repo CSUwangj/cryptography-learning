@@ -93,6 +93,15 @@
       "xor": "异或"
     }
   },
+  "schedule": {
+    "instructions": "选择单个位或整个单位以检查结构依赖，而非单个位的因果关系。分组边界独立于选择单位。",
+    "unit": "选择单位",
+    "unitSize": "{{size}} 位",
+    "range": "{{row}} ({{id}})，位 {{start}}–{{end}}：{{value}}",
+    "related": "关联位 {{count}}/{{size}}：{{positions}}",
+    "selected": "主动选择",
+    "details": "谱系详情"
+  },
   "executionTrace": {
     "title": "执行轨迹",
     "flow": "轨迹状态",

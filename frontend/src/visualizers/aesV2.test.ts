@@ -1,7 +1,8 @@
 import { I18nextProvider } from 'react-i18next'
 import i18n from '../app/i18n'
 import React from 'react'
-import { cleanup, render } from '@testing-library/react'
+import { act, cleanup, render } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { executeWorkerRequest } from '../crypto_graph'
 import { compileLesson } from '../lesson_runtime'
@@ -55,5 +56,83 @@ describe('Authored AES v2 shared trace rendering (#105)', () => {
       expect(view.getByRole('row', { name: new RegExp(`^${locale === 'en-US' ? 'XOR' : '异或'} ${fixture.finalRound} ${fixture.finalRound} ${fixture.ciphertext}$`) })).toBeVisible()
       cleanup()
     }
+  })
+})
+
+
+describe('Independent compiled schedule inspection (#106)', () => {
+  it('presents actual AES-192 full states and cross-batch exports without a cipher', () => {
+    const fixture = fixtures[0]
+    const compiled = compileLesson(fixture)
+    if (!compiled.ok) throw new Error(JSON.stringify(compiled.diagnostics))
+    const result = executeWorkerRequest({ requestId: 'independent', kind: 'execute', payload: { graph: compiled.value.graphs.schedule.graph, inputs: { 'key.value': compiled.value.inputs.key.default } } })
+    if (result.kind !== 'snapshot') throw new Error(JSON.stringify(result))
+    const view = render(React.createElement(I18nextProvider, { i18n: i18n.cloneInstance({ lng: 'en-US' }) }, React.createElement(RenderHost, {
+      execution: result.snapshot, compiledGraph: compiled.value.graphs.schedule,
+      presentation: compiled.value.steps.find((step) => step.id === 'schedule')!.presentation,
+      executionIdentity: 'independent', dimensions: { width: 1100, height: 700 }, reducedMotion: true,
+    })))
+    expect(view.getByRole('heading', { name: 'AES-192 key expansion' })).toBeVisible()
+    expect(view.container.querySelector('[data-row-id="batch-7.value"]')?.querySelectorAll('button')).toHaveLength(192)
+    expect(view.container.querySelector('[data-row-id="round-key-1.value"]')).toHaveTextContent('0x10111213141516175846f2f95c43f4fe')
+    expect(view.container.querySelector('[data-row-id="round-key-1.value"]')?.querySelectorAll('button')).toHaveLength(128)
+    expect(view.queryByRole('region', { name: /^Key expansion$/ })).toBeNull()
+    cleanup()
+  }, 15000)
+})
+
+
+describe('Exact compiled unit selection (#106)', () => {
+  it('keeps partial related units narrow and expands only on deliberate whole-unit selection', async () => {
+    const user = userEvent.setup()
+    const compiled = compileLesson({
+      lesson: `version: 2
+id: narrow-schedule
+default_locale: en-US
+constants: {}
+inputs:
+  key: {type: {family: bits, size: 32}, encoding: hex, default: "0x12345678"}
+graphs:
+  schedule:
+    nodes:
+      - {id: origin, operation: core.source@1, parameters: {type: {family: bits, size: 32}}, role: state, unit: 32}
+      - {id: substituted, operation: core.substitute-bytes@1, inputs: {value: {node: origin, port: value}}, parameters: {sBox: [${Array.from({ length: 256 }, (_, n) => n).join(',')}], start: 0, count: 1}, role: state, unit: 32}
+      - {id: chosen, operation: core.output@1, inputs: {value: {node: substituted, port: value, bits: [0, 8]}}, role: round-key, round: 0}
+      - {id: sibling, operation: core.output@1, inputs: {value: {node: origin, port: value, bits: [8, 8]}}, role: round-key, round: 1}
+    outputs: [{node: chosen, port: value}, {node: sibling, port: value}]
+steps:
+  - id: inspect
+    presentation: {kind: spn-cipher, mode: key-expansion}
+    execute: {graph: schedule, bindings: {origin.value: {input: key}}}
+`,
+      locales: { 'en-US': 'title: Narrow\nsummary: Inspect\ntexts: {}' },
+    })
+    if (!compiled.ok) throw new Error(JSON.stringify(compiled.diagnostics))
+    const result = executeWorkerRequest({ requestId: 'narrow', kind: 'execute', payload: { graph: compiled.value.graphs.schedule.graph, inputs: { 'origin.value': compiled.value.inputs.key.default } } })
+    if (result.kind !== 'snapshot') throw new Error(JSON.stringify(result))
+    const language = i18n.cloneInstance({ lng: 'en-US' })
+    const props = {
+      execution: result.snapshot, compiledGraph: compiled.value.graphs.schedule, presentation: compiled.value.steps[0].presentation,
+      executionIdentity: 'narrow', dimensions: { width: 1100, height: 700 }, reducedMotion: true,
+    }
+    const view = render(React.createElement(I18nextProvider, { i18n: language }, React.createElement(RenderHost, props)))
+    const origin = view.container.querySelector('[data-row-id="origin.value"]')!
+    await user.selectOptions(view.getByRole('combobox', { name: 'Source (origin.value): Selection unit' }), '32')
+    await user.click(view.getByRole('button', { name: /Round key 0 \(chosen.value\), Bit 0: 0/ }))
+    const partial = view.getByRole('button', { name: /Source \(origin.value\), Bits 0–31: .*Related bits 8\/32: 0, 1, 2, 3, 4, 5, 6, 7/ })
+    expect(partial).toHaveAttribute('aria-pressed', 'false')
+    expect(partial).toHaveAttribute('data-state', 'related')
+    expect(partial).toHaveTextContent('8/32')
+    expect(origin.querySelector('[data-bit-group="0"]')).not.toBeNull()
+    expect(view.container.querySelector('[data-row-id="substituted.value"] button[data-state="related"]')).toHaveTextContent('0')
+    expect(view.container.querySelectorAll('[data-row-id="substituted.value"] button[data-state="related"]')).toHaveLength(1)
+    expect(view.container.querySelectorAll('[data-row-id="sibling.value"] button[data-state="related"]')).toHaveLength(0)
+    await user.click(partial)
+    expect(partial).toHaveAttribute('aria-pressed', 'true')
+    expect(view.container.querySelectorAll('[data-row-id="sibling.value"] button[data-state="related"]')).toHaveLength(8)
+    await act(async () => { await language.changeLanguage('zh-CN') })
+    expect(view.getByRole('status')).toHaveTextContent('位 0–31')
+    expect(view.container.querySelector('[data-row-id="origin.value"] button')).toHaveAttribute('aria-pressed', 'true')
+    cleanup()
   })
 })

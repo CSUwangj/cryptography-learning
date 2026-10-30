@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import React from 'react'
-import { hex, type AlphabetMapping, type AlphabetPolicyValue, type AlphabetTextValue, type AvalancheComparison, type WorkerExecutionSnapshot } from 'crypto_graph'
+import { hex, type CompiledGraph, type AlphabetMapping, type AlphabetPolicyValue, type AlphabetTextValue, type AvalancheComparison, type WorkerExecutionSnapshot } from 'crypto_graph'
 import type { LessonPresentation, LessonValueReference } from '../lesson_runtime'
 import { AvalancheRenderer } from './Avalanche'
 import { classicalCipherPositions, ClassicalCipherRenderer } from './ClassicalCipher'
@@ -14,6 +14,8 @@ export type RenderHostProps = {
   readonly invocation?: { readonly id: string }
   /** Explicit presentation metadata; never inferred from key length or graph identity. */
   readonly presentation?: LessonPresentation
+  /** Main-thread compilation; never transported in execution snapshots. */
+  readonly compiledGraph?: CompiledGraph
   /** Text values for locale-specific presentation label IDs authored by the Lesson. */
   readonly lessonTexts?: Readonly<Record<string, string>>
   /** All step snapshots in the lesson; passed so block-cipher can locate the expansion step. */
@@ -103,6 +105,13 @@ export const RenderHost: React.FC<RenderHostProps> = (props) => {
               execution={props.execution}
               executionIdentity={props.executionIdentity}
               presentation={presentation}
+            />
+        : presentation?.kind === 'spn-cipher' && presentation.mode === 'key-expansion' && props.execution && props.compiledGraph
+          ? <ExecutionTraceRenderer
+              execution={props.execution}
+              executionIdentity={props.executionIdentity}
+              primitiveLabels={presentation.labels}
+              schedule={{ graph: props.compiledGraph, algorithm: presentation.algorithm, variant: presentation.variant }}
             />
         : !props.invocation && props.execution
         ? <ExecutionTraceRenderer
