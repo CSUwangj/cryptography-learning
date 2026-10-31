@@ -127,12 +127,16 @@ rounds, ordering and lineage report `presentation.spn-role-required`,
 `presentation.spn-lineage-required`, respectively. Correct the authored graph or
 use its descriptor-free trace, then reload/rerun the existing Lesson workflow.
 
-Both cipher and standalone schedule views reuse exact bit/unit selection.
-Related counts and details preserve exact positions; highlighting a containing
-unit never adds its other bits. Node `unit` annotations draw grouping boundaries
-independently of the selected unit size. Rendering uses retained execution values
-and compiled lineage, never rerunning the graph. Missing trace endpoints omit
-their edges while retained rows remain visible.
+Both cipher and standalone schedule views select complete units. Each view has
+its own unit-size control with common valid divisors. Units of at least four bits
+display full-width hexadecimal; smaller units display binary. Group relationships
+use exact compiled dependencies without displaying partial fractions or bit-detail
+panels; highlighting a containing unit never adds its other bits to traversal.
+Node `unit` annotations draw boundaries independently of the selected unit size.
+Row spacing stays readable through grouping and selection. Rendering uses retained
+execution values and compiled lineage, never rerunning the graph. Missing trace
+endpoints omit their edges while retained rows remain visible. This display contract
+follows the [#109 correction](https://github.com/CSUWangj/cryptography-learning/issues/109#issuecomment-6532940081).
 
 Overlay integration and v2 comparison presentations remain outside this slice.
 The small Teaching SPN render fixture is test content, not a published variant

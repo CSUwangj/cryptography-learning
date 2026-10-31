@@ -436,7 +436,7 @@ scheduleTest.describe('Independent AES-192 schedule (#106)', () => {
     'zh-CN': readFileSync(new URL('../src/lesson_runtime/fixture/aes192-v2-locales/zh-CN.yaml', import.meta.url), 'utf8'),
   }
 
-  scheduleTest('keeps authored group boundaries aligned when counts change unit widths', async ({ page }, testInfo) => {
+  scheduleTest('keeps authored boundaries aligned through hexadecimal grouping and selection', async ({ page }, testInfo) => {
     test.setTimeout(180000)
     test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses the public synthetic Lesson through the real Worker')
     await page.addInitScript(() => localStorage.setItem('i18nextLng', 'en-US'))
@@ -452,19 +452,18 @@ scheduleTest.describe('Independent AES-192 schedule (#106)', () => {
     await expect(section).toBeVisible({ timeout: 15000 })
     const source = section.locator('[data-row-id="key.value"]')
     const expectBoundariesAligned = async (phase: string) => {
-      const geometry = await source.evaluate((row) => {
-        const size = Number(row.querySelector('select')!.value)
+      const size = Number(await section.getByRole('combobox').inputValue())
+      const geometry = await source.evaluate((row, size) => {
         const buttons = row.querySelectorAll('button')
         return [32, 64, 96, 128, 160].map((bit) => {
           const marker = row.querySelector(`[data-bit-group="${bit / 32}"]`)!
           const button = buttons[Math.floor(bit / size)]
           let expected = bit % size ? undefined : button.getBoundingClientRect().left
-          let offset = bit % size
+          let offset = bit % size ? (size >= 4 ? 2 + (bit % size) / 4 : bit % size) : 0
           if (offset) {
-            // Measure the actual bit glyph inside a larger unit, excluding its related-count text.
+            // Measure the corresponding hexadecimal digit or binary glyph inside the unit.
             const text = document.createTreeWalker(button, NodeFilter.SHOW_TEXT)
             for (let node = text.nextNode(); node; node = text.nextNode()) {
-              if (node.parentElement?.closest('small')) continue
               const length = node.textContent?.length ?? 0
               if (offset >= length) { offset -= length; continue }
               const range = document.createRange()
@@ -478,7 +477,7 @@ scheduleTest.describe('Independent AES-192 schedule (#106)', () => {
           const actual = marker.getBoundingClientRect().left
           return { bit, size, actual, expected, delta: actual - expected }
         })
-      })
+      }, size)
       writeFileSync(testInfo.outputPath(`${phase}.json`), JSON.stringify(geometry, null, 2))
       for (const boundary of geometry) expect(Math.abs(boundary.delta), `${phase}, source bit ${boundary.bit}`).toBeLessThanOrEqual(1)
     }
@@ -488,7 +487,7 @@ scheduleTest.describe('Independent AES-192 schedule (#106)', () => {
     await expect(projected).toHaveAttribute('aria-pressed', 'true')
     await expect(source.locator('button[data-state="related"]')).toHaveCount(9)
     await expectBoundariesAligned('unit-1-related-counts')
-    await source.getByRole('combobox').selectOption('64')
+    await section.getByRole('combobox').selectOption('64')
     const selected = source.getByRole('button').nth(2)
     await selected.focus()
     await selected.press('Enter')
@@ -529,39 +528,40 @@ scheduleTest.describe('Independent AES-192 schedule (#106)', () => {
     await expect(row('round-key-1')).toContainText('0x10111213141516175846f2f95c43f4fe')
     await expect(section.locator('[data-lane-row]')).toHaveCount(0)
     await expect(section.getByRole('heading', { name: /encryption|decryption|加密|解密/ })).toHaveCount(0)
-    const sourceMode = row('key').getByRole('combobox')
-    await expect(sourceMode).toHaveAccessibleName(zh ? '输入 (key.value): 选择单位' : 'Source (key.value): Selection unit')
-    await sourceMode.selectOption('32')
+    const sourceMode = section.getByRole('combobox')
+    await expect(sourceMode).toHaveAccessibleName(zh ? 'AES-192 密钥扩展: 选择单位' : 'AES-192 key expansion: Selection unit')
+    await expect(section.getByRole('combobox')).toHaveCount(1)
+    expect(await sourceMode.locator('option').evaluateAll((options) => options.map((option) => (option as HTMLOptionElement).value))).toEqual(['1', '2', '4', '8', '16', '32', '64'])
+    await sourceMode.selectOption('64')
     const key1 = row('round-key-1').getByRole('button')
-    // rk1's first half is the original-key tail, not batch 0.
+    // rk1's first 64 bits project the original-key tail, not batch 0.
     await key1.nth(0).focus()
     await key1.nth(0).press('Enter')
     await expect(key1.nth(0)).toBeFocused()
     await expect(key1.nth(0)).toHaveAttribute('aria-pressed', 'true')
-    await expect(row('key').getByRole('button').nth(4)).toHaveText(/1\/32/)
+    await expect(row('key').getByRole('button').nth(2)).toHaveText('0x1011121314151617')
     await expect(row('batch-0').locator('button[data-state="related"]')).toHaveCount(0)
-    // The second half projects batch 0; ancestors must not seed sibling descendants.
-    await key1.nth(64).focus()
-    await key1.nth(64).press(' ')
-    await expect(key1.nth(64)).toHaveAccessibleName(zh ? /轮密钥 1.*位 64: 0.*主动选择.*关联位 1\/1：64/ : /Round key 1.*Bit 64: 0.*Deliberately selected.*Related bits 1\/1: 64/)
+    // Its next 64 bits project batch 0. Only source words 0, 1, 5 are ancestors; word 4 stays unrelated.
+    await key1.nth(1).focus()
+    await key1.nth(1).press(' ')
+    await expect(key1.nth(1)).toHaveAccessibleName(zh ? /轮密钥 1.*位 64–127：0x5846f2f95c43f4fe; 主动选择$/ : /Round key 1.*Bits 64–127: 0x5846f2f95c43f4fe; Deliberately selected$/)
     await expect(row('batch-0').locator('button[data-state="related"]')).toHaveCount(1)
     await expect(row('batch-1').locator('button[data-state="related"]')).toHaveCount(0)
     await expect(row('round-key-0').locator('button[data-state="related"]')).toHaveCount(0)
-    const partial = row('key').getByRole('button').nth(5)
-    await expect(partial).toHaveText(/8\/32/)
+    const partial = row('key').getByRole('button').nth(2)
+    await expect(partial).toHaveText('0x1011121314151617')
     await expect(partial).toHaveAttribute('aria-pressed', 'false')
-    await expect(partial).toHaveAccessibleName(zh ? /关联位 8\/32：168, 169, 170, 171, 172, 173, 174, 175/ : /Related bits 8\/32: 168, 169, 170, 171, 172, 173, 174, 175/)
-    await expect(partial).toHaveAttribute('title', /168, 169, 170, 171, 172, 173, 174, 175/)
-    await row('key').locator('summary').click()
-    await expect(row('key').locator('details')).toContainText('168, 169, 170, 171, 172, 173, 174, 175')
-    await sourceMode.selectOption('32')
-    await expect(key1.nth(64)).toHaveAttribute('aria-pressed', 'true')
+    await expect(partial).toHaveAccessibleName(zh ? /位 128–191：0x1011121314151617; 关联组$/ : /Bits 128–191: 0x1011121314151617; Related group$/)
+    await expect(partial).toHaveAttribute('title', zh ? /位 128–191：0x1011121314151617; 关联组$/ : /Bits 128–191: 0x1011121314151617; Related group$/)
+    await expect(section.locator('[data-row-id] details')).toHaveCount(0)
+    await sourceMode.selectOption('64')
+    await expect(key1.nth(1)).toHaveAttribute('aria-pressed', 'true')
     await partial.focus()
     await partial.press('Enter')
     await expect(partial).toBeFocused()
     await expect(partial).toHaveAttribute('aria-pressed', 'true')
-    await expect(partial).toHaveText(/32\/32/)
-    await expect(row('batch-0').locator('button[data-state="related"]')).toHaveCount(192)
+    await expect(partial).toHaveText('0x1011121314151617')
+    await expect(row('batch-0').locator('button[data-state="related"]')).toHaveCount(3)
     await page.setViewportSize({ width: 390, height: 844 })
     await expect(partial).toBeFocused()
     await expect(partial).toHaveAttribute('aria-pressed', 'true')
@@ -577,14 +577,14 @@ scheduleTest.describe('Independent AES-192 schedule (#106)', () => {
     await expect(switched).toBeVisible({ timeout: 30000 })
     const switchedSource = switched.locator('[data-row-id="key.value"]')
     await expect(switchedSource).toBeVisible()
-    await expect(switchedSource.getByRole('combobox')).toHaveValue('32')
+    await expect(switched.getByRole('combobox')).toHaveValue('64')
     const selectedSource = switchedSource.locator('button[aria-pressed="true"]')
     await expect(selectedSource).toHaveCount(1)
     await expect(selectedSource).toHaveAccessibleName(zh
-      ? /Source \(key.value\), Bits 160–191: 00010100000101010001011000010111.*Deliberately selected/
-      : /输入 \(key.value\)，位 160–191：00010100000101010001011000010111.*主动选择/)
-    await expect(switched.getByRole('status')).toContainText(zh ? 'Bits 160–191' : '位 160–191')
-    await switchedSource.getByRole('combobox').selectOption('8')
+      ? /Source \(key.value\), Bits 128–191: 0x1011121314151617.*Deliberately selected/
+      : /输入 \(key.value\)，位 128–191：0x1011121314151617.*主动选择/)
+    await expect(switched.getByRole('status')).toContainText(zh ? 'Bits 128–191' : '位 128–191')
+    await switched.getByRole('combobox').selectOption('8')
     await expect(switched.locator('button[aria-pressed="true"]')).toHaveCount(0)
     await expect(switched.locator('[data-row-id="key.value"] [data-bit-group]')).toHaveCount(6)
     await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' })

@@ -158,11 +158,10 @@ const spnPresentation = (execution: WorkerExecutionSnapshot, t: TFunction<'visua
     instructions: t('schedule.instructions'),
     unitSelection: {
       label: t('schedule.unit'),
-      sizeLabel: (size) => t('schedule.unitSize', { size }),
+      sizeLabel: (size) => t(size === 4 ? 'schedule.nibble' : size === 8 ? 'schedule.byte' : size === 32 ? 'schedule.word' : 'schedule.unitSize', { size }),
       rangeLabel: (row, start, end, value) => t('schedule.range', { row: row.label, id: row.id, start, end, value }),
-      relatedLabel: (count, size, positions) => t('schedule.related', { count, size, positions }),
+      relatedLabel: t('schedule.related'),
       selectedLabel: t('schedule.selected'),
-      detailsLabel: t('schedule.details'),
     },
     selectionStatus: (selected) => selected ? `${t('keyExpansion.selected')}: ${selected.ariaLabel}` : t('keyExpansion.none'),
     sections: [{
@@ -212,6 +211,7 @@ const overlayPresentation = (base: LearningPresentation, overlay: NonNullable<Ex
     ...row, id: `schedule:${row.id}`,
     anchor: anchors.get(row.id),
     label: `${t('overlay.generation', { index: generation.indexOf(row) + 1 })}; ${row.label} (${row.id}) [${row.cells[0].value}] ${row.cells[1].value}`,
+    cells: [{ value: t('overlay.generation', { index: generation.indexOf(row) + 1 }) }, { value: row.label }, { value: row.id }, ...row.cells],
     selectableBits: row.selectableBits?.map((bit) => ({ ...bit, id: `schedule:${bit.id}` })),
     relationships: row.relationships?.map((edge) => ({ from: `schedule:${edge.from}`, to: `schedule:${edge.to}` })),
   }))
@@ -224,13 +224,14 @@ const overlayPresentation = (base: LearningPresentation, overlay: NonNullable<Ex
     }),
     keyExpansionLane: {
       caption: t('overlay.title'), closeLabel: t('overlay.close'), rows: laneRows,
+      headers: [t('overlay.generationHeader'), t('keyExpansion.stage'), t('overlay.source'), t('keyExpansion.round'), t('keyExpansion.value'), t('keyExpansion.bits')],
       sharedSelection: { toggleLabel: t('overlay.toggle'), clearLabel: t('overlay.clear') },
       originalOrder: { kind: 'raw', caption: t('overlay.originalOrder'), headers: schedule.sections[0].headers.slice(0, 3), rows: generation },
     },
     selectionStatus: (selected) => selected ? `${t(selected.id.startsWith('schedule:') ? 'overlay.schedule' : 'overlay.cipher')}: ${selected.ariaLabel}` : t('keyExpansion.none'),
     sections: base.sections.map((section) => ({ ...section, rows: section.rows.map((row) => ({
       ...row,
-      ...(overlay.anchors.some((anchor) => anchor.cipherRow === row.id) ? { selectableKey: { id: `opener:${row.id}`, value: t('overlay.openKey', { row: row.label }), ariaLabel: t('overlay.openKey', { row: row.label }) } } : {}),
+      ...(overlay.anchors.some((anchor) => anchor.cipherRow === row.id) ? { selectableKey: { id: `opener:${row.id}`, value: t('overlay.toggle'), ariaLabel: t('overlay.toggle') } } : {}),
     })) })),
   }
 }

@@ -1,0 +1,33 @@
+.learning-presentation[data-lane-open="true"] th:not([data-lane-heading="true"]),
+.learning-presentation[data-lane-open="true"] td:not([data-lane-cell="true"]) {
+  opacity: 0.65;
+}
+
+.learning-hex-value {
+  white-space: nowrap;
+}
+
+.learning-hex-byte + .learning-hex-byte,
+.learning-hex-byte-gap {
+  margin-inline-start: 0.25ch;
+}
+
+.learning-hex-byte + .learning-hex-byte {
+  position: relative;
+}
+
+.learning-hex-byte + .learning-hex-byte::before {
+  content: '';
+  left: -0.125ch;
+}
+
+.learning-hex-byte + .learning-hex-byte::before,
+.learning-unit-separator {
+  background-color: var(--learning-border, #8aa0b6);
+  height: 0.65em;
+  pointer-events: none;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1px;
+}

@@ -112,8 +112,8 @@ explicitly accepted by the maintainer on 2026-10-13.
 
 - **D-Q1:** default closed; open deliberately. This supersedes the stash's automatic
   expansion. Do not persist the open state.
-- **D-Q2:** one shared lineage selection survives opening, closing and choosing
-  another round-key opener. Only choosing a unit replaces the source bits with
+- **D-Q2:** one shared lineage selection survives opening and closing. The historical
+  multiple-opener interaction is superseded below. Only choosing a unit replaces the source bits with
   all bits of that unit. Keep its source view/row and bit range identifiable in
   the visible selection status even when covered. Clear/reset actions end it.
   This is the v2 single-execution contract, not a change to v1 or #67 comparison.
@@ -122,11 +122,18 @@ explicitly accepted by the maintainer on 2026-10-13.
   XOR1, rk1]`, `[Input, rk0]`; do not duplicate the shared batch. Upward dependencies
   are accepted. Retain original order/numbering and the expandable original-order
   value table. Screen order does not imply reverse key generation.
-- **D-Q4:** visible related counts such as `8/32`, a distinct explicit-selection
+- **D-Q4 (historical display contract, superseded):** visible related counts such as `8/32`, a distinct explicit-selection
   state, and inspectable exact positions are sufficient. Keep accessible counts,
   tooltip ranges and the bit-lineage details; within-word shading is not required.
   Only eight bits propagate until the student deliberately selects the word.
   Apply these meanings through existing production styling.
+
+The [October 30, 2026 #109 correction](https://github.com/CSUWangj/cryptography-learning/issues/109#issuecomment-6532940081)
+supersedes D-Q4's fractions, related-bit lists and detail-panel display requirements.
+Production inspection now displays group relationships with full-unit selection,
+hexadecimal values from four bits and stable readable row spacing. Exact traversal
+remains required. The prototype descriptions and screenshots above are historical;
+they do not define the current production display contract.
 
 Authority for the following refinements:
 [D-Q5 through D-Q7](https://github.com/CSUwangj/cryptography-learning/issues/94#issuecomment-6153060431).
@@ -136,7 +143,7 @@ Authority for the following refinements:
   and re-entering the Lesson clears selection and restores the default closed view.
   Language changes, resizing and re-clicking the active mode preserve both. Explicit
   clear only ends selection. No persistent state is added.
-- **D-Q6:** a round-key opener shows the complete schedule. Re-clicking that opener
+- **D-Q6 (historical opener UI, superseded):** a round-key opener shows the complete schedule. Re-clicking that opener
   closes it; clicking another while open changes its indication and leaves the
   schedule open with the same selection. It does not filter to one round, select
   the whole key or automatically scroll to an anchor. The toolbar controls only
@@ -144,6 +151,15 @@ Authority for the following refinements:
 - **D-Q7:** alignment padding exists only while the overlay is open. Closing removes
   overlay-only gaps and restores compact cipher row order. Vertical movement is
   accepted; selection and dependency meaning do not change.
+
+The [October 31, 2026 maintainer correction](https://github.com/CSUWangj/cryptography-learning/issues/109#issuecomment-6542738836)
+supersedes the earlier assistant interpretation of heading weight and row-control
+removal in comment 6542066925. Production v2 retains bound-row buttons with generic
+localized show/close text and no numbered round-key suffix, plus the separate
+toolbar toggle. All toggle the complete schedule, preserving exact selection and
+independent view sizes. Original bold headings are restored and the accepted
+outside-overlay fading is retained. D-Q6 remains historical prototype context;
+legacy production callers retain their existing lifecycle.
 
 ## Decision and prototype differences
 

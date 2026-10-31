@@ -100,23 +100,26 @@
   },
   "overlay": {
     "generation": "生成行 {{index}}",
+    "generationHeader": "生成行",
+    "source": "来源",
     "originalOrder": "原始生成顺序",
     "toggle": "显示密钥编排",
     "clear": "清除选择",
     "cipher": "密码",
     "schedule": "密钥编排",
     "title": "密钥编排覆盖层",
-    "close": "关闭密钥编排",
-    "openKey": "打开密钥编排：{{row}}"
+    "close": "关闭密钥编排"
   },
   "schedule": {
-    "instructions": "选择单个位或整个单位以检查结构依赖，而非单个位的因果关系。分组边界独立于选择单位。",
+    "instructions": "选择整个单位以检查组之间的结构依赖，而非单个位的因果关系。分组边界独立于选择单位。",
     "unit": "选择单位",
     "unitSize": "{{size}} 位",
+    "nibble": "4 位（半字节）",
+    "byte": "8 位（字节）",
+    "word": "32 位（字）",
     "range": "{{row}} ({{id}})，位 {{start}}–{{end}}：{{value}}",
-    "related": "关联位 {{count}}/{{size}}：{{positions}}",
-    "selected": "主动选择",
-    "details": "谱系详情"
+    "related": "关联组",
+    "selected": "主动选择"
   },
   "executionTrace": {
     "title": "执行轨迹",

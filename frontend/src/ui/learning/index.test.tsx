@@ -315,6 +315,26 @@ describe('Learning presentation primitives', () => {
     expect(document.querySelector('svg[data-lineage]')?.querySelectorAll('line')).toHaveLength(2)
   })
 
+  it('draws each visible group pair once and emphasizes every deliberately selected source bit (#109)', () => {
+    render(<LineageDiagram aggregate height={80} width={120}
+      locations={new Map([
+        ['input-0', { x: 20, y: 20 }], ['input-1', { x: 20, y: 20 }], ['input-2', { x: 40, y: 20 }],
+        ['output-0', { x: 60, y: 60 }], ['output-1', { x: 60, y: 60 }], ['output-2', { x: 100, y: 60 }],
+      ])}
+      relationships={[
+        { from: 'input-0', to: 'output-0' }, { from: 'input-1', to: 'output-1' },
+        { from: 'input-1', to: 'output-2' }, { from: 'input-2', to: 'output-1' },
+      ]}
+      related={new Set(['input-0', 'input-1', 'output-0', 'output-1', 'output-2'])}
+      selected={{ kind: 'bit', id: 'input-0', bitIds: ['input-0', 'input-1'] }}
+    />)
+    const svg = document.querySelector('svg[data-lineage]')!
+    const segments = [...svg.querySelectorAll('path')].flatMap((path) => path.getAttribute('d')!.match(/M[^M]+/g)!.map((segment) => segment.trim()))
+    expect(segments.sort()).toEqual(['M20,20L100,60', 'M20,20L60,60', 'M40,20L60,60'])
+    expect(svg.querySelector('path[data-state="selected"]')).toHaveAttribute('d', 'M20,20L60,60 M20,20L100,60')
+    expect(svg.querySelector('path[data-state="default"]')).toHaveAttribute('d', 'M40,20L60,60')
+  })
+
   it.each([
     { expected: 'default', related: new Set<string>(), selected: undefined, state: undefined },
     { expected: 'related', related: new Set(['input-0', 'output-0']), selected: undefined, state: undefined },
@@ -359,5 +379,18 @@ describe('Learning presentation primitives', () => {
     output.focus()
     await user.keyboard('{Enter}')
     expect(screen.getByRole('status')).toHaveTextContent(outputStatus)
+  })
+})
+
+
+describe('Hexadecimal value display', () => {
+  it.each([
+    { value: '0x00010203', bytes: ['00', '01', '02', '03'] },
+    { value: '0x00a', bytes: ['0', '0a'] },
+  ])('separates bytes visually while preserving $value and its accessible label', ({ value, bytes }) => {
+    const view = render(<table><tbody><tr><ValueCell ariaLabel="Round key value">{value}</ValueCell></tr></tbody></table>)
+    const cell = view.getByRole('cell', { name: 'Round key value' })
+    expect([...cell.querySelectorAll('.learning-hex-byte')].map((byte) => byte.textContent)).toEqual(bytes)
+    expect(cell.textContent).toBe(value)
   })
 })

@@ -100,23 +100,26 @@
   },
   "overlay": {
     "generation": "Generation row {{index}}",
+    "generationHeader": "Generation row",
+    "source": "Source",
     "originalOrder": "Original generation order",
     "toggle": "Show key schedule",
     "clear": "Clear selection",
     "cipher": "Cipher",
     "schedule": "Key schedule",
     "title": "Key schedule overlay",
-    "close": "Close key schedule",
-    "openKey": "Open key schedule: {{row}}"
+    "close": "Close key schedule"
   },
   "schedule": {
-    "instructions": "Select a bit or a whole unit to inspect structural dependencies, not individual causation. Group boundaries are authored independently of selection units.",
+    "instructions": "Select a whole unit to inspect structural dependencies between groups, not individual causation. Group boundaries are authored independently of selection units.",
     "unit": "Selection unit",
     "unitSize": "{{size}} bits",
+    "nibble": "4 bits (nibble)",
+    "byte": "8 bits (byte)",
+    "word": "32 bits (word)",
     "range": "{{row}} ({{id}}), Bits {{start}}–{{end}}: {{value}}",
-    "related": "Related bits {{count}}/{{size}}: {{positions}}",
-    "selected": "Deliberately selected",
-    "details": "Lineage details"
+    "related": "Related group",
+    "selected": "Deliberately selected"
   },
   "executionTrace": {
     "title": "Execution trace",

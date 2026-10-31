@@ -1,5 +1,6 @@
 import { Button, HTMLSelect } from '@blueprintjs/core'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import './learning.css'
 
 export type LearningState = 'default' | 'changed' | 'selected' | 'related' | 'related-changed' | 'warning' | 'incomplete'
 
@@ -31,15 +32,16 @@ const stateStyles: Record<LearningState, CSSProperties> = {
 export type TraceTableProps = {
   readonly caption: string
   readonly headers: readonly string[]
+  readonly laneHeaders?: readonly string[]
   readonly children: ReactNode
   /** Removes vertical cell spacing so a block spanning several rows reads as one region. */
   readonly joinRows?: boolean
 }
 
-export const TraceTable = ({ caption, headers, children, joinRows }: TraceTableProps): ReactNode => (
+export const TraceTable = ({ caption, headers, laneHeaders = [], children, joinRows }: TraceTableProps): ReactNode => (
   <table style={joinRows ? { borderSpacing: '2px 0' } : undefined}>
     <caption>{caption}</caption>
-    <thead><tr>{headers.map((header) => <th key={header} scope="col">{header}</th>)}</tr></thead>
+    <thead><tr>{[...headers, ...laneHeaders].map((header, index) => <th data-lane-heading={index >= headers.length ? 'true' : undefined} key={index} scope="col">{header}</th>)}</tr></thead>
     <tbody>{children}</tbody>
   </table>
 )
@@ -58,6 +60,10 @@ export const ComparisonRow = ({ label, state = 'default', rowId, rowRef, childre
   </tr>
 )
 
+const hexadecimalValue = (value: ReactNode): ReactNode => typeof value === 'string' && /^0x[\da-f]+$/i.test(value)
+  ? <span className="learning-hex-value">{value.match(/^0x|[\da-f]{1,2}(?=(?:[\da-f]{2})*$)/gi)!.map((byte, index) => <span className={index ? 'learning-hex-byte' : undefined} key={index}>{byte}</span>)}</span>
+  : value
+
 type PassiveValueCellProps = { readonly ariaLabel?: string; readonly onSelect?: never }
 type SelectableValueCellProps = { readonly ariaLabel: string; readonly onSelect: () => void }
 
@@ -69,8 +75,8 @@ export type ValueCellProps = {
 export const ValueCell = ({ children, state = 'default', ...selection }: ValueCellProps): ReactNode => (
   <td aria-label={selection.ariaLabel} data-state={state} style={stateStyles[state]}>
     {'onSelect' in selection
-      ? <button aria-label={selection.ariaLabel} aria-pressed={state === 'selected'} onClick={selection.onSelect} type="button">{children}</button>
-      : children}
+      ? <button aria-label={selection.ariaLabel} aria-pressed={state === 'selected'} onClick={selection.onSelect} type="button">{hexadecimalValue(children)}</button>
+      : hexadecimalValue(children)}
   </td>
 )
 
@@ -128,12 +134,13 @@ export type LearningSection = {
 
 export type KeyExpansionLaneRow = Pick<LearningRow, 'id' | 'selectableBits' | 'relationships' | 'bitGrouping'> & {
   readonly label?: string
+  readonly cells?: readonly LearningCell[]
   /** Trace row this lane row shares a table row with; unanchored rows follow the previous anchor. */
   readonly anchor?: string
 }
 
 /**
- * An optional lane, hidden until a round-key chip in the trace is selected. While open it covers
+ * An optional lane, opened by the v2 schedule toggle or a legacy round-key chip. While open it covers
  * the trace's bit and detail columns. Between anchors, whichever side has fewer rows is padded with
  * empty rows that disappear on close. Anchors must appear in the same order as their trace rows.
  */
@@ -141,7 +148,8 @@ export type KeyExpansionLane = {
   readonly caption: string
   readonly closeLabel: string
   readonly rows: readonly KeyExpansionLaneRow[]
-  /** V2 openers control visibility while preserving the exact bit origin. */
+  readonly headers?: readonly string[]
+  /** The v2 whole-schedule toggle preserves the exact bit origin. */
   readonly sharedSelection?: { readonly toggleLabel: string; readonly clearLabel: string }
   readonly originalOrder?: LearningSection
 }
@@ -176,9 +184,8 @@ export type LearningPresentation = {
     readonly label: string
     readonly sizeLabel: (size: number) => string
     readonly rangeLabel: (row: LearningRow, start: number, end: number, value: string) => string
-    readonly relatedLabel: (count: number, size: number, positions: string) => string
+    readonly relatedLabel: string
     readonly selectedLabel: string
-    readonly detailsLabel: string
   }
   readonly keyExpansionLane?: KeyExpansionLane
   /** Equal-width bit identities used for traversal only, never drawn as lineage edges. */
@@ -240,6 +247,11 @@ const bitGroups = (row: Pick<LearningRow, 'selectableBits' | 'bitGrouping'>): re
   return Array.from({ length: Math.ceil(selectable.length / size) }, (_, group) => selectable.slice(group * size, (group + 1) * size))
 }
 
+const unitValue = (unit: readonly LearningBit[]): string => {
+  const binary = unit.map((bit) => bit.value).join('')
+  return unit.length >= 4 ? `0x${BigInt(`0b${binary}`).toString(16).padStart(Math.ceil(unit.length / 4), '0')}` : binary
+}
+
 const initialSelectionFor = (presentation: LearningPresentation): LearningSelection | undefined =>
   presentation.initialKeySelection
     ? { kind: 'key', id: presentation.initialKeySelection }
@@ -267,7 +279,7 @@ export type LineageDiagramProps = {
   readonly aggregate?: boolean
 }
 
-export type LineageLocation = { readonly x: number; readonly y: number }
+export type LineageLocation = { readonly x: number; readonly y: number; readonly group?: string }
 
 const lineageStroke = (state: LearningState): string => {
   if (state === 'selected' || state === 'related') return learningColors.text
@@ -279,21 +291,28 @@ const lineageStroke = (state: LearningState): string => {
 
 export const LineageDiagram = ({ relationships, locations, width, height, related, selected, aggregate }: LineageDiagramProps): ReactNode => {
   if (!relationships.length) return null
+  const selectedIds = new Set(selected?.bitIds ?? (selected ? [selected.id] : []))
   const lines = relationships.map((relationship) => ({
     relationship,
-    state: relationship.from === selected?.id || relationship.to === selected?.id
+    state: selectedIds.has(relationship.from) || selectedIds.has(relationship.to)
       ? 'selected' as const
       : related.has(relationship.from) && related.has(relationship.to)
         ? 'related' as const
         : relationship.state ?? 'default',
   }))
   const paths = new Map<LearningState, string[]>()
+  const pairs = new Map<string, { readonly segment: string; readonly state: LearningState }>()
   if (aggregate) for (const { relationship, state } of lines) {
     const from = locations.get(relationship.from)
     const to = locations.get(relationship.to)
     if (!from || !to) continue
+    const pair = JSON.stringify([from.group ?? [from.x, from.y], to.group ?? [to.x, to.y]])
+    const previous = pairs.get(pair)
+    if (previous === undefined || state === 'selected' || (state === 'related' && previous.state !== 'selected')) pairs.set(pair, { segment: `M${from.x},${from.y}L${to.x},${to.y}`, state })
+  }
+  for (const { segment, state } of pairs.values()) {
     if (!paths.has(state)) paths.set(state, [])
-    paths.get(state)!.push(`M${from.x},${from.y}L${to.x},${to.y}`)
+    paths.get(state)!.push(segment)
   }
   return <svg aria-hidden="true" data-lineage height={height} style={{ left: 0, pointerEvents: 'none', position: 'absolute', top: 0 }} viewBox={`0 0 ${width} ${height}`} width={width}>
     {/* Batch unit-view geometry without changing the bit relationships used for traversal. */}
@@ -320,31 +339,33 @@ export const LineageDiagram = ({ relationships, locations, width, height, relate
 }
 
 export const LearningPresentationView = ({ presentation }: { readonly presentation: LearningPresentation }): ReactNode => {
-  const [unitSizes, setUnitSizes] = useState<Readonly<Record<string, number>>>({})
+  const [unitSize, setUnitSize] = useState(1)
+  const [laneUnitSize, setLaneUnitSize] = useState(1)
   const [selected, setSelected] = useState<LearningSelection | undefined>(() => initialSelectionFor(presentation))
   // Which round key's lane is open. Tracked separately from `selected` so that selecting a bit
   // inside the open lane (to inspect its lineage) highlights that bit without closing the lane.
   const [openKeyId, setOpenKeyId] = useState<string | undefined>(() => presentation.initialKeySelection)
   useEffect(() => {
-    setUnitSizes({})
+    setUnitSize(1)
+    setLaneUnitSize(1)
     setSelected(initialSelectionFor(presentation))
     setOpenKeyId(presentation.initialKeySelection)
   }, [presentation.executionIdentity])
   const related = useMemo(() => relatedBitIds(presentation, selected?.bitIds ?? selected?.id), [presentation, selected])
   const relationships = relationshipsFor(presentation)
-  // Wider rows carry longer diagonal lines, so give them proportionally more vertical room.
+  // Unit views keep readable spacing across granularity changes; legacy bit views retain their spacing.
   const rows = presentation.sections.flatMap((section) => section.rows)
   const laneRows = presentation.keyExpansionLane?.rows ?? []
   const laneOpen = openKeyId !== undefined && presentation.keyExpansionLane !== undefined
-  const spacingRows = laneOpen || !presentation.keyExpansionLane?.sharedSelection ? [...rows, ...laneRows] : rows
-  const lineageGap = Math.max(6, ...spacingRows.map((row) => Math.ceil((row.selectableBits?.length ?? 0) / (unitSizes[row.id] ?? 1))))
+  const spacingRows = laneOpen || !presentation.keyExpansionLane?.sharedSelection ? laneRows : []
+  const lineageGap = presentation.unitSelection ? 24 : Math.max(6, ...rows.map((row) => row.selectableBits?.length ?? 0), ...spacingRows.map((row) => row.selectableBits?.length ?? 0))
   const rawSelectedTarget = selected?.kind === 'bit'
     ? [...rows, ...laneRows].flatMap((row) => row.selectableBits ?? []).find((bit) => bit.id === selected.id)
     : rows.map((row) => row.selectableKey).find((key) => key?.id === selected?.id)
   const sourceRow = presentation.unitSelection && [...rows, ...laneRows].find((row) => row.selectableBits?.some((bit) => bit.id === selected?.id))
   const sourceBits = sourceRow?.selectableBits?.filter((bit) => selected?.bitIds?.includes(bit.id)) ?? []
   const selectedTarget = rawSelectedTarget && sourceRow && sourceBits.length > 1
-    ? { ...rawSelectedTarget, ariaLabel: presentation.unitSelection!.rangeLabel(sourceRow as LearningRow, sourceBits[0].bit, sourceBits[sourceBits.length - 1].bit, sourceBits.map((bit) => bit.value).join('')) }
+    ? { ...rawSelectedTarget, ariaLabel: presentation.unitSelection!.rangeLabel(sourceRow as LearningRow, sourceBits[0].bit, sourceBits[sourceBits.length - 1].bit, unitValue(sourceBits)) }
     : rawSelectedTarget
   const lineageContainer = useRef<HTMLDivElement>(null)
   const targets = useRef(new Map<string, HTMLElement>())
@@ -370,52 +391,60 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
     if (!presentation.keyExpansionLane) setOpenKeyId(undefined)
   }
   const renderKeyChip = (key: LearningRoundKey): ReactNode => {
-    const state = keyState(key, selected, openKeyId, related)
+    const lane = presentation.keyExpansionLane
+    const state = lane?.sharedSelection ? (laneOpen ? 'selected' : 'default') : keyState(key, selected, openKeyId, related)
+    const label = lane?.sharedSelection ? (laneOpen ? lane.closeLabel : lane.sharedSelection.toggleLabel) : key.ariaLabel
     return <button
-      aria-label={key.ariaLabel}
+      aria-label={label}
       aria-pressed={state === 'selected'}
       data-state={state}
       key={key.id}
       onClick={() => {
-        const closing = openKeyId === key.id
+        const closing = lane?.sharedSelection ? laneOpen : openKeyId === key.id
         setOpenKeyId(closing ? undefined : key.id)
         if (!presentation.keyExpansionLane?.sharedSelection) select(closing ? undefined : { kind: 'key', id: key.id })
       }}
       ref={targetRef(key.id)}
       style={{ ...stateStyles[state], borderColor: learningColors.border, color: learningColors.text, position: 'relative' }}
       type="button"
-    >{key.value}</button>
+    >{lane?.sharedSelection ? label : key.value}</button>
   }
 
-  const renderUnits = (row: LearningRow): ReactNode => {
-    const copy = presentation.unitSelection!
-    const bits = row.selectableBits ?? []
-    const size = unitSizes[row.id] ?? 1
-    const units = Array.from({ length: bits.length / size }, (_, index) => bits.slice(index * size, (index + 1) * size))
-    return <>
+  const renderUnitControl = (scopeRows: readonly Pick<LearningRow, 'selectableBits'>[], size: number, setSize: (size: number) => void, title: string): ReactNode => {
+    const widths = scopeRows.flatMap((row) => row.selectableBits?.length ? [row.selectableBits.length] : [])
+    if (!presentation.unitSelection || !widths.length) return null
+    const copy = presentation.unitSelection
+    return <label>{title}: {copy.label}{' '}
       <HTMLSelect
-        aria-label={`${row.label} (${row.id}): ${copy.label}`}
+        aria-label={`${title}: ${copy.label}`}
         onChange={(event) => {
           const next = Number(event.target.value)
           if (next === size) return
-          setUnitSizes((previous) => ({ ...previous, [row.id]: next }))
+          setSize(next)
           select(undefined)
         }}
-        options={Array.from({ length: bits.length }, (_, index) => index + 1).filter((candidate) => bits.length % candidate === 0).map((candidate) => ({ value: candidate, label: copy.sizeLabel(candidate) }))}
+        options={Array.from({ length: Math.min(...widths) }, (_, index) => index + 1).filter((candidate) => widths.every((width) => width % candidate === 0)).map((candidate) => ({ value: candidate, label: copy.sizeLabel(candidate) }))}
         value={size}
-      />{' '}
+      />
+    </label>
+  }
+  const renderUnits = (row: LearningRow, size: number): ReactNode => {
+    const copy = presentation.unitSelection!
+    const bits = row.selectableBits ?? []
+    const units = Array.from({ length: bits.length / size }, (_, index) => bits.slice(index * size, (index + 1) * size))
+    return <>
       <span style={{ display: 'inline-flex' }}>
         {units.map((unit, unitIndex) => {
           const first = unit[0]
           const start = unitIndex * size
           const groupSize = row.bitGrouping?.size
           const group = groupSize && start % groupSize === 0 ? start / groupSize : undefined
-          const positions = unit.filter((bit) => related.has(bit.id)).map((bit) => bit.bit)
+          const isRelated = unit.some((bit) => related.has(bit.id))
           const isSelected = selected?.kind === 'bit' && selected.id === first.id && selected.bitIds?.length === unit.length
-          const state: LearningState = isSelected ? 'selected' : positions.length ? 'related' : 'default'
-          const label = size === 1 ? first.ariaLabel : copy.rangeLabel(row, first.bit, unit[unit.length - 1].bit, unit.map((bit) => bit.value).join(''))
-          const relatedLabel = positions.length ? copy.relatedLabel(positions.length, size, positions.join(', ')) : ''
-          const description = `${label}${isSelected ? `; ${copy.selectedLabel}` : ''}${relatedLabel ? `; ${relatedLabel}` : ''}`
+          const state: LearningState = isSelected ? 'selected' : isRelated ? 'related' : 'default'
+          const value = unitValue(unit)
+          const label = size === 1 ? first.ariaLabel : copy.rangeLabel(row, first.bit, unit[unit.length - 1].bit, value)
+          const description = `${label}${isSelected ? `; ${copy.selectedLabel}` : isRelated ? `; ${copy.relatedLabel}` : ''}`
           return <button
             aria-label={description}
             aria-pressed={isSelected}
@@ -429,24 +458,29 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
                 else targets.current.delete(bit.id)
               }
             }}
-            style={{ ...stateStyles[state], borderColor: learningColors.border, boxShadow: group ? `-2px 0 0 ${learningColors.text}` : undefined, color: learningColors.text, position: 'relative', minWidth: size === 1 ? undefined : '8ch', outline: isSelected ? `2px solid ${learningColors.text}` : undefined }}
+            style={{ ...stateStyles[state], borderColor: learningColors.border, boxShadow: group ? `-1px 0 0 ${learningColors.border}` : undefined, boxSizing: 'content-box', color: learningColors.text, flexShrink: 0, fontFamily: 'monospace', position: 'relative', width: `${(size === 1 ? 3 : Math.max(8, size >= 4 ? Math.ceil(size / 4) + 2 : size)) + Math.max(0, Math.ceil(size / 8) - 1) * 0.25}ch`, outline: isSelected ? `2px solid ${learningColors.text}` : undefined }}
             title={description}
             type="button"
-          >{unit.map((bit, index) => index && groupSize && (start + index) % groupSize === 0
-            ? <span data-bit-group={(start + index) / groupSize} key={bit.id} style={{ boxShadow: `-2px 0 0 ${learningColors.text}` }}>{bit.value}</span>
-            : bit.value)}{positions.length > 0 && <small style={{ display: 'block' }}>{positions.length}/{size}</small>}</button>
+          >{[...value].map((character, index) => {
+            const offset = size >= 4 ? size - (value.length - index) * 4 : index
+            // Authored boundaries can fall inside a hexadecimal digit.
+            const boundaries = groupSize ? Array.from({ length: size >= 4 ? 4 : 1 }, (_, bit) => bit).filter((bit) => offset + bit > 0 && (start + offset + bit) % groupSize === 0) : []
+            const byteStart = size > 8 && index > 2 && (value.length - index) % 2 === 0
+            return boundaries.length || byteStart
+              ? <span className={byteStart ? 'learning-hex-byte-gap' : undefined} key={index} style={{ display: 'inline-block', position: 'relative' }}>{character}{[...new Set([...boundaries, ...(byteStart ? [0] : [])])].map((bit) => <span
+                aria-hidden="true"
+                className="learning-unit-separator"
+                data-bit-group={boundaries.includes(bit) ? (start + offset + bit) / groupSize! : undefined}
+                key={bit}
+                style={{ left: byteStart && bit === 0 ? '-0.125ch' : `${bit * (size >= 4 ? 25 : 100)}%` }}
+              />)}</span>
+              : character
+          })}</button>
         })}
       </span>
-      {units.some((unit) => unit.some((bit) => related.has(bit.id))) && <details>
-        <summary>{copy.detailsLabel}</summary>
-        {units.map((unit) => {
-          const positions = unit.filter((bit) => related.has(bit.id)).map((bit) => bit.bit)
-          return positions.length ? <p key={unit[0].id}>{copy.rangeLabel(row, unit[0].bit, unit[unit.length - 1].bit, unit.map((bit) => bit.value).join(''))}; {copy.relatedLabel(positions.length, size, positions.join(', '))}</p> : null
-        })}
-      </details>}
     </>
   }
-  const renderBits = (row: Pick<LearningRow, 'selectableBits' | 'bitGrouping'> & Partial<Pick<LearningRow, 'id' | 'label'>>): ReactNode => presentation.unitSelection && row.id && row.selectableBits?.length ? renderUnits(row as LearningRow) : bitGroups(row).map((group, index) => {
+  const renderBits = (row: Pick<LearningRow, 'selectableBits' | 'bitGrouping'> & Partial<Pick<LearningRow, 'id' | 'label'>>, size = unitSize): ReactNode => presentation.unitSelection && row.id && row.selectableBits?.length ? renderUnits(row as LearningRow, size) : bitGroups(row).map((group, index) => {
     const buttons = group.map((bit, position) => {
       const state = bitState(bit, selected, related)
       return <button
@@ -460,7 +494,7 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
           ...stateStyles[state],
           borderColor: learningColors.border,
           // A shadow rather than a border so group boundaries never shift bit columns.
-          boxShadow: row.bitGrouping && index && !position ? `-2px 0 0 ${learningColors.text}` : undefined,
+          boxShadow: row.bitGrouping && index && !position ? `-1px 0 0 ${learningColors.border}` : undefined,
           color: learningColors.text,
           position: 'relative',
         }}
@@ -484,9 +518,11 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
     const measure = (): void => {
       const bounds = container.getBoundingClientRect()
       const locations = new Map<string, LineageLocation>()
+      const groups = new Map<HTMLElement, string>()
       for (const [id, target] of targets.current) {
         const targetBounds = target.getBoundingClientRect()
-        locations.set(id, { x: targetBounds.left - bounds.left + targetBounds.width / 2, y: targetBounds.top - bounds.top + targetBounds.height / 2 })
+        if (!groups.has(target)) groups.set(target, id)
+        locations.set(id, { x: targetBounds.left - bounds.left + targetBounds.width / 2, y: targetBounds.top - bounds.top + targetBounds.height / 2, group: groups.get(target) })
       }
       setLineage((previous) => ({ measure: previous.measure + 1, presentation, width: bounds.width, height: bounds.height, locations }))
     }
@@ -496,17 +532,19 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
     const observer = new ResizeObserver(measure)
     observer.observe(container)
     return () => observer.disconnect()
-  }, [presentation, laneOpen, unitSizes])
+  }, [presentation, laneOpen, unitSize, laneUnitSize])
 
-  return <section aria-label={presentation.title} style={{ overflowX: 'auto' }}>
+  return <section aria-label={presentation.title} className="learning-presentation" data-lane-open={laneOpen ? 'true' : undefined} style={{ overflowX: 'auto' }}>
     <h3>{presentation.title}</h3>
     {presentation.instructions && <p>{presentation.instructions}</p>}
     {presentation.diagnostics?.filter((item) => item.message !== presentation.instructions).map((item) => <p data-diagnostic-code={item.code} key={`${item.code}-${item.path}`}>{item.message}</p>)}
     {presentation.selectionStatus && <p aria-live="polite" role="status">{presentation.selectionStatus(selectedTarget)}</p>}
+    {renderUnitControl(rows, unitSize, setUnitSize, presentation.title)}
     {presentation.keyExpansionLane?.sharedSelection && <div role="toolbar" aria-label={presentation.keyExpansionLane.caption}>
-      <Button active={laneOpen} aria-pressed={laneOpen} onClick={() => setOpenKeyId(laneOpen ? undefined : 'schedule')}>{presentation.keyExpansionLane.sharedSelection.toggleLabel}</Button>
+      <Button active={laneOpen} aria-pressed={laneOpen} onClick={() => setOpenKeyId(laneOpen ? undefined : 'schedule')}>{laneOpen ? presentation.keyExpansionLane.closeLabel : presentation.keyExpansionLane.sharedSelection.toggleLabel}</Button>
       <Button onClick={() => select(undefined)}>{presentation.keyExpansionLane.sharedSelection.clearLabel}</Button>
     </div>}
+    {presentation.unitSelection && laneOpen && <div>{renderUnitControl(laneRows, laneUnitSize, setLaneUnitSize, presentation.keyExpansionLane!.caption)}</div>}
     {presentation.sections.filter((section) => section.rows.some((row) => row.state === 'incomplete'))
       .map((section) => <p key={`${section.kind}-${section.caption}`} role="status">{section.caption}</p>)}
     <div ref={lineageContainer} style={{ minWidth: '100%', position: 'relative', width: 'max-content' }}>
@@ -527,7 +565,7 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
         const hasDetails = section.rows.some((row) => row.detail)
         const lane = laneOpen && hasControls && section.kind === 'trace' ? presentation.keyExpansionLane : undefined
         const key = presentation.unitSelection ? `${section.kind}-${sectionIndex}` : `${section.kind}-${section.caption}`
-        const table = <TraceTable caption={section.caption} headers={section.headers} joinRows={!!lane} key={key}>
+        const table = <TraceTable caption={section.caption} headers={section.headers} laneHeaders={lane?.headers} joinRows={!!lane} key={key}>
           {lane
             ? (() => {
                 const layout = laneLayout(section.rows, lane.rows)
@@ -540,7 +578,6 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
                     ? {
                         ...controlStyle,
                         backgroundColor: learningColors.lane,
-                        borderInline: `2px solid ${learningColors.laneBorder}`,
                         borderTop: index === first ? `2px solid ${learningColors.laneBorder}` : undefined,
                         borderBottom: index === last ? `2px solid ${learningColors.laneBorder}` : undefined,
                       }
@@ -555,9 +592,13 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
                       ? <ValueCell ariaLabel={cell.ariaLabel} key={cellIndex} state={cell.state}>{cell.value}</ValueCell>
                       : <td key={cellIndex} />)}
                     <td style={controlStyle}>{row?.selectableKey && renderKeyChip(row.selectableKey)}</td>
-                    <td data-lane={inLane ? 'true' : undefined} data-lane-row={laneRow?.id} style={laneStyle}>
-                      {laneRow?.label && <span style={{ marginInline: 8 }}>{laneRow.label}</span>}
-                      {laneRow && renderBits(laneRow)}
+                    {Array.from({ length: lane.headers ? lane.headers.length - 1 : 1 }, (_, cellIndex) => <td
+                      data-lane-cell={inLane ? 'true' : undefined}
+                      key={cellIndex}
+                      style={{ ...laneStyle, borderInlineStart: inLane && cellIndex === 0 ? `2px solid ${learningColors.laneBorder}` : undefined, paddingInline: 8 }}
+                    >{laneRow?.cells ? hexadecimalValue(laneRow.cells[cellIndex]?.value) : laneRow?.label}</td>)}
+                    <td data-lane={inLane ? 'true' : undefined} data-lane-cell={inLane ? 'true' : undefined} data-lane-row={laneRow?.id} style={{ ...laneStyle, borderInlineEnd: inLane ? `2px solid ${learningColors.laneBorder}` : undefined }}>
+                      {laneRow && renderBits(laneRow, laneUnitSize)}
                     </td>
                   </ComparisonRow>
                 })
@@ -570,7 +611,7 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
         </TraceTable>
         return lane
           ? <div aria-label={lane.caption} key={key} role="region">
-              <button onClick={() => { setOpenKeyId(undefined); if (!lane.sharedSelection) select(undefined) }} type="button">{lane.closeLabel}</button>
+              {!lane.sharedSelection && <button onClick={() => { setOpenKeyId(undefined); select(undefined) }} type="button">{lane.closeLabel}</button>}
               {table}
             </div>
           : table

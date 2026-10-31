@@ -14,6 +14,7 @@ import aes256En from '../lesson_runtime/fixture/aes256-v2-locales/en-US.yaml?raw
 import aes256Zh from '../lesson_runtime/fixture/aes256-v2-locales/zh-CN.yaml?raw'
 import { executionTracePresentation } from './ExecutionTrace'
 import { RenderHost } from './index'
+import { relatedBitIds } from '../ui/learning'
 
 const fixtures = [
   { variant: 192, lesson: aes192, locales: { 'en-US': aes192En, 'zh-CN': aes192Zh }, finalBatch: 7, finalRound: 12, finalKey: '0xa4970a331a78dc09c418c271e3a41d5d', ciphertext: '0xdda97ca4864cdfe06eaf70a0ec0d7191' },
@@ -83,7 +84,7 @@ describe('Independent compiled schedule inspection (#106)', () => {
 
 
 describe('Exact compiled unit selection (#106)', () => {
-  it('keeps partial related units narrow and expands only on deliberate whole-unit selection', async () => {
+  it('marks related groups without widening exact traversal until deliberate whole-unit selection', async () => {
     const user = userEvent.setup()
     const compiled = compileLesson({
       lesson: `version: 2
@@ -97,8 +98,8 @@ graphs:
     nodes:
       - {id: origin, operation: core.source@1, parameters: {type: {family: bits, size: 32}}, role: state, unit: 32}
       - {id: substituted, operation: core.substitute-bytes@1, inputs: {value: {node: origin, port: value}}, parameters: {sBox: [${Array.from({ length: 256 }, (_, n) => n).join(',')}], start: 0, count: 1}, role: state, unit: 32}
-      - {id: chosen, operation: core.output@1, inputs: {value: {node: substituted, port: value, bits: [0, 8]}}, role: round-key, round: 0}
-      - {id: sibling, operation: core.output@1, inputs: {value: {node: origin, port: value, bits: [8, 8]}}, role: round-key, round: 1}
+      - {id: chosen, operation: core.output@1, inputs: {value: {node: substituted, port: value, bits: [4, 8]}}, role: round-key, round: 0}
+      - {id: sibling, operation: core.output@1, inputs: {value: {node: origin, port: value, bits: [12, 8]}}, role: round-key, round: 1}
     outputs: [{node: chosen, port: value}, {node: sibling, port: value}]
 steps:
   - id: inspect
@@ -110,6 +111,11 @@ steps:
     if (!compiled.ok) throw new Error(JSON.stringify(compiled.diagnostics))
     const result = executeWorkerRequest({ requestId: 'narrow', kind: 'execute', payload: { graph: compiled.value.graphs.schedule.graph, inputs: { 'origin.value': compiled.value.inputs.key.default } } })
     if (result.kind !== 'snapshot') throw new Error(JSON.stringify(result))
+    const exact = relatedBitIds({ title: 'Compiled schedule', sections: [{ kind: 'trace', caption: 'Dependency graph', headers: [], rows: [{
+      id: 'graph', label: 'Graph', cells: [], relationships: compiled.value.graphs.schedule.lineage!.map((edge) => ({ from: `${edge.source}#${edge.sourceBit}`, to: `${edge.target}#${edge.targetBit}` })),
+    }] }] }, Array.from({ length: 8 }, (_, bit) => `chosen.value#${bit}`))
+    expect([...exact].filter((id) => id.startsWith('origin.value#')).sort()).toEqual(Array.from({ length: 12 }, (_, bit) => `origin.value#${bit}`).sort())
+    expect([...exact].filter((id) => id.startsWith('sibling.value#'))).toEqual([])
     const language = i18n.cloneInstance({ lng: 'en-US' })
     const props = {
       execution: result.snapshot, compiledGraph: compiled.value.graphs.schedule, presentation: compiled.value.steps[0].presentation,
@@ -117,22 +123,28 @@ steps:
     }
     const view = render(React.createElement(I18nextProvider, { i18n: language }, React.createElement(RenderHost, props)))
     const origin = view.container.querySelector('[data-row-id="origin.value"]')!
-    await user.selectOptions(view.getByRole('combobox', { name: 'Source (origin.value): Selection unit' }), '32')
-    await user.click(view.getByRole('button', { name: /Round key 0 \(chosen.value\), Bit 0: 0/ }))
-    const partial = view.getByRole('button', { name: /Source \(origin.value\), Bits 0–31: .*Related bits 8\/32: 0, 1, 2, 3, 4, 5, 6, 7/ })
+    const mode = view.getByRole('combobox', { name: 'Key schedule: Selection unit' })
+    expect(view.getAllByRole('combobox')).toHaveLength(1)
+    expect([...mode.querySelectorAll('option')].map((option) => option.value)).toEqual(['1', '2', '4', '8'])
+    await user.selectOptions(mode, '8')
+    // The projection crosses a byte boundary: substitution contributes the first byte's
+    // ancestors, while the pass-through half contributes only bits 8..11 of the next byte.
+    await user.click(view.getByRole('button', { name: /Round key 0 \(chosen.value\), Bits 0–7: 0x23/ }))
+    const partial = view.getByRole('button', { name: /Source \(origin.value\), Bits 8–15: 0x34; Related group/ })
     expect(partial).toHaveAttribute('aria-pressed', 'false')
     expect(partial).toHaveAttribute('data-state', 'related')
-    expect(partial).toHaveTextContent('8/32')
+    expect(partial).toHaveTextContent(/^0x34$/)
+    expect(view.container.querySelector('details')).toBeNull()
     expect(origin.querySelector('[data-bit-group="0"]')).not.toBeNull()
-    expect(view.container.querySelector('[data-row-id="substituted.value"] button[data-state="related"]')).toHaveTextContent('0')
-    expect(view.container.querySelectorAll('[data-row-id="substituted.value"] button[data-state="related"]')).toHaveLength(1)
+    expect(view.container.querySelector('[data-row-id="substituted.value"] button[data-state="related"]')).toHaveAccessibleName(/Bits 0–7: 0x12; Related group/)
+    expect(view.container.querySelectorAll('[data-row-id="substituted.value"] button[data-state="related"]')).toHaveLength(2)
     expect(view.container.querySelectorAll('[data-row-id="sibling.value"] button[data-state="related"]')).toHaveLength(0)
     await user.click(partial)
     expect(partial).toHaveAttribute('aria-pressed', 'true')
-    expect(view.container.querySelectorAll('[data-row-id="sibling.value"] button[data-state="related"]')).toHaveLength(8)
+    expect(view.container.querySelector('[data-row-id="sibling.value"] button[data-state="related"]')).toHaveAccessibleName(/Bits 0–7: 0x45; Related group/)
     await act(async () => { await language.changeLanguage('zh-CN') })
-    expect(view.getByRole('status')).toHaveTextContent('位 0–31')
-    expect(view.container.querySelector('[data-row-id="origin.value"] button')).toHaveAttribute('aria-pressed', 'true')
+    expect(view.getByRole('status')).toHaveTextContent('位 8–15')
+    expect(view.container.querySelectorAll('[data-row-id="origin.value"] button')[1]).toHaveAttribute('aria-pressed', 'true')
     cleanup()
   })
 })
