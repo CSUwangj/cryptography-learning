@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   aesCipherGraph,
   aesInverseCipherGraph,
@@ -9,6 +9,7 @@ import {
   bits,
   bytes,
   compile,
+  CryptoGraphWorkerClient,
   executeWorkerRequest,
   hex,
   integer,
@@ -21,6 +22,7 @@ import {
   type AuthoredGraph,
   type CompiledGraph,
   type TraceEvent,
+  type WorkerRequest,
 } from './index'
 
 const source = (id: string, value: ReturnType<typeof bits>) => ({
@@ -40,6 +42,100 @@ const xorGraph = (): AuthoredGraph => ({
     },
   ],
   outputs: [{ node: 'xor', port: 'value' }],
+})
+
+describe('CryptoGraph Worker request deadline (#124)', () => {
+  class ControlledWorker extends EventTarget {
+    postMessage = vi.fn()
+    terminate = vi.fn()
+
+    constructor() {
+      super()
+      worker = this
+    }
+  }
+  let worker: ControlledWorker
+  let client: CryptoGraphWorkerClient
+  const request = (): WorkerRequest => ({ requestId: 'deadline', kind: 'execute', payload: { graph: xorGraph() } })
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.stubGlobal('Worker', ControlledWorker)
+    client = new CryptoGraphWorkerClient()
+  })
+
+  afterEach(() => {
+    client.dispose()
+    vi.clearAllTimers()
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  it('accepts a response at 1500 ms within the approved total deadline', async () => {
+    const message = request()
+    const pending = client.execute(message)
+    await vi.advanceTimersByTimeAsync(1_500)
+    worker.dispatchEvent(new MessageEvent('message', { data: executeWorkerRequest(message) }))
+    const response = await pending.result
+    expect(response.kind).toBe('snapshot')
+    if (response.kind === 'snapshot') expect(hex(response.snapshot.outputs['xor.value'] as ReturnType<typeof bits>)).toBe('0x0ff0')
+    expect(client.running).toBe(false)
+    expect(vi.getTimerCount()).toBe(0)
+    await vi.advanceTimersByTimeAsync(500)
+    expect(worker.terminate).not.toHaveBeenCalled()
+  })
+
+  it('times out and terminates a nonresponding Worker at 2000 ms', async () => {
+    const pending = client.execute(request())
+    await vi.advanceTimersByTimeAsync(1_999)
+    expect(client.running).toBe(true)
+    expect(worker.terminate).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(await pending.result).toMatchObject({ kind: 'diagnostic', diagnostics: [{ code: 'execution.timeout' }] })
+    expect(worker.terminate).toHaveBeenCalledTimes(1)
+    expect(client.running).toBe(false)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it.each<WorkerRequest>([
+    { requestId: 'execute-lower', kind: 'execute', payload: { graph: xorGraph(), limits: { timeoutMs: 250 } } },
+    { requestId: 'compare-lower', kind: 'compare', payload: {
+      left: { graph: xorGraph(), limits: { timeoutMs: 500 } }, right: { graph: xorGraph(), limits: { timeoutMs: 750 } }, limits: { timeoutMs: 250 },
+    } },
+    { requestId: 'left-lower', kind: 'compare', payload: {
+      left: { graph: xorGraph(), limits: { timeoutMs: 250 } }, right: { graph: xorGraph(), limits: { timeoutMs: 750 } }, limits: { timeoutMs: 500 },
+    } },
+    { requestId: 'right-lower', kind: 'compare', payload: {
+      left: { graph: xorGraph(), limits: { timeoutMs: 750 } }, right: { graph: xorGraph(), limits: { timeoutMs: 250 } }, limits: { timeoutMs: 500 },
+    } },
+  ])('honors the lower timeout for $requestId', async (message) => {
+    const pending = client.execute(message)
+    await vi.advanceTimersByTimeAsync(249)
+    expect(client.running).toBe(true)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(await pending.result).toMatchObject({ kind: 'diagnostic', diagnostics: [{ code: 'execution.timeout' }] })
+    expect(worker.terminate).toHaveBeenCalledTimes(1)
+    expect(client.running).toBe(false)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it.each(['request cancellation', 'client cancellation', 'Worker error', 'disposal'])(
+    'settles pending work and clears its timer after %s', async (action) => {
+      const pending = client.execute(request())
+      await vi.advanceTimersByTimeAsync(500)
+      if (action === 'request cancellation') pending.cancel()
+      else if (action === 'client cancellation') client.cancel()
+      else if (action === 'Worker error') worker.dispatchEvent(new Event('error'))
+      else client.dispose()
+      expect(await pending.result).toMatchObject(action === 'Worker error'
+        ? { kind: 'diagnostic', diagnostics: [{ code: 'execution.worker-error' }] }
+        : { kind: 'cancelled' })
+      expect(client.running).toBe(false)
+      expect(vi.getTimerCount()).toBe(0)
+      await vi.advanceTimersByTimeAsync(2_000)
+      expect(worker.terminate).toHaveBeenCalledTimes(action === 'Worker error' || action === 'disposal' ? 1 : 0)
+    },
+  )
 })
 
 describe('CryptoGraph compile/execute seam (#26)', () => {

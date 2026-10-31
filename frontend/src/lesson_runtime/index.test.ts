@@ -588,6 +588,36 @@ steps: []
     }
   })
 
+  it('keeps a Lesson XOR response at 1500 ms within its approved 2000 ms limit', async () => {
+    vi.useFakeTimers()
+    class DelayedWorker extends WorkerStub {
+      override postMessage(request: Parameters<typeof executeWorkerRequest>[0]): void {
+        setTimeout(() => super.postMessage(request), 1_500)
+      }
+    }
+    vi.stubGlobal('Worker', DelayedWorker)
+    const documents = fixture()
+    const created = createBrowserLessonSession({ ...documents, lesson: `${documents.lesson}\nlimits: {timeoutMs: 2000}\n` },
+      'en-US', i18n.getFixedT('en-US', 'translations'))
+    try {
+      expect(created.ok).toBe(true)
+      if (!created.ok) return
+      await created.value.enter()
+      await created.value.next()
+      const pending = created.value.next()
+      await vi.advanceTimersByTimeAsync(1_500)
+      const result = await pending
+      expect(result).toMatchObject({ ok: true, value: { checkResults: { calculate: { matched: true } }, executionDiagnostics: {} } })
+      if (result.ok) expect(hex(result.value.snapshots.calculate.outputs['mixed.value'] as ReturnType<typeof bits>)).toBe('0x0ff0')
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      if (created.ok) created.value.dispose()
+      vi.clearAllTimers()
+      vi.useRealTimers()
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('evaluates standalone equality checks when their Step opens', async () => {
     const documents = fixture()
     const lesson = documents.lesson.replace(/  - id: calculate[\s\S]*/, `  - id: compare-input
@@ -873,7 +903,7 @@ steps:
       source.replace('        right.value: {constant: mask}', '        right.value: {constant: mask}\n    accepted_error_codes: ["invented"]'),
       source.replace('correct: xor', 'correct: absent'),
       source.replace('- id: and', '- id: xor'),
-      `${source}\nlimits: {timeoutMs: 1001}\n`,
+      `${source}\nlimits: {timeoutMs: 2001}\n`,
     ]) expect(compileLesson({ ...fixture(), lesson })).toMatchObject({ ok: false })
 
     const visualizer = source.replace(

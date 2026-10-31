@@ -187,7 +187,7 @@ export const maxWorkerLimits = Object.freeze({
   inputBytes: 4_096,
   traceEvents: 512,
   traceBytes: 65_536,
-  timeoutMs: 1_000,
+  timeoutMs: 2_000,
 } satisfies WorkerLimitValues)
 
 export type WorkerLimits = Partial<WorkerLimitValues>

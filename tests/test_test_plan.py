@@ -140,6 +140,17 @@ class TestPlanTest(unittest.TestCase):
             ],
         )
 
+    def test_local_browser_ownership_selects_real_endpoint_regression(self):
+        for path in ("frontend/playwright.config.ts", "frontend/scripts/playwright-server.mjs"):
+            with self.subTest(path=path):
+                checks = {item["id"]: item for item in test_plan.plan_paths([path])["checks"]}
+                self.assertEqual(checks["browser_local-run"]["argv"], [
+                    "npx", "playwright", "test", "--project=chromium", "e2e/local-run.spec.ts",
+                ])
+                self.assertEqual(checks["frontend-tests"]["argv"][5:], [
+                    "src/app/i18n/noEmbeddedUiResources.test.ts",
+                ])
+
     def test_registered_ui_prototype_records_demo_browser_omission(self):
         for path in (
             "frontend/demos/UiOptimizationPrototype.tsx",

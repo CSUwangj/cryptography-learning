@@ -104,12 +104,16 @@ const expectLogoContained = async (page: Page, viewportWidth: number) => {
 }
 
 test.describe('Home layout (#59)', () => {
-  test('stacks features on phones, preserves desktop columns, and opens Practice', async ({ page }) => {
+  test('stacks features on phones, preserves desktop columns, and opens Practice', async ({ page }, testInfo) => {
+    const documents: string[] = []
+    page.on('request', (request) => {
+      if (request.isNavigationRequest() && request.frame() === page.mainFrame()) documents.push(request.url())
+    })
     await page.addInitScript(() => localStorage.setItem('i18nextLng', 'zh-CN'))
+    await page.goto('/')
 
     for (const viewport of [{ width: 320, height: 844 }, { width: 390, height: 844 }]) {
       await page.setViewportSize(viewport)
-      await page.goto('/')
 
       await expectLogoContained(page, viewport.width)
       const home = page.getByRole('img', { name: '密码学学习平台标志' }).locator('..')
@@ -212,10 +216,11 @@ test.describe('Home layout (#59)', () => {
       expect(getStartedBox.y + getStartedBox.height).toBeLessThanOrEqual(boxes[0].y)
       await getStarted.click()
       await expect(page).toHaveURL(/\/practice$/)
+      await page.goBack()
+      await expect(page).toHaveURL(/\/$/)
     }
 
     await page.setViewportSize({ width: 1280, height: 900 })
-    await page.goto('/')
     await expectLogoContained(page, 1280)
     const desktopBoxes = await Promise.all(features.map(({ title }) => featureBlock(page, title).boundingBox()))
     expect(desktopBoxes.every((box) => box !== null)).toBe(true)
@@ -237,5 +242,7 @@ test.describe('Home layout (#59)', () => {
 
     await page.getByRole('button', { name: '开始实践' }).click()
     await expect(page).toHaveURL(/\/practice$/)
+    await testInfo.attach('document-loads', { body: JSON.stringify(documents), contentType: 'application/json' })
+    expect(documents).toHaveLength(1)
   })
 })
