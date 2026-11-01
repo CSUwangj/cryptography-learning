@@ -203,6 +203,10 @@ Environment failures require honest limits and the normal permission flow.
 
 ## Diagnose uncertain check failures
 
+Apply the handoff guide's [verification scope and stopping](../../../docs/agents/review-handoff.md#verification-scope-and-stopping)
+rules across implementation, diagnosis and review; delegation does not grant
+another investigation budget.
+
 1. Preserve the first failed command, exit/timeout evidence and logs or browser
    traces. Classify the observed failure as an assertion, permission/launch error,
    timeout or unfinished process. A warning alone does not establish the cause.
@@ -210,10 +214,11 @@ Environment failures require honest limits and the normal permission flow.
    and permission context; use the planner-selected frontend suite for immediate
    acceptance and the nightly workflow for full coverage. Resolve permission
    failures through the normal host flow.
-3. When causality remains uncertain, compare target and base using complete
-   checkouts, required fixtures and equivalent dependencies/settings. Keep the
-   implementation checkout intact. Change one factor at a time where practical;
-   record confounders when that is not possible.
+3. Resolve ordinary failures from existing logs and source first; apply the
+   handoff guide's bounded test-budget adjustment for finite slow tests.
+   If a base comparison is necessary within the authorized investigation budget,
+   use complete checkouts and equivalent fixtures/dependencies/settings. Keep
+   the implementation checkout intact and record comparison confounders.
 4. Report what the evidence establishes: a base failure predates the change but
    does not prove every affected behavior is unchanged. A later pass preserves
    earlier failure history; focused success does not establish nightly full-suite coverage.
@@ -266,13 +271,15 @@ IDs and preserves each axis; handle reports without making the maintainer relay 
   Review stops when confirmed blockers are resolved; no finding quota or claim
   of exhausting every possible defect.
 
-Pre-review may repeat while evidence shows progress; there is no fixed round cap.
-Use the existing finding notes to record changes and results, so renamed findings
-or repeated opinions cannot masquerade as progress. Link related counterexamples
-to the same source-backed rule and count its repair rounds across affected paths.
+Review stage transitions do not require another run of unchanged passing checks.
+Use the handoff guide's investigation budget for repair rechecks and record
+changes/results against the same source-backed rule across affected paths.
+When that budget is exhausted, report the remaining gap before continuing.
 
 ## When repairs stall or recur
 
+Apply the verification stopping rule before launching escalation diagnosis or
+repair; an escalation threshold is not authorization for more investigation.
 Trigger escalation when the same confirmed blocker remains after two consecutive
 repair attempts without new evidence or improvement, or fixes repeatedly undo
 each other. Also escalate when two repair rounds for the same authorized rule

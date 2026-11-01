@@ -73,7 +73,7 @@ export type ValueCellProps = {
 } & (PassiveValueCellProps | SelectableValueCellProps)
 
 export const ValueCell = ({ children, state = 'default', ...selection }: ValueCellProps): ReactNode => (
-  <td aria-label={selection.ariaLabel} data-state={state} style={stateStyles[state]}>
+  <td aria-label={selection.ariaLabel ?? (typeof children === 'string' ? children : undefined)} data-state={state} style={stateStyles[state]}>
     {'onSelect' in selection
       ? <button aria-label={selection.ariaLabel} aria-pressed={state === 'selected'} onClick={selection.onSelect} type="button">{hexadecimalValue(children)}</button>
       : hexadecimalValue(children)}

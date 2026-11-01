@@ -13,6 +13,40 @@
   interactions, rejected alternatives and reasons, and unresolved questions in
   the issue before implementing dependent work. Silence is not approval.
 
+## Verification scope and stopping
+
+Start with the reported failure, changed behavior and directly affected consumers.
+Use the planner-selected checks as the required handoff baseline. Add supplemental
+checks only for an explicit acceptance criterion or a concrete regression path;
+record what the extra check proves. A shared component justifies its affected
+consumers, not every suite in the repository. Full-suite commands in `AGENTS.md`
+are references, not an additional checklist on top of the plan.
+
+Default to one relevant validation round and, if needed, one affected recheck
+after a correction. Run final required checks once on the candidate and reuse
+passing evidence across review stages while its inputs remain unchanged.
+Role changes, renamed findings and new packets do not reset the investigation
+budget. After two unsuccessful rounds for the same failure, report the specific
+remaining gap and proposed next step; obtain maintainer direction before more
+diagnostic variants, base comparisons or performance recordings unless those
+steps were already explicitly authorized. A failure does not by itself authorize
+product optimization or broader validation.
+
+For a timeout, inspect the existing log and source first. Distinguish a stalled
+operation or violated product deadline from a finite test sequence making
+progress. For the latter, increase only the affected test's budget to a bounded
+value supported by observed duration or an existing comparable case, then run
+one focused recheck. This is an authorized test-budget adjustment unless the
+ticket explicitly forbids it; preserve assertions, retries and application
+deadlines, and retain the original timeout evidence. A repeated timeout ends
+this branch with its remaining gap rather than starting another investigation.
+
+This budget limits investigation effort, not evidence honesty. Required failed
+or unrun checks remain incomplete; a focused pass is not a full-suite pass.
+An acceptance exception still requires explicit maintainer approval under the
+delivery rules. Report a planner mismatch instead of silently replacing its
+frozen command or expanding the plan to chase a passing result.
+
 ## Transfer the work
 
 Give the next agent these facts, with links rather than copied conversation:

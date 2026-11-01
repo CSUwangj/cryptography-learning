@@ -384,6 +384,23 @@ describe('Learning presentation primitives', () => {
 
 
 describe('Hexadecimal value display', () => {
+  it('keeps complete hexadecimal cell and row names while honoring explicit labels', () => {
+    render(<TraceTable caption="Round keys" headers={['Stage', 'Value', 'Reference', 'Selection']}>
+      <ComparisonRow label="Round key">
+        <ValueCell>0x00010203</ValueCell>
+        <ValueCell ariaLabel="Reference key">0x00a</ValueCell>
+        <ValueCell ariaLabel="Inspect round key" onSelect={() => undefined}>0x000b</ValueCell>
+      </ComparisonRow>
+    </TraceTable>)
+
+    const value = screen.getByRole('cell', { name: '0x00010203' })
+    expect(value.textContent).toBe('0x00010203')
+    expect(screen.getByRole('row', { name: /Round key 0x00010203/ })).toContainElement(value)
+    expect(screen.getByRole('cell', { name: 'Reference key' }).textContent).toBe('0x00a')
+    expect(screen.getByRole('cell', { name: 'Inspect round key' }).textContent).toBe('0x000b')
+    expect(screen.getByRole('button', { name: 'Inspect round key' }).textContent).toBe('0x000b')
+  })
+
   it.each([
     { value: '0x00010203', bytes: ['00', '01', '02', '03'] },
     { value: '0x00a', bytes: ['0', '0a'] },

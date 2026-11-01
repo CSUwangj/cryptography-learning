@@ -220,7 +220,7 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
     await page.screenshot({ path: testInfo.outputPath(`aes192-${locale}-light-narrow.png`) })
     await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' })
-    await expect(page.locator('[data-theme="dark"]')).toBeVisible()
+    await expect.poll(() => page.locator('[data-theme="dark"]').isVisible()).toBe(true)
     await expect(last).toHaveAttribute('aria-pressed', 'true')
     await expect(last).toBeFocused()
     await page.screenshot({ path: testInfo.outputPath(`aes192-${locale}-dark-narrow.png`) })

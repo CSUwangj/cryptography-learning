@@ -40,7 +40,11 @@
 
 ## Verification
 
-Run the smallest checks that cover the change, and report any checks not run:
+Run the smallest checks that cover the change, normally one validation round and
+one affected recheck after a correction. Before expanding scope or investigating
+a timeout, follow [verification scope and stopping](docs/agents/review-handoff.md#verification-scope-and-stopping).
+Report checks not run. These full-suite commands are references for applicable
+gates, not instructions to run every suite for every edit:
 
 - Backend or schema: `cd backend && cargo test --locked -- --nocapture`
 - Frontend: use `frontend/.nvmrc`, then `cd frontend && npm ci && npm run typecheck && npm test -- --maxWorkers=1 && npm run build`

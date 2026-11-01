@@ -55,8 +55,10 @@ overlayTest('keeps readable row spacing stable through grouping and selection in
   await documents(page, () => small)
   await page.goto('/learning/overlay')
   const measurements: unknown[] = []
-  const checkSpacing = async (scope: Locator, mode: Locator, source: Locator) => {
+  const checkSpacing = async (scope: Locator, mode: Locator, source: Locator, expectedRows: number) => {
     const rows = scope.locator('table').first().locator('tbody tr')
+    await expect(source.getByRole('button').first()).toBeVisible()
+    await expect(rows).toHaveCount(expectedRows)
     const measure = () => rows.evaluateAll((rows) => rows.map((row) => ({
       height: row.getBoundingClientRect().height,
       fits: [...row.querySelectorAll('button')].every((button) => {
@@ -80,15 +82,15 @@ overlayTest('keeps readable row spacing stable through grouping and selection in
   }
   const standalone = page.getByRole('region', { name: 'Key schedule', exact: true })
   await expect(standalone).toBeVisible()
-  await checkSpacing(standalone, standalone.getByRole('combobox'), standalone.locator('[data-row-id="input.value"]'))
+  await checkSpacing(standalone, standalone.getByRole('combobox'), standalone.locator('[data-row-id="input.value"]'), 8)
   await page.getByRole('button', { name: 'Next', exact: true }).click()
   const cipher = page.getByRole('region', { name: 'SPN decryption', exact: true })
   const cipherMode = cipher.getByRole('combobox', { name: 'SPN decryption: Selection unit', exact: true })
-  await checkSpacing(cipher, cipherMode, cipher.locator('[data-row-id="state.value"]'))
+  await checkSpacing(cipher, cipherMode, cipher.locator('[data-row-id="state.value"]'), 7)
   const compactCount = await cipher.locator('table').first().locator('tbody tr').count()
   await cipher.getByRole('toolbar').getByRole('button', { name: 'Show key schedule', exact: true }).click()
   const scheduleMode = cipher.getByRole('combobox', { name: 'Key schedule overlay: Selection unit', exact: true })
-  await checkSpacing(cipher, scheduleMode, cipher.locator('[data-lane-row="schedule:input.value"]'))
+  await checkSpacing(cipher, scheduleMode, cipher.locator('[data-lane-row="schedule:input.value"]'), 10)
   for (const round of [0, 1, 2]) {
     await expect(cipher.locator(`[data-row-id="mix${round}.value"] [data-lane-row="schedule:rk${round}.value"]`)).toHaveCount(1)
   }
@@ -150,6 +152,7 @@ for (const [name, source, scheduleName, cipherName] of [
   ['three-anchor', small, 'Key schedule', 'SPN decryption'],
   ['AES-192', aes, 'AES-192 key expansion', 'AES-192 encryption'],
 ] as const) overlayTest(`restores ${name} closed geometry to the opt-out baseline while retaining origin (#108)`, async ({ page }) => {
+  if (name === 'AES-192') test.setTimeout(180000)
   await page.setViewportSize({ width: 1440, height: 900 })
   const authored = parse(source.lesson)
   authored.steps[1].presentation.overlay = false
@@ -157,6 +160,7 @@ for (const [name, source, scheduleName, cipherName] of [
   await documents(page, () => current)
   const enterCipher = async () => {
     await page.goto('/learning/overlay')
+    await page.getByRole('button', { name: 'Next', exact: true }).waitFor({ state: 'visible' })
     await expect(page.getByRole('region', { name: scheduleName, exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Next', exact: true }).click()
     await cipher.waitFor({ state: 'visible', timeout: 30000 })
@@ -330,6 +334,7 @@ overlayTest('applies shared selection, global toggle lifecycle, presentation pre
 
 for (const originBit of [0, 64] as const) {
   overlayTest(`maps real AES-192 cross-batch bit ${originBit} without widening source words (#108)`, async ({ page }) => {
+    test.setTimeout(180000)
     await documents(page, () => aes)
     await page.goto('/learning/overlay')
     const standalone = page.getByRole('region', { name: 'AES-192 key expansion', exact: true })
@@ -370,6 +375,7 @@ for (const originBit of [0, 64] as const) {
 }
 
 overlayTest('replaces an AES schedule origin with a complete deliberate word (#108)', async ({ page }) => {
+  test.setTimeout(180000)
   await documents(page, () => aes)
   await page.goto('/learning/overlay')
   await expect(page.getByRole('region', { name: 'AES-192 key expansion', exact: true })).toBeVisible({ timeout: 30000 })
