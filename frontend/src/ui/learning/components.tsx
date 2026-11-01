@@ -512,6 +512,65 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
   })
   const controlStyle: CSSProperties = { paddingBlock: relationships.length ? lineageGap : undefined, whiteSpace: 'nowrap' }
 
+  // Geometry updates only redraw lineage; rebuilding dense controls repeats expensive React work.
+  const tables = useMemo(() => presentation.sections.map((section, sectionIndex) => {
+    const hasControls = section.rows.some((row) => row.selectableBits?.length || row.selectableKey)
+    const hasDetails = section.rows.some((row) => row.detail)
+    const lane = laneOpen && hasControls && section.kind === 'trace' ? presentation.keyExpansionLane : undefined
+    const key = presentation.unitSelection ? `${section.kind}-${sectionIndex}` : `${section.kind}-${section.caption}`
+    const table = <TraceTable caption={section.caption} headers={section.headers} laneHeaders={lane?.headers} joinRows={!!lane} key={key}>
+      {lane
+        ? (() => {
+            const layout = laneLayout(section.rows, lane.rows)
+            const first = layout.findIndex((entry) => entry.lane)
+            const last = layout.findLastIndex((entry) => entry.lane)
+            return layout.map(({ row, lane: laneRow }, index) => {
+              const inLane = index >= first && index <= last
+              // A tinted, bordered block keeps the schedule from reading as part of the cipher trace.
+              const laneStyle: CSSProperties = inLane
+                ? {
+                    ...controlStyle,
+                    backgroundColor: learningColors.lane,
+                    borderTop: index === first ? `2px solid ${learningColors.laneBorder}` : undefined,
+                    borderBottom: index === last ? `2px solid ${learningColors.laneBorder}` : undefined,
+                  }
+                : controlStyle
+              return <ComparisonRow
+                key={row?.id ?? `lane-${laneRow!.id}`}
+                label={row?.label ?? ''}
+                rowId={row?.id}
+                state={row?.state}
+              >
+                {(row ?? section.rows[0]).cells.map((cell, cellIndex) => row
+                  ? <ValueCell ariaLabel={cell.ariaLabel} key={cellIndex} state={cell.state}>{cell.value}</ValueCell>
+                  : <td key={cellIndex} />)}
+                <td style={controlStyle}>{row?.selectableKey && renderKeyChip(row.selectableKey)}</td>
+                {Array.from({ length: lane.headers ? lane.headers.length - 1 : 1 }, (_, cellIndex) => <td
+                  aria-label={laneRow?.cells?.[cellIndex]?.ariaLabel ?? (typeof laneRow?.cells?.[cellIndex]?.value === 'string' ? laneRow.cells[cellIndex].value : undefined)}
+                  data-lane-cell={inLane ? 'true' : undefined}
+                  key={cellIndex}
+                  style={{ ...laneStyle, borderInlineStart: inLane && cellIndex === 0 ? `2px solid ${learningColors.laneBorder}` : undefined, paddingInline: 8 }}
+                >{laneRow?.cells ? hexadecimalValue(laneRow.cells[cellIndex]?.value) : laneRow?.label}</td>)}
+                <td data-lane={inLane ? 'true' : undefined} data-lane-cell={inLane ? 'true' : undefined} data-lane-row={laneRow?.id} style={{ ...laneStyle, borderInlineEnd: inLane ? `2px solid ${learningColors.laneBorder}` : undefined }}>
+                  {laneRow && renderBits(laneRow, laneUnitSize)}
+                </td>
+              </ComparisonRow>
+            })
+          })()
+        : section.rows.map((row) => <ComparisonRow key={row.id} label={row.label} rowId={row.id} state={row.state}>
+            {row.cells.map((cell, index) => <ValueCell ariaLabel={cell.ariaLabel} key={index} state={cell.state}>{cell.value}</ValueCell>)}
+            {hasControls && <td style={controlStyle}>{renderBits(row)}{row.selectableKey && renderKeyChip(row.selectableKey)}</td>}
+            {hasDetails && <ValueCell>{row.detail}</ValueCell>}
+          </ComparisonRow>)}
+    </TraceTable>
+    return lane
+      ? <div aria-label={lane.caption} key={key} role="region">
+          {!lane.sharedSelection && <button onClick={() => { setOpenKeyId(undefined); select(undefined) }} type="button">{lane.closeLabel}</button>}
+          {table}
+        </div>
+      : table
+  }), [presentation, selected, related, openKeyId, unitSize, laneUnitSize])
+
   useLayoutEffect(() => {
     const container = lineageContainer.current
     if (!container) return
@@ -560,62 +619,7 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
         selected={selected}
         width={lineage.width}
       />
-      {presentation.sections.map((section, sectionIndex) => {
-        const hasControls = section.rows.some((row) => row.selectableBits?.length || row.selectableKey)
-        const hasDetails = section.rows.some((row) => row.detail)
-        const lane = laneOpen && hasControls && section.kind === 'trace' ? presentation.keyExpansionLane : undefined
-        const key = presentation.unitSelection ? `${section.kind}-${sectionIndex}` : `${section.kind}-${section.caption}`
-        const table = <TraceTable caption={section.caption} headers={section.headers} laneHeaders={lane?.headers} joinRows={!!lane} key={key}>
-          {lane
-            ? (() => {
-                const layout = laneLayout(section.rows, lane.rows)
-                const first = layout.findIndex((entry) => entry.lane)
-                const last = layout.findLastIndex((entry) => entry.lane)
-                return layout.map(({ row, lane: laneRow }, index) => {
-                  const inLane = index >= first && index <= last
-                  // A tinted, bordered block keeps the schedule from reading as part of the cipher trace.
-                  const laneStyle: CSSProperties = inLane
-                    ? {
-                        ...controlStyle,
-                        backgroundColor: learningColors.lane,
-                        borderTop: index === first ? `2px solid ${learningColors.laneBorder}` : undefined,
-                        borderBottom: index === last ? `2px solid ${learningColors.laneBorder}` : undefined,
-                      }
-                    : controlStyle
-                  return <ComparisonRow
-                    key={row?.id ?? `lane-${laneRow!.id}`}
-                    label={row?.label ?? ''}
-                    rowId={row?.id}
-                    state={row?.state}
-                  >
-                    {(row ?? section.rows[0]).cells.map((cell, cellIndex) => row
-                      ? <ValueCell ariaLabel={cell.ariaLabel} key={cellIndex} state={cell.state}>{cell.value}</ValueCell>
-                      : <td key={cellIndex} />)}
-                    <td style={controlStyle}>{row?.selectableKey && renderKeyChip(row.selectableKey)}</td>
-                    {Array.from({ length: lane.headers ? lane.headers.length - 1 : 1 }, (_, cellIndex) => <td
-                      data-lane-cell={inLane ? 'true' : undefined}
-                      key={cellIndex}
-                      style={{ ...laneStyle, borderInlineStart: inLane && cellIndex === 0 ? `2px solid ${learningColors.laneBorder}` : undefined, paddingInline: 8 }}
-                    >{laneRow?.cells ? hexadecimalValue(laneRow.cells[cellIndex]?.value) : laneRow?.label}</td>)}
-                    <td data-lane={inLane ? 'true' : undefined} data-lane-cell={inLane ? 'true' : undefined} data-lane-row={laneRow?.id} style={{ ...laneStyle, borderInlineEnd: inLane ? `2px solid ${learningColors.laneBorder}` : undefined }}>
-                      {laneRow && renderBits(laneRow, laneUnitSize)}
-                    </td>
-                  </ComparisonRow>
-                })
-              })()
-            : section.rows.map((row) => <ComparisonRow key={row.id} label={row.label} rowId={row.id} state={row.state}>
-                {row.cells.map((cell, index) => <ValueCell ariaLabel={cell.ariaLabel} key={index} state={cell.state}>{cell.value}</ValueCell>)}
-                {hasControls && <td style={controlStyle}>{renderBits(row)}{row.selectableKey && renderKeyChip(row.selectableKey)}</td>}
-                {hasDetails && <ValueCell>{row.detail}</ValueCell>}
-              </ComparisonRow>)}
-        </TraceTable>
-        return lane
-          ? <div aria-label={lane.caption} key={key} role="region">
-              {!lane.sharedSelection && <button onClick={() => { setOpenKeyId(undefined); select(undefined) }} type="button">{lane.closeLabel}</button>}
-              {table}
-            </div>
-          : table
-      })}
+      {tables}
     </div>
     {laneOpen && presentation.keyExpansionLane?.originalOrder && <details>
       <summary>{presentation.keyExpansionLane.originalOrder.caption}</summary>

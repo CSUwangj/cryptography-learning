@@ -9,6 +9,8 @@ import { SpnDemo } from './SpnDemo'
 
 const SlidingWindowDemo = lazy(() => import('./SlidingWindowDemo').then((module) => ({ default: module.SlidingWindowDemo })))
 
+const SpnV2Demo = lazy(() => import('./SpnV2Demo').then((module) => ({ default: module.SpnV2Demo })))
+
 const Aes192OverlayPrototype = lazy(() => import('./Aes192OverlayPrototype').then((module) => ({ default: module.Aes192OverlayPrototype })))
 const LearningShellPrototype = lazy(() => import('./LearningShellPrototype').then((module) => ({ default: module.LearningShellPrototype })))
 const UiOptimizationPrototype = lazy(() => import('./UiOptimizationPrototype').then((module) => ({ default: module.UiOptimizationPrototype })))
@@ -24,6 +26,9 @@ const Demos: React.FC = () => {
   if (import.meta.env.DEV && window.location.pathname === '/testaescipher' && new URLSearchParams(window.location.search).get('prototype') === 'overlay') {
     return <Suspense fallback={<div role="status" aria-busy="true" />}><Aes192OverlayPrototype /></Suspense>
   }
+  if (window.location.pathname === '/testspnv2') {
+    return <Suspense fallback={<div role="status" aria-busy="true" />}><SpnV2Demo /></Suspense>
+  }
   const Demo = {
     '/testspn': SpnDemo,
     '/testavalanche': AvalancheDemo,
@@ -33,7 +38,7 @@ const Demos: React.FC = () => {
   }[window.location.pathname]
   return <>
     <nav>
-      <a href="/testspn">/testspn</a> · <a href="/testavalanche">/testavalanche</a> · <a href="/testkeyexpansion">/testkeyexpansion</a> · <a href="/testaescipher">/testaescipher</a> · <a href="/testaesavalanche">/testaesavalanche</a> ·{' '}
+      <a href="/testspn">/testspn</a> · <a href="/testspnv2">{t('spnV2.title', { ns: 'demos' })}</a> · <a href="/testavalanche">/testavalanche</a> · <a href="/testkeyexpansion">/testkeyexpansion</a> · <a href="/testaescipher">/testaescipher</a> · <a href="/testaesavalanche">/testaesavalanche</a> ·{' '}
       <label>{t('nav.language')} <select value={i18n.resolvedLanguage ?? 'en-US'} onChange={(event) => { void i18n.changeLanguage(event.target.value) }}>
         <option value="en-US">{t('i18n.en-US')}</option>
         <option value="zh-CN">{t('i18n.zh-CN')}</option>

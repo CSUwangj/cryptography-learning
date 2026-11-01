@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import React from 'react'
+import React, { useMemo } from 'react'
 import { hex, type CompiledGraph, type AlphabetMapping, type AlphabetPolicyValue, type AlphabetTextValue, type AvalancheComparison, type WorkerExecutionSnapshot } from 'crypto_graph'
 import type { LessonPresentation, LessonValueReference } from '../lesson_runtime'
 import { AvalancheRenderer } from './Avalanche'
@@ -90,9 +90,15 @@ export const RenderHost: React.FC<RenderHostProps> = (props) => {
       'step' in reference && reference.output.startsWith('round-key-'))
     : undefined
   const keyScheduleExecution = roundKeySource && props.allSnapshots?.[roundKeySource.step]
-  const presentation = props.presentation?.labels && props.lessonTexts
+  const presentation = useMemo(() => props.presentation?.labels && props.lessonTexts
     ? { ...props.presentation, labels: Object.fromEntries(Object.entries(props.presentation.labels).map(([identity, textId]) => [identity, props.lessonTexts![textId] ?? textId])) }
-    : props.presentation
+    : props.presentation, [props.presentation, props.lessonTexts])
+  const spn = useMemo(() => presentation?.kind === 'spn-cipher' && props.compiledGraph
+    ? { graph: props.compiledGraph, presentation } : undefined, [presentation, props.compiledGraph])
+  const overlay = useMemo(() => props.overlay && { ...props.overlay, presentation: props.overlay.presentation && {
+    ...props.overlay.presentation,
+    ...(props.overlay.presentation.labels && props.lessonTexts ? { labels: Object.fromEntries(Object.entries(props.overlay.presentation.labels).map(([identity, textId]) => [identity, props.lessonTexts![textId] ?? textId])) } : {}),
+  } }, [props.overlay?.anchors, props.overlay?.execution, props.overlay?.graph, props.overlay?.presentation, props.lessonTexts])
   return <IsolatedRenderer comparison={props.comparison} execution={props.execution} key={props.executionIdentity}>
       {presentation?.kind === 'block-cipher' && props.execution
         ? <BlockCipherRenderer
@@ -112,11 +118,8 @@ export const RenderHost: React.FC<RenderHostProps> = (props) => {
               execution={props.execution}
               executionIdentity={props.executionIdentity}
               primitiveLabels={presentation.labels}
-              spn={{ graph: props.compiledGraph, presentation }}
-              overlay={props.overlay && { ...props.overlay, presentation: props.overlay.presentation && {
-                ...props.overlay.presentation,
-                ...(props.overlay.presentation.labels && props.lessonTexts ? { labels: Object.fromEntries(Object.entries(props.overlay.presentation.labels).map(([identity, textId]) => [identity, props.lessonTexts![textId] ?? textId])) } : {}),
-              } }}
+              spn={spn}
+              overlay={overlay}
             />
         : !props.invocation && props.execution
         ? <ExecutionTraceRenderer

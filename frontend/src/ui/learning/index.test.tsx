@@ -1,7 +1,7 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   ComparisonRow,
   LineageDiagram,
@@ -315,6 +315,46 @@ describe('Learning presentation primitives', () => {
     expect(document.querySelector('svg[data-lineage]')?.querySelectorAll('line')).toHaveLength(2)
   })
 
+  it('remeasures lineage without losing focused selection and refreshes changed content', async () => {
+    let offset = 0
+    let resize = () => {}
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback: ResizeObserverCallback) { resize = () => callback([], this) }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    })
+    const bounds = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return this.getAttribute('aria-label') === 'Output bit 0'
+        ? new DOMRect(100 + offset, 60, 10, 10) : new DOMRect(0, 0, 10, 10)
+    })
+    const user = userEvent.setup()
+    const view = render(<LearningPresentationView presentation={presentation()} />)
+    try {
+      const output = screen.getByRole('button', { name: 'Output bit 0' })
+      await user.click(output)
+      expect(document.querySelector('svg[data-lineage] line')).toHaveAttribute('x2', '105')
+      act(() => { offset = 20; resize() })
+      expect(document.querySelector('svg[data-lineage] line')).toHaveAttribute('x2', '125')
+      expect(output).toHaveFocus()
+      expect(output).toHaveAttribute('aria-pressed', 'true')
+
+      const updated = presentation()
+      view.rerender(<LearningPresentationView presentation={{
+        ...updated,
+        sections: updated.sections.map((section) => ({ ...section, rows: section.rows.map((row) => row.id === 'output'
+          ? { ...row, label: 'Updated output', cells: [{ value: '0x2' }] } : row) })),
+      }} />)
+      expect(screen.getByRole('rowheader', { name: 'Updated output' }).closest('tr')).toHaveTextContent('0x2')
+      expect(output).toHaveFocus()
+      expect(output).toHaveAttribute('aria-pressed', 'true')
+    } finally {
+      view.unmount()
+      bounds.mockRestore()
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('draws each visible group pair once and emphasizes every deliberately selected source bit (#109)', () => {
     render(<LineageDiagram aggregate height={80} width={120}
       locations={new Map([
@@ -399,6 +439,29 @@ describe('Hexadecimal value display', () => {
     expect(screen.getByRole('cell', { name: 'Reference key' }).textContent).toBe('0x00a')
     expect(screen.getByRole('cell', { name: 'Inspect round key' }).textContent).toBe('0x000b')
     expect(screen.getByRole('button', { name: 'Inspect round key' }).textContent).toBe('0x000b')
+  })
+
+  it('keeps passive scalar names contiguous without changing byte spans or caller labels and selection', async () => {
+    let selected = false
+    const user = userEvent.setup()
+    render(<TraceTable caption="Scalar values" headers={['Stage', 'Value', 'Named value', 'Selection']}>
+      <ComparisonRow label="State">
+        <ValueCell>0x0011</ValueCell>
+        <ValueCell ariaLabel="Named value">0x0011</ValueCell>
+        <ValueCell ariaLabel="Inspect value" onSelect={() => { selected = true }} state="selected">0x0011</ValueCell>
+      </ComparisonRow>
+    </TraceTable>)
+
+    const passive = screen.getByRole('cell', { name: '0x0011' })
+    expect(passive.textContent).toBe('0x0011')
+    expect([...passive.querySelectorAll('.learning-hex-byte')].map((byte) => byte.textContent)).toEqual(['00', '11'])
+    expect(screen.getByRole('row', { name: 'State 0x0011 Named value Inspect value' })).toBeVisible()
+    expect(screen.getByRole('cell', { name: 'Named value' })).toHaveTextContent('0x0011')
+    const control = screen.getByRole('button', { name: 'Inspect value' })
+    expect(control).toHaveAttribute('aria-pressed', 'true')
+    control.focus()
+    await user.keyboard('{Enter}')
+    expect(selected).toBe(true)
   })
 
   it.each([

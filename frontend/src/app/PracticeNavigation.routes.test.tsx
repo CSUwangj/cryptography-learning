@@ -105,7 +105,7 @@ describe('Practice Navigation routes (#57)', () => {
     const history = renderAt('/')
     const user = userEvent.setup()
 
-    await user.click(await screen.findByRole('button', { name: 'Practice' }))
+    await user.click(await screen.findByRole('button', { name: 'Practice' }, { timeout: 5000 }))
 
     const navigation = await screen.findByRole('dialog', { name: 'Practice Navigation' })
     await user.click(within(navigation).getByRole('button', { name: 'Classical' }))

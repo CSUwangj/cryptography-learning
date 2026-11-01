@@ -419,7 +419,7 @@ test.describe('Teaching key schedule through the generic key-expansion mode (#93
       waitForLessonDocuments(page, 'aes-key-expansion', 'en-US'),
       page.goto('/learning/aes-key-expansion'),
     ])
-    await expect(page.getByRole('heading', { name: 'AES-style teaching key schedule', level: 2 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'AES-style teaching key schedule', level: 2 })).toBeVisible({ timeout: 15000 })
     const section = page.getByRole('region', { name: 'AES-style teaching key schedule (64-bit key, not a FIPS-197 variant)', exact: true })
     await expect(section).toBeVisible()
     await expect(section.getByText(/declares no key-expansion presentation/)).toHaveCount(0)

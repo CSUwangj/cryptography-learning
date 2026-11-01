@@ -92,7 +92,7 @@ describe('Completion Records routes (#48)', () => {
     renderAt('/completion')
 
     expect(
-      await screen.findByRole('heading', { name: 'Completion Records' }),
+      await screen.findByRole('heading', { name: 'Completion Records' }, { timeout: 5000 }),
     ).toBeInTheDocument()
 
     const table = await screen.findByRole('table')

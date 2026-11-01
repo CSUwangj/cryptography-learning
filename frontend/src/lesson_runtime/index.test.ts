@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
-import { bits, executeWorkerRequest, hex } from '../crypto_graph'
+import { bits, executeWorkerRequest, hex, type BitsValue } from '../crypto_graph'
 import { aesKeyExpansionGraphNodesYaml } from '../../demos/aesKeyExpansionLesson'
 import { aesCipherDemoDocuments } from '../../demos/aes128CipherLesson'
 import { teachingSpnDemoDocuments } from '../../demos/teachingSpnLesson'
@@ -101,7 +101,7 @@ describe('Lesson Runtime compiler (#29)', () => {
     }
   })
 
-  it('executes the authored v2 Teaching SPN fixture with bilingual label overrides', async () => {
+  it.each(['en-US', 'zh-CN'])('executes four authored Teaching SPN rounds through the Lesson session in %s', async (language) => {
     const compiled = compileLesson(teachingSpnV2DemoDocuments)
     expect(compiled).toMatchObject({ ok: true, value: { notices: [], steps: [{ presentation: {
       kind: 'spn-cipher',
@@ -109,29 +109,54 @@ describe('Lesson Runtime compiler (#29)', () => {
     } }] } })
     if (!compiled.ok) return
     const previousWorker = globalThis.Worker
+    // This seam executes real worker requests in-process; browser tests prove Worker launch.
     globalThis.Worker = WorkerStub as unknown as typeof Worker
     try {
-      const session = createBrowserLessonSession(teachingSpnV2DemoDocuments, 'en-US', i18n.getFixedT('en-US', 'translations'))
+      const session = createBrowserLessonSession(teachingSpnV2DemoDocuments, language, i18n.getFixedT(language, 'translations'))
       expect(session.ok).toBe(true)
       if (!session.ok) return
-      const entered = await session.value.enter()
-      expect(entered.ok).toBe(true)
-      if (entered.ok) {
+      try {
+        const entered = await session.value.enter()
+        expect(entered.ok).toBe(true)
+        if (!entered.ok) return
         const snapshot = entered.value.snapshots.execute
-        expect(hex(snapshot.outputs['result.value'] as never)).toBe('0xc491')
-        expect(snapshot.trace.map((event) => [event.path, 'primitive' in event ? event.primitive : undefined, 'round' in event ? event.round : undefined])).toEqual([
-          ['state.value', 'core.source@1', 0],
-          ['key.value', 'core.source@1', 1],
-          ['key-mix.value', 'core.xor@1', 1],
-          ['substitute.value', 'core.substitute-nibbles@1', 1],
-          ['permute.value', 'spn.permute-gather@1', 1],
-          ['result.value', 'core.output@1', 1],
-        ])
-        expect(snapshot.trace.map((event) => ['value' in event && event.value ? hex(event.value as never) : undefined])).toEqual([
-          ['0x1234'], ['0x0f0f'], ['0x1d3b'], ['0x491c'], ['0xc491'], ['0xc491'],
-        ])
+        expect(hex(snapshot.outputs['result.value'] as BitsValue)).toBe('0x674b')
+        // Independent nibble arithmetic from #95's constants, recorded in the requirements verdict.
+        const rounds = [
+          ['0x1d3b', '0x491c', '0xc491'],
+          ['0xcb9e', '0x5ca0', '0x05ca'],
+          ['0x0ac5', '0xe65f', '0xfe65'],
+          ['0xf16a', '0x74b6', '0x674b'],
+        ]
+        for (const [index, values] of rounds.entries()) {
+          const round = index + 1
+          for (const [stage, primitive, value] of [
+            ['key-mix', 'core.xor@1', values[0]],
+            ['substitute', 'core.substitute-nibbles@1', values[1]],
+            ['permute', 'spn.permute-gather@1', values[2]],
+          ]) {
+            const event = snapshot.trace.find((event) => event.path === `${stage}-${round}.value`)
+            expect(event).toMatchObject({ primitive, round, role: 'state', unit: 4 })
+            expect(event && 'value' in event && hex(event.value as BitsValue)).toBe(value)
+          }
+        }
+        expect(entered.value.executionDiagnostics).toEqual({})
+        expect(entered.value.checkResults.execute).toMatchObject({ matched: true })
+        const graph = compiled.value.graphs.cipher
+        for (const round of [1, 2, 3, 4]) {
+          expect(snapshot.trace.find((event) => event.path === `substitute-${round}.value`)).toMatchObject({
+            parameters: { sBox: { constant: 'teaching-spn-sbox' } },
+          })
+          expect(graph.graph.nodes.find((node) => node.id === `substitute-${round}`)?.parameters).toMatchObject({
+            sBox: [14, 4, 13, 1, 2, 15, 11, 8, 3, 10, 6, 12, 5, 9, 0, 7],
+          })
+          expect(graph.lineage?.filter((edge) => edge.target === `permute-${round}.value` && edge.targetBit === 5)).toEqual([
+            { source: `substitute-${round}.value`, sourceBit: 1, target: `permute-${round}.value`, targetBit: 5 },
+          ])
+        }
+      } finally {
+        session.value.dispose()
       }
-      session.value.dispose()
     } finally {
       globalThis.Worker = previousWorker
     }
