@@ -15,7 +15,7 @@ jobs:
       encoded: ${{ steps.plan.outputs.encoded }}
       kind: ${{ steps.plan.outputs.kind }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - id: plan
@@ -62,7 +62,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.groups) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.sha }}
       - uses: dtolnay/rust-toolchain@master
@@ -70,7 +70,7 @@ jobs:
         with:
           toolchain: 1.97.0
           components: rustfmt, clippy
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         if: ${{ matrix.group == 'backend' }}
         with:
           path: |
@@ -78,7 +78,7 @@ jobs:
             ~/.cargo/git
             backend/target
           key: rust-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml', 'backend/Cargo.lock') }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         if: ${{ matrix.group == 'frontend' || matrix.browser }}
         with:
           node-version-file: frontend/.nvmrc
@@ -97,9 +97,9 @@ jobs:
         if: ${{ matrix.browser }}
         working-directory: frontend
         run: npx playwright install --with-deps chromium
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
         if: ${{ matrix.group == 'image' }}
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         id: buildkit-cache
         if: ${{ matrix.group == 'image' }}
         with:

@@ -21,25 +21,27 @@ terminal text or a browser key event.
 - Evidence: <CI run URL, or manual screenshot/log attachment>
 ```
 
-## CI: `macos14-chrome-cmd-v`
+## CI: `macos-chrome-cmd-v`
 
-The Build workflow runs this on a real `macos-14` runner using Playwright's
+The Nightly workflow runs this on a real `macos-latest` runner using Playwright's
 branded stable Google Chrome channel. It places `cmd-v-native` on the system
 clipboard, focuses the terminal, and dispatches Cmd+V through branded Chrome on
 the real macOS runner. It records the complete Challenge-bound payload plus Async
 Clipboard read count. The expected payload is exactly
 `63 6d 64 2d 76 2d 6e 61 74 69 76 65`, decoded as `cmd-v-native`, once, with
 zero Async Clipboard reads. Download the native compatibility artifact for the
-Markdown evidence record and failure diagnostics.
+Markdown evidence record and failure diagnostics. The check targets macOS
+rather than a pinned OS release; each record identifies the actual macOS
+version/build and Chrome version used.
 
-## Manual: `macos14-firefox-cmd-v`
+## Manual: `macos-firefox-cmd-v`
 
 1. From this checkout, use the Node version pinned in `frontend/.nvmrc`, then
    run `cd frontend && npm ci`. Start the fixture in one terminal with
    `python3 e2e/fixtures/browser_terminal_fixture.py`; keep the printed
    `ws://...` URL. In another terminal run
    `npx vite --host 127.0.0.1 --port 4177`.
-2. On macOS 14, select the U.S. input source and open the latest stable Mozilla
+2. On macOS, select the U.S. input source and open the latest stable Mozilla
    Firefox. Record its exact version and the macOS version/build. Open
    `http://127.0.0.1:4177/terminal-harness.html?url=<encoded fixture URL>`.
 3. Before copying, open the browser developer console and run exactly:
@@ -72,7 +74,7 @@ Markdown evidence record and failure diagnostics.
    `cmd-v-native`, count `1`, with no trailing CR or LF, and the read count
    must be `0`.
 6. Save a screenshot or harness log and fill one evidence record using
-   `macos14-firefox-cmd-v`.
+   `macos-firefox-cmd-v`.
 
 ## Manual: `windows11-chrome-altgr-q`
 

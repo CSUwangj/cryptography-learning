@@ -552,7 +552,7 @@ for (const language of ['en-US', 'zh-CN'] as const) overlayTest(`aligns cipher/s
   const rowShow = cipher.locator('[data-row-id]').getByRole('button', { name: showText, exact: true })
   const rowClose = cipher.locator('[data-row-id]').getByRole('button', { name: closeText, exact: true })
   const names = chinese ? ['4 位（半字节）', '8 位（字节）', '32 位（字）'] : ['4 bits (nibble)', '8 bits (byte)', '32 bits (word)']
-  for (const [index, size] of ['4', '8', '32'].entries()) await expect(cipherMode.getByRole('option', { name: names[index], exact: true })).toHaveAttribute('value', size)
+  for (const [index, size] of ['4', '8', '32'].entries()) await expect(cipherMode.locator(`option[value="${size}"]`)).toHaveText(names[index])
   await expect(show).toHaveAttribute('aria-pressed', 'false')
   await expect(rowShow).toHaveCount(3)
   await expect(rowShow).toHaveText([showText, showText, showText])
@@ -625,7 +625,7 @@ for (const language of ['en-US', 'zh-CN'] as const) overlayTest(`aligns cipher/s
   await expect(cipher.getByRole('columnheader', { name: chinese ? '来源' : 'Source', exact: true })).toBeVisible()
   await expect(cipher.locator('[data-lane-row="schedule:input.value"]').locator('..').getByRole('cell', { name: 'input.value', exact: true })).toBeVisible()
   const scheduleMode = cipher.getByRole('combobox').nth(1)
-  for (const [index, size] of ['4', '8', '32'].entries()) await expect(scheduleMode.getByRole('option', { name: names[index], exact: true })).toHaveAttribute('value', size)
+  for (const [index, size] of ['4', '8', '32'].entries()) await expect(scheduleMode.locator(`option[value="${size}"]`)).toHaveText(names[index])
   for (const size of ['16', '32']) {
     await scheduleMode.selectOption(size)
     for (const theme of ['light', 'dark'] as const) {
@@ -729,6 +729,10 @@ overlayTest('visually separates hexadecimal bytes in round keys and both schedul
       expect(separator.color).not.toBe('rgba(0, 0, 0, 0)')
     }
   }
+  const source = schedule.locator('[data-row-id="input.value"] td').nth(1)
+  await source.evaluate((cell) => { cell.style.font = '12px Arial, sans-serif' })
+  await checkBytes(source, '0x0001020304050607')
+  await source.evaluate((cell) => { cell.style.removeProperty('font') })
   for (const theme of ['light', 'dark'] as const) {
     if (theme === 'dark') await page.getByRole('button', { name: 'Dark', exact: true }).click()
     await checkBytes(schedule.locator('[data-row-id="input.value"] td').nth(1), '0x0001020304050607')

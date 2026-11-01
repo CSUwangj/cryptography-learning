@@ -16,6 +16,10 @@
   position: relative;
 }
 
+.learning-hex-byte {
+  display: inline-block;
+}
+
 .learning-hex-byte + .learning-hex-byte::before {
   content: '';
   left: -0.125ch;

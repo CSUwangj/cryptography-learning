@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
@@ -27,7 +27,7 @@ jobs:
             echo "finished_at=$(date -u -d "@$end" +%FT%TZ)"
             echo "duration_seconds=$((end - start))"
           } | tee tooling-timing.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: nightly-tooling-${{ github.sha }}
@@ -39,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
@@ -47,7 +47,7 @@ jobs:
         with:
           toolchain: 1.97.0
           components: rustfmt, clippy
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         id: rust-cache
         with:
           path: |
@@ -73,7 +73,7 @@ jobs:
             echo "finished_at=$(date -u -d "@$end" +%FT%TZ)"
             echo "duration_seconds=$((end - start))"
           } >> ../backend-timing.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: nightly-backend-${{ github.sha }}
@@ -85,14 +85,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version-file: frontend/.nvmrc
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         id: npm-cache
         with:
           path: ~/.npm
@@ -123,7 +123,7 @@ jobs:
             echo "finished_at=$(date -u -d "@$end" +%FT%TZ)"
             echo "duration_seconds=$((end - start))"
           } >> ../frontend-timing.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: nightly-frontend-${{ github.sha }}
@@ -135,14 +135,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version-file: frontend/.nvmrc
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         id: npm-cache
         with:
           path: ~/.npm
@@ -167,7 +167,7 @@ jobs:
             echo "finished_at=$(date -u -d "@$end" +%FT%TZ)"
             echo "duration_seconds=$((end - start))"
           } | tee vite-timing.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: nightly-vite-${{ github.sha }}
@@ -181,21 +181,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
-      - uses: docker/setup-buildx-action@v3
-      - uses: actions/setup-node@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: actions/setup-node@v5
         with:
           node-version-file: frontend/.nvmrc
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         id: npm-cache
         with:
           path: ~/.npm
           key: nightly-image-npm-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
           restore-keys: nightly-image-npm-${{ runner.os }}-
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         id: buildkit-cache
         with:
           path: |
@@ -246,7 +246,7 @@ jobs:
         run: ./acceptance/completion/run.sh cryptography-learning-web-tier:nightly cryptography-learning-completion-relay:nightly
         env:
           COMPLETION_SKIP_NPM_CI: '1'
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: nightly-image-${{ github.sha }}
@@ -274,16 +274,16 @@ jobs:
             test "$result" = success || { echo "Required nightly stage result: $result" >&2; exit 1; }
           done
 
-  macos14-chrome-cmd-v:
-    name: macOS 14 Chrome Cmd+V compatibility (advisory)
+  macos-chrome-cmd-v:
+    name: macOS Chrome Cmd+V compatibility (advisory)
     continue-on-error: true
-    runs-on: macos-14
+    runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version-file: frontend/.nvmrc
       - name: Install frontend test dependencies
@@ -300,15 +300,15 @@ jobs:
           echo "value=macOS ${product_version} (build ${build_version})" >> "$GITHUB_OUTPUT"
       - name: Record native Cmd+V compatibility
         working-directory: frontend
-        run: npx playwright test --project=chromium --grep 'macos14-chrome-cmd-v'
+        run: npx playwright test --project=chromium --grep 'macos-chrome-cmd-v'
         env:
           PLAYWRIGHT_BROWSER_CHANNEL: chrome
           PLAYWRIGHT_ARTIFACT_DIR: ${{ runner.temp }}/native-terminal-compatibility
           NATIVE_COMPAT_OS_VERSION: ${{ steps.macos-version.outputs.value }}
           NATIVE_COMPAT_COMMAND: Cmd+V dispatched through branded Chrome on the real macOS runner
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: macos14-chrome-cmd-v-${{ github.sha }}
+          name: macos-chrome-cmd-v-${{ github.sha }}
           path: ${{ runner.temp }}/native-terminal-compatibility
           if-no-files-found: warn

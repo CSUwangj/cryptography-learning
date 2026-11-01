@@ -109,7 +109,7 @@ function nativeEvidenceRecord(
       ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
       : 'N/A (local execution)'
 
-  return `### macos14-chrome-cmd-v — ${passed ? 'PASS' : 'FAIL'}
+  return `### macos-chrome-cmd-v — ${passed ? 'PASS' : 'FAIL'}
 - Date: ${new Date().toISOString()}
 - Tested commit: ${process.env.GITHUB_SHA ?? 'local working tree'}
 - OS and exact version/build: ${process.env.NATIVE_COMPAT_OS_VERSION ?? process.platform}
@@ -221,7 +221,7 @@ test.describe('Terminal browser acceptance (#17)', () => {
     }
   })
 
-  test('macos14-chrome-cmd-v sends the exact native Cmd+V payload without Async Clipboard reads', async ({
+  test('macos-chrome-cmd-v sends the exact native Cmd+V payload without Async Clipboard reads', async ({
     page,
   }, testInfo) => {
     test.skip(process.platform !== 'darwin', 'Cmd+V is a macOS shortcut')
@@ -258,8 +258,8 @@ test.describe('Terminal browser acceptance (#17)', () => {
       })
       const browserVersion = page.context().browser()?.version() ?? 'unavailable'
       const record = nativeEvidenceRecord(browserVersion, state.outbound.join(''), clipboardReads)
-      await writeFile(testInfo.outputPath('macos14-chrome-cmd-v.md'), record)
-      await testInfo.attach('macos14-chrome-cmd-v evidence', {
+      await writeFile(testInfo.outputPath('macos-chrome-cmd-v.md'), record)
+      await testInfo.attach('macos-chrome-cmd-v evidence', {
         body: Buffer.from(record),
         contentType: 'text/markdown',
       })

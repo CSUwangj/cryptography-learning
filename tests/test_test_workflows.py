@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import os
+import re
 import subprocess
 import tempfile
 import unittest
@@ -10,6 +11,22 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class TestWorkflowTest(unittest.TestCase):
+    def test_workflows_use_actions_with_node24_runtimes(self):
+        minimum_versions = {
+            "actions/checkout": 5,
+            "actions/setup-node": 5,
+            "actions/cache": 5,
+            "actions/upload-artifact": 6,
+            "docker/setup-buildx-action": 4,
+            "docker/login-action": 4,
+            "actions/attest-build-provenance": 3,
+        }
+        for path in (ROOT / ".github/workflows").glob("*.yml"):
+            for action, version in re.findall(r"uses:\s*([^\s@]+)@v(\d+)\b", path.read_text()):
+                if action in minimum_versions:
+                    with self.subTest(workflow=path.name, action=action):
+                        self.assertGreaterEqual(int(version), minimum_versions[action])
+
     def test_push_workflow_uses_full_range_and_stable_aggregate(self):
         workflow = (ROOT / ".github/workflows/build.yml").read_text()
         self.assertIn("  push:", workflow)
@@ -52,7 +69,7 @@ class TestWorkflowTest(unittest.TestCase):
             "e2e/practice-navigation.spec.ts",
             "--mode release", "--target completion-relay",
             "acceptance/completion/run.sh", "--print-sqlite-version",
-            "continue-on-error: true", "runs-on: macos-14",
+            "continue-on-error: true", "runs-on: macos-latest",
             "ref: ${{ github.sha }}", "needs: [tooling, backend, frontend, vite-acceptance, image-acceptance]",
         ):
             with self.subTest(required=required):
@@ -123,7 +140,7 @@ class TestWorkflowTest(unittest.TestCase):
         self.assertIn("timeout-minutes: 5", plan)
         self.assertIn("timeout-minutes: 30", checks)
         self.assertIn("cache: npm", checks)
-        self.assertIn("actions/cache@v4", checks)
+        self.assertIn("actions/cache@v5", checks)
         self.assertIn("~/.cargo/registry", checks)
         self.assertIn("backend/target", checks)
         self.assertIn("/tmp/.buildx-cache", checks)
@@ -146,7 +163,7 @@ class TestWorkflowTest(unittest.TestCase):
         self.assertIn("timeout-minutes: 30", workflow)
         self.assertIn("timeout-minutes: 5", workflow)
         self.assertIn("path: ~/.npm", workflow)
-        self.assertIn("actions/cache@v4", workflow)
+        self.assertIn("actions/cache@v5", workflow)
         self.assertIn("~/.cargo/registry", workflow)
         self.assertIn("/tmp/.buildx-cache", workflow)
         self.assertIn("/tmp/.buildx-cache-web", workflow)
