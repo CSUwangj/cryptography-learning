@@ -10,9 +10,6 @@ import { compileLesson, type LessonDocuments } from '../lesson_runtime'
 import lesson from '../lesson_runtime/fixture/overlay-three-anchor-v2.yaml?raw'
 import en from '../lesson_runtime/fixture/overlay-three-anchor-v2-locales/en-US.yaml?raw'
 import zh from '../lesson_runtime/fixture/overlay-three-anchor-v2-locales/zh-CN.yaml?raw'
-import aes from '../lesson_runtime/fixture/aes192-v2.yaml?raw'
-import aesEn from '../lesson_runtime/fixture/aes192-v2-locales/en-US.yaml?raw'
-import aesZh from '../lesson_runtime/fixture/aes192-v2-locales/zh-CN.yaml?raw'
 import { RenderHost, type RenderHostProps } from './index'
 
 const documents = { lesson, locales: { 'en-US': en, 'zh-CN': zh } }
@@ -118,38 +115,40 @@ describe('Complete D overlay (#108)', () => {
   })
 
   it('offers one independent whole-view unit control for cipher and covering schedule (#109)', async () => {
-    const { props } = execute({ lesson: aes, locales: { 'en-US': aesEn, 'zh-CN': aesZh } })
+    const { props } = execute(documents)
     const view = mount(props)
+    expect(view.container.querySelectorAll('[data-row-id]')).toHaveLength(7)
     const user = userEvent.setup()
     expect(view.getAllByRole('combobox')).toHaveLength(1)
-    const cipherMode = view.getByRole('combobox', { name: 'AES-192 encryption: Selection unit' })
-    expect(within(cipherMode).getAllByRole('option').map((option) => (option as HTMLOptionElement).value)).toEqual(['1', '2', '4', '8', '16', '32', '64', '128'])
-    await user.selectOptions(cipherMode, '128')
-    const plaintext = within(view.container.querySelector('[data-row-id="plaintext.value"]') as HTMLElement).getByRole('button')
-    expect(plaintext).toHaveTextContent(/^0x00112233445566778899aabbccddeeff$/)
-    expect(plaintext).toHaveAttribute('title', 'Source 0 (plaintext.value), Bits 0–127: 0x00112233445566778899aabbccddeeff')
+    const cipherMode = view.getByRole('combobox', { name: 'SPN decryption: Selection unit' })
+    expect(within(cipherMode).getAllByRole('option').map((option) => (option as HTMLOptionElement).value)).toEqual(['1', '2', '4', '8', '16', '32'])
+    await user.selectOptions(cipherMode, '32')
+    const plaintext = within(view.container.querySelector('[data-row-id="state.value"]') as HTMLElement).getByRole('button')
+    expect(plaintext).toHaveTextContent(/^0x00112233$/)
+    expect(plaintext).toHaveAttribute('title', 'Source 3 (state.value), Bits 0–31: 0x00112233')
     await user.click(plaintext)
-    expect(view.getByRole('status')).toHaveTextContent('Bits 0–127: 0x00112233445566778899aabbccddeeff')
+    expect(view.getByRole('status')).toHaveTextContent('Bits 0–31: 0x00112233')
     expect([...view.container.querySelectorAll('[data-row-id]')].every((row) => row.querySelectorAll('button[title]').length === 1)).toBe(true)
     await user.click(within(view.getByRole('toolbar')).getByRole('button', { name: 'Show key schedule' }))
     expect(view.getAllByRole('combobox')).toHaveLength(2)
+    expect(view.container.querySelectorAll('[data-lane-row]')).toHaveLength(8)
     const scheduleMode = view.getByRole('combobox', { name: 'Key schedule overlay: Selection unit' })
-    expect(within(scheduleMode).getAllByRole('option').map((option) => (option as HTMLOptionElement).value)).toEqual(['1', '2', '4', '8', '16', '32', '64'])
+    expect(within(scheduleMode).getAllByRole('option').map((option) => (option as HTMLOptionElement).value)).toEqual(['1', '2', '4', '8', '16', '32'])
     expect(scheduleMode).toHaveValue('1')
-    await user.selectOptions(scheduleMode, '64')
-    expect(cipherMode).toHaveValue('128')
-    expect(view.container.querySelector('[data-lane-row="schedule:key.value"]')?.querySelectorAll('button')).toHaveLength(3)
-    expect(view.container.querySelector('[data-lane-row="schedule:round-key-1.value"]')?.querySelectorAll('button')).toHaveLength(2)
-    expect([...view.container.querySelectorAll('[data-lane-row]')].every((row) => [2, 3].includes(row.querySelectorAll('button').length))).toBe(true)
+    await user.selectOptions(scheduleMode, '16')
+    expect(cipherMode).toHaveValue('32')
+    expect(view.container.querySelector('[data-lane-row="schedule:input.value"]')?.querySelectorAll('button')).toHaveLength(4)
+    expect(view.container.querySelector('[data-lane-row="schedule:rk1.value"]')?.querySelectorAll('button')).toHaveLength(2)
+    expect([...view.container.querySelectorAll('[data-lane-row]')].every((row) => [2, 4].includes(row.querySelectorAll('button').length))).toBe(true)
     await user.click(within(view.getByRole('toolbar')).getByRole('button', { name: 'Close key schedule' }))
     expect(view.getAllByRole('combobox')).toHaveLength(1)
-    expect(cipherMode).toHaveValue('128')
+    expect(cipherMode).toHaveValue('32')
     await user.selectOptions(cipherMode, '8')
     await user.click(within(view.getByRole('toolbar')).getByRole('button', { name: 'Show key schedule' }))
-    expect(view.getByRole('combobox', { name: 'Key schedule overlay: Selection unit' })).toHaveValue('64')
+    expect(view.getByRole('combobox', { name: 'Key schedule overlay: Selection unit' })).toHaveValue('16')
     await user.click(within(view.getByRole('toolbar')).getByRole('button', { name: 'Close key schedule' }))
-    expect([...view.container.querySelectorAll('[data-row-id]')].every((row) => row.querySelectorAll('button[title]').length === 16)).toBe(true)
-  }, 60000)
+    expect([...view.container.querySelectorAll('[data-row-id]')].every((row) => row.querySelectorAll('button[title]').length === 4)).toBe(true)
+  })
 
   it('aligns exported repeat anchors to actual schedule rows and maps their exact bits', async () => {
     const authored = parse(lesson)

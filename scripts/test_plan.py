@@ -105,6 +105,28 @@ def plan_paths(paths, repo=ROOT):
         if path.startswith("baseline/content/"):
             image_check("smoke", "mounted content is runtime fixture data")
             continue
+        if path.startswith("frontend/demos/") and path.endswith((".test.ts", ".test.tsx")):
+            frontend([path], reason="only the demo test changed")
+            add("frontend_typecheck", "frontend", ["npm", "run", "typecheck"], "TypeScript demo test changed")
+            continue
+        if path == "frontend/src/lesson_runtime/fixture/aes192-first-round.ts":
+            for spec in ("overlay", "spn-cipher"):
+                add(f"browser_{spec}", "frontend", [
+                    "npx", "playwright", "test", "--project=chromium", f"e2e/{spec}.spec.ts",
+                ], "first-round AES helper has real Worker browser consumers")
+            add("frontend_typecheck", "frontend", ["npm", "run", "typecheck"], "TypeScript fixture helper changed")
+            continue
+        if (path in {"frontend/demos/SpnV2Demo.tsx", "frontend/demos/teachingSpnV2Lesson.ts"}
+                and (repo / "frontend/e2e/teaching-spn-v2-demo.spec.ts").is_file()):
+            frontend([
+                "frontend/src/lesson_runtime/index.test.ts",
+                "frontend/src/visualizers/spnCipher.test.tsx",
+            ], reason="Teaching SPN v2 demo runtime and shared SPN rendering changed")
+            add("browser_teaching-spn-v2-demo", "frontend", [
+                "npx", "playwright", "test", "--project=chromium", "e2e/teaching-spn-v2-demo.spec.ts",
+            ], "Teaching SPN v2 demo has dedicated browser coverage")
+            add("frontend_typecheck", "frontend", ["npm", "run", "typecheck"], "TypeScript demo changed")
+            continue
         if (
             path.startswith("frontend/src/lesson_runtime/fixture/")
             or (path.startswith("frontend/demos/") and not path.endswith(".md"))

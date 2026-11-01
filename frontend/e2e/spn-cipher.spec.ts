@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
 import { parse, stringify } from 'yaml'
 import type { AuthoredNode } from '../src/crypto_graph'
+import { firstAes192RoundLesson } from '../src/lesson_runtime/fixture/aes192-first-round'
 
 const teachingLesson = readFileSync(new URL('../src/lesson_runtime/fixture/teaching-spn-v2.yaml', import.meta.url), 'utf8')
 const teachingLocales = {
@@ -9,6 +10,7 @@ const teachingLocales = {
   'zh-CN': readFileSync(new URL('../src/lesson_runtime/fixture/teaching-spn-v2-locales/zh-CN.yaml', import.meta.url), 'utf8'),
 }
 const aesLesson = readFileSync(new URL('../src/lesson_runtime/fixture/aes192-v2.yaml', import.meta.url), 'utf8')
+const firstRoundLesson = firstAes192RoundLesson(aesLesson)
 const aesLocales = {
   'en-US': readFileSync(new URL('../src/lesson_runtime/fixture/aes192-v2-locales/en-US.yaml', import.meta.url), 'utf8'),
   'zh-CN': readFileSync(new URL('../src/lesson_runtime/fixture/aes192-v2-locales/zh-CN.yaml', import.meta.url), 'utf8'),
@@ -155,13 +157,12 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await expect(section.locator('button[aria-pressed="true"]')).toHaveCount(0)
   })
 
-  cipherTest(`renders real AES-192 Worker results and exact unit selection in ${locale} (#107)`, async ({ page }, testInfo) => {
-    test.setTimeout(180000)
+  cipherTest(`renders real AES-192 first-round Worker results and exact unit selection in ${locale} (#107)`, async ({ page }, testInfo) => {
     test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses public synthetic documents through the real Worker')
     const zh = locale === 'zh-CN'
     await page.addInitScript((language) => localStorage.setItem('i18nextLng', language), locale)
     await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' })
-    await documents(page, aesLesson, aesLocales)
+    await documents(page, firstRoundLesson, aesLocales)
     await page.goto('/', { waitUntil: 'networkidle' })
     await page.evaluate(async () => {
       const fixture = await import('/e2e/v2-default-trace-browser.tsx')
@@ -176,11 +177,12 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await expect(section).toBeVisible({ timeout: 30000 })
     expect(workers.some((url) => url.includes('worker'))).toBe(true)
     const row = (id: string) => section.locator(`[data-row-id="${id}.value"]`)
-    await expect(row('add-round-key-12')).toContainText('0xdda97ca4864cdfe06eaf70a0ec0d7191')
+    await expect(row('add-round-key-1')).toContainText('0x4f63760643e0aa85aff8c9d041fa0de4')
     await expect(row('plaintext')).toContainText('0x00112233445566778899aabbccddeeff')
     await expect(row('sub-bytes-1')).toContainText('0x63cab7040953d051cd60e0e7ba70e18c')
-    await expect(row('add-round-key-12').getByRole('button')).toHaveCount(128)
-    expect(await section.locator('[data-row-id]').evaluateAll((rows) => rows.slice(0, 8).map((row) => row.getAttribute('data-row-id')))).toEqual([
+    await expect(row('add-round-key-1').getByRole('button')).toHaveCount(128)
+    await expect(section.locator('[data-row-id] button[title]')).toHaveCount(1024)
+    expect(await section.locator('[data-row-id]').evaluateAll((rows) => rows.map((row) => row.getAttribute('data-row-id')))).toEqual([
       'plaintext.value', 'round-key-0.value', 'add-round-key-0.value', 'sub-bytes-1.value',
       'shift-rows-1.value', 'mix-columns-1.value', 'round-key-1.value', 'add-round-key-1.value',
     ])
@@ -226,3 +228,20 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
     await page.screenshot({ path: testInfo.outputPath(`aes192-${locale}-dark-narrow.png`) })
   })
 }
+
+// Keep cold Learning/Worker startup bounded; aesV2.test.ts covers the complete FIPS result.
+cipherTest('runs the first-round AES-192 Lesson through a cold real Worker', async ({ page }) => {
+  test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses public synthetic documents through the real Worker')
+  await page.addInitScript(() => localStorage.setItem('i18nextLng', 'en-US'))
+  await documents(page, firstRoundLesson, aesLocales)
+  await page.goto('/learning/aes192-v2-kat')
+  const schedule = page.getByRole('region', { name: 'AES-192 key expansion', exact: true })
+  await expect(schedule).toBeVisible({ timeout: 30000 })
+  await expect(schedule.locator('[data-row-id]')).toHaveCount(8)
+  await expect(schedule.locator('[data-row-id="round-key-1.value"]')).toContainText('0x10111213141516175846f2f95c43f4fe')
+  await page.getByRole('button', { name: 'Next', exact: true }).click()
+  const cipher = page.getByRole('region', { name: 'AES-192 encryption', exact: true })
+  await expect(cipher).toBeVisible({ timeout: 30000 })
+  await expect(cipher.locator('[data-row-id]')).toHaveCount(8)
+  await expect(cipher.locator('[data-row-id="add-round-key-1.value"]')).toContainText('0x4f63760643e0aa85aff8c9d041fa0de4')
+})

@@ -187,6 +187,112 @@ class TestPlanTest(unittest.TestCase):
         selected = next(item["argv"] for item in component["checks"] if item["id"] == "frontend-tests")
         self.assertIn("demos/AesCipherDemo.test.tsx", selected)
 
+    def test_demo_test_change_runs_only_that_test_and_shared_guards(self):
+        for path in (
+            "frontend/demos/AesCipherDemo.language.test.tsx",
+            "frontend/demos/aes192OverlayPrototypeData.test.ts",
+        ):
+            with self.subTest(path=path):
+                checks = {item["id"]: item for item in test_plan.plan_paths([path])["checks"]}
+                self.assertEqual(set(checks), {"frontend-tests", "frontend_typecheck"})
+                self.assertEqual(checks["frontend-tests"]["argv"][5:], [
+                    path.removeprefix("frontend/"),
+                    "src/app/i18n/noEmbeddedUiResources.test.ts",
+                ])
+
+    def test_first_round_helper_selects_both_real_browser_consumers(self):
+        checks = {item["id"]: item for item in test_plan.plan_paths([
+            "frontend/src/lesson_runtime/fixture/aes192-first-round.ts",
+        ])["checks"]}
+        self.assertEqual(set(checks), {"browser_overlay", "browser_spn-cipher", "frontend-tests", "frontend_typecheck"})
+        for spec in ("overlay", "spn-cipher"):
+            self.assertEqual(checks[f"browser_{spec}"]["argv"], [
+                "npx", "playwright", "test", "--project=chromium", f"e2e/{spec}.spec.ts",
+            ])
+        self.assertEqual(checks["frontend-tests"]["argv"][5:], [
+            "src/app/i18n/noEmbeddedUiResources.test.ts",
+        ])
+
+    def test_narrowed_routes_keep_shared_source_browser_coverage(self):
+        for shared in ("frontend/demos/main.tsx", "frontend/src/visualizers/RenderHost.tsx"):
+            with self.subTest(shared=shared):
+                checks = {item["id"]: item for item in test_plan.plan_paths([
+                    "frontend/demos/AesCipherDemo.language.test.tsx",
+                    "frontend/src/lesson_runtime/fixture/aes192-first-round.ts",
+                    shared,
+                ])["checks"]}
+                self.assertEqual(checks["demo_browser"]["argv"], [
+                    "npx", "playwright", "test", "--project=chromium", "e2e/visualizers.spec.ts",
+                ])
+                self.assertTrue({"browser_overlay", "browser_spn-cipher", "frontend_typecheck"} <= set(checks))
+                self.assertIn("demos/AesCipherDemo.language.test.tsx", checks["frontend-tests"]["argv"])
+
+    def test_first_round_helper_and_changed_consumers_skip_unrelated_units(self):
+        checks = {item["id"]: item for item in test_plan.plan_paths([
+            "frontend/src/lesson_runtime/fixture/aes192-first-round.ts",
+            "frontend/e2e/overlay.spec.ts",
+            "frontend/e2e/spn-cipher.spec.ts",
+            "frontend/e2e/visualizers.spec.ts",
+            "frontend/src/visualizers/index.test.ts",
+            "frontend/src/visualizers/overlay.test.tsx",
+        ])["checks"]}
+        self.assertEqual(checks["frontend-tests"]["argv"][5:], [
+            "src/app/i18n/noEmbeddedUiResources.test.ts",
+            "src/visualizers/index.test.ts",
+            "src/visualizers/overlay.test.tsx",
+        ])
+        self.assertEqual(set(checks), {
+            "browser_overlay", "browser_spn-cipher", "browser_visualizers",
+            "browser_parallel_regressions", "frontend-tests", "frontend_typecheck",
+        })
+
+    def test_teaching_spn_demo_selects_its_browser_and_runtime_consumers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            for name in (
+                "frontend/e2e/teaching-spn-v2-demo.spec.ts",
+                "frontend/src/lesson_runtime/index.test.ts",
+                "frontend/src/visualizers/spnCipher.test.tsx",
+            ):
+                path = repo / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.touch()
+            for path in ("frontend/demos/SpnV2Demo.tsx", "frontend/demos/teachingSpnV2Lesson.ts"):
+                with self.subTest(path=path):
+                    checks = {item["id"]: item for item in test_plan.plan_paths([path], repo=repo)["checks"]}
+                    self.assertNotIn("demo_browser", checks)
+                    self.assertEqual(checks["browser_teaching-spn-v2-demo"]["argv"], [
+                        "npx", "playwright", "test", "--project=chromium", "e2e/teaching-spn-v2-demo.spec.ts",
+                    ])
+                    self.assertEqual(checks["frontend-tests"]["argv"][5:], [
+                        "src/app/i18n/noEmbeddedUiResources.test.ts",
+                        "src/lesson_runtime/index.test.ts",
+                        "src/visualizers/spnCipher.test.tsx",
+                    ])
+                    self.assertIn("frontend_typecheck", checks)
+
+    def test_teaching_spn_mapping_keeps_shared_browser_regressions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            browser = repo / "frontend/e2e/teaching-spn-v2-demo.spec.ts"
+            browser.parent.mkdir(parents=True)
+            browser.touch()
+            for shared in ("frontend/demos/main.tsx", "frontend/src/visualizers/RenderHost.tsx"):
+                with self.subTest(shared=shared):
+                    checks = {item["id"]: item for item in test_plan.plan_paths([
+                        "frontend/demos/teachingSpnV2Lesson.ts", shared,
+                    ], repo=repo)["checks"]}
+                    self.assertIn("browser_teaching-spn-v2-demo", checks)
+                    self.assertIn("demo_browser", checks)
+
+    def test_teaching_spn_demo_without_dedicated_browser_uses_generic_checks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for path in ("frontend/demos/SpnV2Demo.tsx", "frontend/demos/teachingSpnV2Lesson.ts"):
+                with self.subTest(path=path):
+                    checks = {item["id"]: item for item in test_plan.plan_paths([path], repo=Path(directory))["checks"]}
+                    self.assertIn("demo_browser", checks)
+                    self.assertNotIn("browser_teaching-spn-v2-demo", checks)
+
     def test_prototype_and_real_visualizer_change_select_demo_browser(self):
         plan = test_plan.plan_paths([
             "frontend/demos/UiOptimizationPrototype.tsx",

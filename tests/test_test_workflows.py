@@ -46,6 +46,7 @@ class TestWorkflowTest(unittest.TestCase):
             "cargo test --locked -- --nocapture", "cargo build --locked --release",
             "npm run gen", "npm run typecheck", "npm test -- --maxWorkers=1", "npm run build",
             "e2e/crypto-graph-worker.spec.ts", "e2e/visualizers.spec.ts",
+            "e2e/overlay.spec.ts", "e2e/spn-cipher.spec.ts",
             "e2e/aes-cipher-demo.spec.ts", "e2e/learning.spec.ts",
             "e2e/completion-records-layout.spec.ts", "e2e/home-layout.spec.ts",
             "e2e/practice-navigation.spec.ts",

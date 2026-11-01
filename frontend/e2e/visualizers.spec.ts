@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
+import { parse, stringify } from 'yaml'
 import { aesKeyExpansionDemoDocuments } from '../demos/aesKeyExpansionLesson'
 import { aesOverlayFixturePresentation } from './aes-learning-fixture'
 
@@ -462,17 +463,20 @@ test.describe('Shared AES presentation fixtures (#121)', () => {
 })
 
 
-// Dense full-state traces retain screenshots/logs without per-action DOM recording.
-const scheduleTest = test.extend({ trace: 'off' })
-scheduleTest.describe('Independent AES-192 schedule (#106)', () => {
-  const scheduleLesson = readFileSync(new URL('../src/lesson_runtime/fixture/aes192-v2.yaml', import.meta.url), 'utf8').split('  - id: cipher\n')[0]
+test.describe('Independent AES-192 schedule (#106)', () => {
+  // One batch covers cross-batch projection and unrelated exports; aesV2.test.ts covers the full schedule and final tail.
+  const authored = parse(readFileSync(new URL('../src/lesson_runtime/fixture/aes192-v2.yaml', import.meta.url), 'utf8'))
+  const retained = new Set(['key', 'rot-0', 'sub-0', 'rcon-0', 'batch-0', 'round-key-0', 'round-key-1', 'round-key-2'])
+  const schedule = authored.graphs.schedule
+  schedule.nodes = schedule.nodes.filter((node: { id: string }) => retained.has(node.id))
+  schedule.outputs = schedule.outputs.filter((output: { node: string }) => retained.has(output.node))
+  const scheduleLesson = stringify({ ...authored, graphs: { schedule }, steps: authored.steps.slice(0, 1) })
   const scheduleLocales = {
     'en-US': readFileSync(new URL('../src/lesson_runtime/fixture/aes192-v2-locales/en-US.yaml', import.meta.url), 'utf8'),
     'zh-CN': readFileSync(new URL('../src/lesson_runtime/fixture/aes192-v2-locales/zh-CN.yaml', import.meta.url), 'utf8'),
   }
 
-  scheduleTest('keeps authored boundaries aligned through hexadecimal grouping and selection', async ({ page }, testInfo) => {
-    test.setTimeout(180000)
+  test('keeps authored boundaries aligned through hexadecimal grouping and selection', async ({ page }, testInfo) => {
     test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses the public synthetic Lesson through the real Worker')
     await page.addInitScript(() => localStorage.setItem('i18nextLng', 'en-US'))
     await page.emulateMedia({ reducedMotion: 'reduce' })
@@ -497,19 +501,22 @@ scheduleTest.describe('Independent AES-192 schedule (#106)', () => {
           const marker = row.querySelector(`[data-bit-group="${bit / 32}"]`)!
           const button = buttons[Math.floor(bit / size)]
           let expected = bit % size ? undefined : button.getBoundingClientRect().left
-          let offset = bit % size ? (size >= 4 ? 2 + (bit % size) / 4 : bit % size) : 0
+          const offset = bit % size ? (size >= 4 ? 2 + (bit % size) / 4 : bit % size) : 0
           if (offset) {
-            // Measure the corresponding hexadecimal digit or binary glyph inside the unit.
+            const glyphs: DOMRect[] = []
             const text = document.createTreeWalker(button, NodeFilter.SHOW_TEXT)
             for (let node = text.nextNode(); node; node = text.nextNode()) {
-              const length = node.textContent?.length ?? 0
-              if (offset >= length) { offset -= length; continue }
-              const range = document.createRange()
-              range.setStart(node, offset)
-              range.setEnd(node, offset + 1)
-              expected = range.getBoundingClientRect().left
-              break
+              for (let index = 0; index < (node.textContent?.length ?? 0); index++) {
+                const range = document.createRange()
+                range.setStart(node, index)
+                range.setEnd(node, index + 1)
+                glyphs.push(range.getBoundingClientRect())
+              }
             }
+            // Byte separators sit halfway between the adjacent rendered glyphs.
+            expected = size > 8 && bit % 8 === 0
+              ? (glyphs[offset - 1].right + glyphs[offset].left) / 2
+              : glyphs[offset]?.left
           }
           if (expected === undefined) throw new Error(`Source bit ${bit} has no rendered glyph`)
           const actual = marker.getBoundingClientRect().left
@@ -541,8 +548,7 @@ scheduleTest.describe('Independent AES-192 schedule (#106)', () => {
     }
   })
 
-  for (const locale of ['en-US', 'zh-CN'] as const) scheduleTest(`inspects actual Worker lineage in ${locale}`, async ({ page }, testInfo) => {
-    test.setTimeout(180000)
+  for (const locale of ['en-US', 'zh-CN'] as const) test(`inspects actual Worker lineage in ${locale}`, async ({ page }, testInfo) => {
     test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses the public synthetic Lesson through the real Worker')
     await page.addInitScript((language) => localStorage.setItem('i18nextLng', language), locale)
     await page.emulateMedia({ reducedMotion: 'reduce' })
@@ -564,8 +570,10 @@ scheduleTest.describe('Independent AES-192 schedule (#106)', () => {
     await expect(section).toBeVisible({ timeout: 15000 })
     expect(workers.some((url) => url.includes('worker'))).toBe(true)
     const row = (id: string) => section.locator(`[data-row-id="${id}.value"]`)
-    await expect(row('batch-7').getByRole('button')).toHaveCount(192)
-    await expect(row('round-key-12').getByRole('button')).toHaveCount(128)
+    await expect(section.locator('[data-row-id]')).toHaveCount(8)
+    await expect(section.getByRole('button')).toHaveCount(1344)
+    await expect(row('batch-0').getByRole('button')).toHaveCount(192)
+    await expect(row('round-key-2').getByRole('button')).toHaveCount(128)
     await expect(row('round-key-1')).toContainText('0x10111213141516175846f2f95c43f4fe')
     await expect(section.locator('[data-lane-row]')).toHaveCount(0)
     await expect(section.getByRole('heading', { name: /encryption|decryption|加密|解密/ })).toHaveCount(0)
@@ -587,7 +595,7 @@ scheduleTest.describe('Independent AES-192 schedule (#106)', () => {
     await key1.nth(1).press(' ')
     await expect(key1.nth(1)).toHaveAccessibleName(zh ? /轮密钥 1.*位 64–127：0x5846f2f95c43f4fe; 主动选择$/ : /Round key 1.*Bits 64–127: 0x5846f2f95c43f4fe; Deliberately selected$/)
     await expect(row('batch-0').locator('button[data-state="related"]')).toHaveCount(1)
-    await expect(row('batch-1').locator('button[data-state="related"]')).toHaveCount(0)
+    await expect(row('round-key-2').locator('button[data-state="related"]')).toHaveCount(0)
     await expect(row('round-key-0').locator('button[data-state="related"]')).toHaveCount(0)
     const partial = row('key').getByRole('button').nth(2)
     await expect(partial).toHaveText('0x1011121314151617')
@@ -614,8 +622,7 @@ scheduleTest.describe('Independent AES-192 schedule (#106)', () => {
     await page.getByRole('button', { name: zh ? '语言' : 'Language', exact: true }).click()
     await page.getByRole('option', { name: zh ? /en-US/ : /zh-CN/ }).click()
     const switched = page.getByRole('region', { name: zh ? 'AES-192 key expansion' : 'AES-192 密钥扩展', exact: true })
-    // Dense locale/layout updates can outlast the default wait; establish readiness before counting descendants.
-    await expect(switched).toBeVisible({ timeout: 30000 })
+    await expect(switched).toBeVisible()
     const switchedSource = switched.locator('[data-row-id="key.value"]')
     await expect(switchedSource).toBeVisible()
     await expect(switched.getByRole('combobox')).toHaveValue('64')

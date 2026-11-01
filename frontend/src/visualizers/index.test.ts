@@ -33,6 +33,18 @@ class WorkerStub {
   terminate(): void {}
 }
 
+const firstLegacyScheduleBatch = (): WorkerExecutionSnapshot => {
+  const graph = aesKeyExpansionGraph(128)
+  const response = executeWorkerRequest({
+    requestId: 'first-schedule-batch', kind: 'execute', payload: {
+      graph: { ...graph, nodes: graph.nodes.filter((node) => node.id === 'key' || /^word-[0-7]($|-)|^round-key-[01]$/.test(node.id)), outputs: graph.outputs.slice(0, 2) },
+      inputs: { 'key.value': bits(128, Uint8Array.from({ length: 16 }, (_, index) => index)) },
+    },
+  })
+  if (response.kind !== 'snapshot') throw new Error(JSON.stringify(response))
+  return response.snapshot
+}
+
 /** Runs one direction's AES demo Lesson through the Browser Lesson runtime: one execution, no other Step. */
 const runCipherDemo = async (variant: 128 | 192 | 256, direction: 'encrypt' | 'decrypt') => {
   const previousWorker = globalThis.Worker
@@ -870,7 +882,7 @@ describe('Full-state AES key-schedule detail (#91)', () => {
   })
 
   it('renders every relationship by default, emphasizes on keyboard selection, groups bits, and localizes', async () => {
-    const execution = await expandThroughSession(128)
+    const execution = firstLegacyScheduleBatch()
     const user = userEvent.setup()
     const view = render(React.createElement(I18nextProvider, { i18n: i18n.cloneInstance({ lng: 'en-US' }) }, React.createElement(RenderHost, {
       dimensions: { width: 900, height: 500 },
@@ -883,6 +895,8 @@ describe('Full-state AES key-schedule detail (#91)', () => {
     const relationships = keyExpansionPresentation(execution, i18n.getFixedT('en-US', 'visualizers'), 'aes-128-detail', { algorithm: 'AES', variant: 128 })
       .sections[0].rows.reduce((count, row) => count + (row.relationships?.length ?? 0), 0)
     const lines = () => [...document.querySelectorAll('svg[data-lineage] line')]
+    expect(view.container.querySelectorAll('[data-row-id]')).toHaveLength(7)
+    expect(view.container.querySelectorAll('button')).toHaveLength(640)
     expect(lines()).toHaveLength(relationships)
     expect(screen.getByRole('status')).toHaveTextContent('No bit selected.')
     expect(document.querySelector('button[aria-pressed="true"]')).toBeNull()
@@ -904,7 +918,7 @@ describe('Full-state AES key-schedule detail (#91)', () => {
     const zh = keyExpansionPresentation(execution, i18n.getFixedT('zh-CN', 'visualizers'), 'aes-128-detail-zh', { algorithm: 'AES', variant: 128 })
     expect(zh.title).toBe('AES-128 密钥扩展')
     expect(zh.sections[0].rows.slice(0, 7).map((row) => row.label)).toEqual(['输入', '轮密钥 0', '字循环移位 1', '字替换 1', '轮常量 1', '异或 1', '轮密钥 1'])
-  }, 120_000)
+  })
 
   it('keeps truncated schedules explicit without fabricating rows or lineage', () => {
     const response = executeWorkerRequest({
@@ -989,8 +1003,14 @@ describe('Full-state AES cipher detail and key-schedule overlay (#92)', () => {
     expect(String(inverse.at(-1)!.cells[1].value)).toBe('0x00112233445566778899aabbccddeeff')
   })
 
-  it('finds the overlay schedule through the cipher Step round-key bindings, not a fixed Step id', async () => {
-    const snapshots = await runDemo(128)
+  it('finds the overlay schedule through the cipher Step round-key bindings, not a fixed Step id', () => {
+    const schedule = firstLegacyScheduleBatch()
+    const graph = aesCipherGraph(128)
+    const cipher = executeWorkerRequest({ requestId: 'first-cipher-round', kind: 'execute', payload: {
+      graph: { ...graph, nodes: graph.nodes.slice(0, 8), outputs: [{ node: 'cipher-1-add-round-key', port: 'value' }] },
+      inputs: { ...schedule.outputs, 'plaintext.value': bits(128, Uint8Array.from({ length: 16 }, (_, index) => index * 17)) },
+    } })
+    if (cipher.kind !== 'snapshot') throw new Error(JSON.stringify(cipher))
     const compiled = compileLesson(aesCipherDemoDocuments(128))
     if (!compiled.ok) throw new Error(compiled.diagnostics[0]?.message)
     const encrypt = compiled.value.steps.find((step) => step.id === 'encrypt')!
@@ -999,8 +1019,8 @@ describe('Full-state AES cipher detail and key-schedule overlay (#92)', () => {
       [port, 'step' in reference ? { ...reference, step: 'schedule' } : reference]))
     const host = (bindings?: typeof renamed) => render(React.createElement(I18nextProvider, { i18n: i18n.cloneInstance({ lng: 'en-US' }) }, React.createElement(RenderHost, {
       dimensions: { width: 1100, height: 700 },
-      execution: snapshots.encrypt,
-      allSnapshots: { encrypt: snapshots.encrypt, schedule: snapshots['expand-key'] },
+      execution: cipher.snapshot,
+      allSnapshots: { encrypt: cipher.snapshot, schedule },
       executionBindings: bindings,
       executionIdentity: `bindings-${bindings ? 'present' : 'absent'}`,
       presentation: encrypt.presentation,
@@ -1010,11 +1030,12 @@ describe('Full-state AES cipher detail and key-schedule overlay (#92)', () => {
     const chips = (container: HTMLElement) => container.querySelectorAll('button[aria-label^="Round key 0:"]')
 
     const linked = host(renamed)
+    expect(linked.container.querySelectorAll('[data-row-id]')).toHaveLength(9)
     expect(chips(linked.container)).toHaveLength(1)
     linked.unmount()
     // Without bindings there is no schedule source, so no overlay chips.
     const unlinked = host(undefined)
     expect(chips(unlinked.container)).toHaveLength(0)
     unlinked.unmount()
-  }, 120_000)
+  })
 })

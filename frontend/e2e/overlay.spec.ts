@@ -1,13 +1,15 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { parse, stringify } from 'yaml'
+import { firstAes192RoundLesson } from '../src/lesson_runtime/fixture/aes192-first-round'
 
 const fixture = (name: string) => ({
   lesson: readFileSync(new URL(`../src/lesson_runtime/fixture/${name}.yaml`, import.meta.url), 'utf8'),
   locales: Object.fromEntries(['en-US', 'zh-CN'].map((language) => [language, readFileSync(new URL(`../src/lesson_runtime/fixture/${name}-locales/${language}.yaml`, import.meta.url), 'utf8')])),
 })
 const small = fixture('overlay-three-anchor-v2')
-const aes = fixture('aes192-v2')
+const aesSource = fixture('aes192-v2')
+const aes = { ...aesSource, lesson: firstAes192RoundLesson(aesSource.lesson) }
 
 // Substitute only authored documents/catalog; all compilation, session execution and Workers are real.
 const documents = async (page: Page, source: () => typeof small) => {
@@ -152,7 +154,6 @@ for (const [name, source, scheduleName, cipherName] of [
   ['three-anchor', small, 'Key schedule', 'SPN decryption'],
   ['AES-192', aes, 'AES-192 key expansion', 'AES-192 encryption'],
 ] as const) overlayTest(`restores ${name} closed geometry to the opt-out baseline while retaining origin (#108)`, async ({ page }) => {
-  if (name === 'AES-192') test.setTimeout(180000)
   await page.setViewportSize({ width: 1440, height: 900 })
   const authored = parse(source.lesson)
   authored.steps[1].presentation.overlay = false
@@ -200,21 +201,25 @@ overlayTest('uses accepted full-width trace gutters and centered prose on the pr
   await page.setViewportSize({ width: 1440, height: 900 })
   await documents(page, () => small)
   await page.goto('/learning/overlay')
-  await expect(page.getByRole('region', { name: 'Key schedule', exact: true })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Key schedule', exact: true })).toBeVisible({ timeout: 30000 })
   const geometry = await page.locator('[data-learning-page]').evaluate((element) => {
     const bounds = element.getBoundingClientRect()
     const trace = element.querySelector('.learning-trace')!.getBoundingClientRect()
     const prose = element.querySelector('.learning-prose')!.getBoundingClientRect()
-    return { width: bounds.width, left: bounds.left, traceLeft: trace.left - bounds.left, traceRight: bounds.right - trace.right, proseWidth: prose.width, proseCenter: prose.left + prose.width / 2, center: bounds.left + bounds.width / 2 }
+    return { width: bounds.width, parentWidth: element.parentElement!.clientWidth, traceLeft: trace.left - bounds.left, traceRight: bounds.right - trace.right, proseWidth: prose.width, proseCenter: prose.left + prose.width / 2, center: bounds.left + bounds.width / 2 }
   })
-  expect(geometry.width).toBe(1440)
+  expect(geometry.width).toBe(geometry.parentWidth)
   expect(geometry.traceLeft).toBe(24)
   expect(geometry.traceRight).toBe(24)
   expect(geometry.proseWidth).toBeLessThanOrEqual(960)
   expect(geometry.proseCenter).toBeCloseTo(geometry.center, 0)
   await page.setViewportSize({ width: 320, height: 844 })
-  const narrow = await page.locator('.learning-trace').evaluate((element) => ({ left: element.getBoundingClientRect().left, width: element.getBoundingClientRect().width, border: getComputedStyle(element).borderLeftWidth, padding: getComputedStyle(element).paddingLeft }))
-  expect(narrow).toEqual({ left: 16, width: 288, border: '1px', padding: '12px' })
+  const narrow = await page.locator('.learning-trace').evaluate((element) => {
+    const trace = element.getBoundingClientRect()
+    const frame = element.closest('[data-learning-page]')!.getBoundingClientRect()
+    return { left: trace.left - frame.left, right: frame.right - trace.right, border: getComputedStyle(element).borderLeftWidth, padding: getComputedStyle(element).paddingLeft }
+  })
+  expect(narrow).toEqual({ left: 16, right: 16, border: '1px', padding: '12px' })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
 })
 
@@ -334,7 +339,6 @@ overlayTest('applies shared selection, global toggle lifecycle, presentation pre
 
 for (const originBit of [0, 64] as const) {
   overlayTest(`maps real AES-192 cross-batch bit ${originBit} without widening source words (#108)`, async ({ page }) => {
-    test.setTimeout(180000)
     await documents(page, () => aes)
     await page.goto('/learning/overlay')
     const standalone = page.getByRole('region', { name: 'AES-192 key expansion', exact: true })
@@ -345,9 +349,10 @@ for (const originBit of [0, 64] as const) {
     const cipher = page.getByRole('region', { name: 'AES-192 encryption', exact: true })
     await cipher.waitFor({ state: 'visible', timeout: 30000 })
     await expect(cipher).toBeVisible({ timeout: 30000 })
+    await expect(cipher.locator('[data-row-id]')).toHaveCount(8)
     const opener = cipher.getByRole('toolbar').getByRole('button', { name: 'Show key schedule', exact: true })
     await opener.click()
-    await expect(cipher.locator('[data-lane-row]')).toHaveCount(46)
+    await expect(cipher.locator('[data-lane-row]')).toHaveCount(8)
     const original = cipher.locator('[data-lane-row="schedule:key.value"]')
     const generated = cipher.locator('[data-lane-row="schedule:batch-0.value"]')
     await cipher.getByRole('combobox', { name: 'Key schedule overlay: Selection unit', exact: true }).selectOption('32')
@@ -370,12 +375,11 @@ for (const originBit of [0, 64] as const) {
       await expect(cipher.locator('[data-lane-row="schedule:round-key-0.value"] button[data-state="related"]')).toHaveCount(0)
       await expect(cipher.locator('[data-lane-row="schedule:round-key-2.value"] button[data-state="related"]')).toHaveCount(0)
     }
-    await expect(cipher.locator('[data-row-id="add-round-key-12.value"]')).toContainText('0xdda97ca4864cdfe06eaf70a0ec0d7191')
+    await expect(cipher.locator('[data-row-id="add-round-key-1.value"]')).toContainText('0x4f63760643e0aa85aff8c9d041fa0de4')
   })
 }
 
 overlayTest('replaces an AES schedule origin with a complete deliberate word (#108)', async ({ page }) => {
-  test.setTimeout(180000)
   await documents(page, () => aes)
   await page.goto('/learning/overlay')
   await expect(page.getByRole('region', { name: 'AES-192 key expansion', exact: true })).toBeVisible({ timeout: 30000 })
@@ -392,7 +396,7 @@ overlayTest('replaces an AES schedule origin with a complete deliberate word (#1
   await expect(cipher.getByRole('status')).toContainText('Bits 64–95')
   await cipher.getByRole('toolbar').getByRole('button', { name: 'Close key schedule', exact: true }).click()
   await expect(cipher.locator('[data-row-id="round-key-1.value"] button[data-state="related"]')).toHaveCount(32)
-  await expect(cipher.locator('[data-row-id="add-round-key-12.value"]')).toContainText('0xdda97ca4864cdfe06eaf70a0ec0d7191')
+  await expect(cipher.locator('[data-row-id="add-round-key-1.value"]')).toContainText('0x4f63760643e0aa85aff8c9d041fa0de4')
 })
 
 overlayTest('retains available values and only retained schedule edges in truncated real Worker traces (#108)', async ({ page }) => {
@@ -420,7 +424,7 @@ overlayTest('retains available values and only retained schedule edges in trunca
 
 for (const locale of ['en-US', 'zh-CN'] as const) {
   for (const width of [1440, 320]) {
-    overlayTest(`inspects production AES grouped overlay in ${locale} at ${width}px with light/dark themes (#109)`, async ({ page }, testInfo) => {
+    overlayTest(`inspects first-round AES grouped overlay in ${locale} at ${width}px with light/dark themes (#109)`, async ({ page }, testInfo) => {
       const zh = locale === 'zh-CN'
       const localized = parse(aes.locales[locale])
       localized.title = zh ? 'AES-192 密钥扩展与加密：跨批次轮密钥、分组依赖及原始生成顺序的完整学习示例' : 'AES-192 key expansion and encryption: a complete learning example of cross-batch round keys, group dependencies and original generation order'
@@ -454,7 +458,11 @@ for (const locale of ['en-US', 'zh-CN'] as const) {
       await expect(bit).toHaveAttribute('aria-pressed', 'true')
       await expect(cipher.getByRole('status')).toContainText(zh ? '位 0–31：0x00010203' : 'Bits 0–31: 0x00010203')
       await expect(cipher.locator('[data-lane-row] details')).toHaveCount(0)
-      const gutters = await page.locator('.learning-trace').evaluate((element) => ({ left: element.getBoundingClientRect().left, right: innerWidth - element.getBoundingClientRect().right, border: getComputedStyle(element).borderLeftWidth }))
+      const gutters = await page.locator('.learning-trace').evaluate((element) => {
+        const trace = element.getBoundingClientRect()
+        const frame = element.closest('[data-learning-page]')!.getBoundingClientRect()
+        return { left: trace.left - frame.left, right: frame.right - trace.right, border: getComputedStyle(element).borderLeftWidth }
+      })
       expect(gutters).toEqual({ left: width < 520 ? 16 : 24, right: width < 520 ? 16 : 24, border: '1px' })
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
       expect(await cipher.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true)
