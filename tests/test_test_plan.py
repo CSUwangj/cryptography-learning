@@ -128,8 +128,8 @@ class TestPlanTest(unittest.TestCase):
             },
             set(checks),
         )
-        self.assertIn("home-layout.spec.ts", checks["browser_home-layout"])
-        self.assertIn("learning.spec.ts", checks["browser_learning"])
+        self.assertIn("e2e/home-layout.spec.ts", checks["browser_home-layout"])
+        self.assertIn("e2e/learning.spec.ts", checks["browser_learning"])
         self.assertEqual(
             checks["browser_parallel_regressions"],
             [
@@ -309,6 +309,32 @@ class TestPlanTest(unittest.TestCase):
                 "real lesson runtime or visualizer behavior changed",
             },
         )
+
+    def test_visualizer_spec_and_source_share_one_run_with_all_reasons(self):
+        plan = test_plan.plan_paths([
+            "frontend/e2e/visualizers.spec.ts",
+            "frontend/src/visualizers/index.ts",
+        ])
+        visualizer_checks = [
+            item for item in plan["checks"]
+            if item["argv"][:4] == ["npx", "playwright", "test", "--project=chromium"]
+            and item["argv"][4:] in (["visualizers.spec.ts"], ["e2e/visualizers.spec.ts"])
+        ]
+        self.assertEqual(len(visualizer_checks), 1)
+        self.assertEqual(visualizer_checks[0]["cwd"], "frontend")
+        self.assertEqual(set(visualizer_checks[0]["reasons"]), {
+            "Vite-compatible browser test changed",
+            "real lesson runtime or visualizer behavior changed",
+        })
+        self.assertIn("browser_parallel_regressions", {item["id"] for item in plan["checks"]})
+
+    def test_merged_real_demo_check_is_not_reported_as_prototype_omission(self):
+        plan = test_plan.plan_paths([
+            "frontend/demos/UiOptimizationPrototype.tsx",
+            "frontend/e2e/visualizers.spec.ts",
+            "frontend/src/visualizers/index.ts",
+        ])
+        self.assertEqual(plan["omissions"], [])
 
     def test_dependency_edges_and_toolchain_fallbacks(self):
         cases = {

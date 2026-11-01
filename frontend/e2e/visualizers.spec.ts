@@ -100,6 +100,17 @@ const mockLessonDocuments = async (
   })
 }
 
+const waitForLessonDocuments = (page: Page, lessonId: string, locale: keyof typeof locales) =>
+  Promise.all((locale === 'en-US' ? ['en-US'] : ['zh-CN', 'en-US']).map((language) =>
+    page.waitForResponse((response) => {
+      if (!response.url().endsWith('/query')) return false
+      const request = response.request().postDataJSON()
+      return request?.operationName === 'LessonDocuments'
+        && request.variables?.lessonId === lessonId
+        && request.variables?.language === language
+    }),
+  ))
+
 test.describe('Avalanche Visualizer (#32)', () => {
   test('renders an accessible continuous comparison and preserves selection on resize', async ({ page }) => {
     test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses the synthetic Lesson fixture')
@@ -152,7 +163,10 @@ test.describe('Avalanche Visualizer (#32)', () => {
     })
     await mockLessonDocuments(page, (language) => ({ lesson, locale: locales[language] ?? null }))
 
-    await page.goto('/learning/avalanche')
+    await Promise.all([
+      waitForLessonDocuments(page, 'avalanche', 'en-US'),
+      page.goto('/learning/avalanche'),
+    ])
     await expect(page.getByRole('heading', { name: 'Continuous avalanche comparison' })).toBeVisible()
     await expect(page.getByRole('table', { name: 'Comparison summary' })).toContainText('0.5')
     await expectTraceValue(page, 'Continuous avalanche comparison', '0x0f0f')
@@ -213,7 +227,10 @@ test.describe('Avalanche Visualizer (#32)', () => {
       locale: locales[language] ?? null,
     }))
 
-    await page.goto('/learning/avalanche')
+    await Promise.all([
+      waitForLessonDocuments(page, 'avalanche', 'en-US'),
+      page.goto('/learning/avalanche'),
+    ])
     await expect(page.getByRole('status').filter({ hasText: 'Trace is incomplete. Raw retained values remain visible; paired differences and lineage stop at the gap.' })).toBeVisible()
     await expect(page.getByRole('rowheader', { name: 'Trace gap' }).last()).toBeVisible()
   })
@@ -250,7 +267,10 @@ test.describe('Avalanche Visualizer (#32)', () => {
       locale: (locales[language] ?? locales['en-US']).replace('texts: {}', 'texts:\n  intro: Intro'),
     }))
 
-    await page.goto('/learning/avalanche')
+    await Promise.all([
+      waitForLessonDocuments(page, 'avalanche', 'en-US'),
+      page.goto('/learning/avalanche'),
+    ])
     await page.getByRole('button', { name: 'Next' }).click()
     await expect(page.getByRole('heading', { name: 'Visualizer unavailable' })).toBeVisible()
     await expect(page.getByRole('table', { name: 'Retained comparison data' })).toContainText('—')
@@ -292,7 +312,10 @@ test.describe('Avalanche Visualizer (#32)', () => {
       locale: (locales[language] ?? locales['en-US']).replace('texts: {}', 'texts:\n  prose: Done'),
     }))
 
-    await page.goto('/learning/avalanche')
+    await Promise.all([
+      waitForLessonDocuments(page, 'avalanche', 'en-US'),
+      page.goto('/learning/avalanche'),
+    ])
     await expect(page.getByRole('heading', { name: 'Continuous avalanche comparison' })).toBeVisible()
     await page.getByRole('button', { name: 'Next' }).click()
     await expect(page.getByText('Done')).toBeVisible()
@@ -314,7 +337,10 @@ test.describe('Teaching SPN Visualizer (#33)', () => {
     await page.addInitScript(() => localStorage.setItem('i18nextLng', 'en-US'))
     await mockLessonDocuments(page, (language) => ({ lesson: `${lesson}${executionStep}`, locale: locales[language] ?? null }))
 
-    await page.goto('/learning/avalanche')
+    await Promise.all([
+      waitForLessonDocuments(page, 'avalanche', 'en-US'),
+      page.goto('/learning/avalanche'),
+    ])
     await expect(page.getByRole('heading', { name: 'Continuous avalanche comparison' })).toBeVisible()
     await page.getByRole('button', { name: 'Next' }).click()
     await expect(page.getByRole('heading', { name: 'Teaching SPN execution' })).toBeVisible()
@@ -328,7 +354,10 @@ test.describe('Teaching SPN Visualizer (#33)', () => {
       locale: locales[language] ?? null,
     }))
 
-    await page.goto('/learning/spn')
+    await Promise.all([
+      waitForLessonDocuments(page, 'spn', 'en-US'),
+      page.goto('/learning/spn'),
+    ])
     await page.getByRole('button', { name: 'Next' }).click()
     await expect(page.getByText('Trace is incomplete. Retained raw values remain visible; lineage stops at missing stages.').first()).toBeVisible()
   })
@@ -365,7 +394,10 @@ test.describe('Teaching SPN Visualizer (#33)', () => {
       locale: (locales[language] ?? locales['en-US']).replace('texts: {}', 'texts:\n  prose: Done'),
     }))
 
-    await page.goto('/learning/spn')
+    await Promise.all([
+      waitForLessonDocuments(page, 'spn', 'en-US'),
+      page.goto('/learning/spn'),
+    ])
     await expect(page.getByRole('heading', { name: 'Visualizer unavailable' })).toBeVisible()
     await expect(page.getByRole('table', { name: 'Retained execution data' })).toContainText('—')
     await page.getByRole('button', { name: 'Next' }).click()
@@ -382,7 +414,10 @@ test.describe('Teaching key schedule through the generic key-expansion mode (#93
       locale: aesKeyExpansionDemoDocuments.locales['en-US'],
     }))
 
-    await page.goto('/learning/aes-key-expansion')
+    await Promise.all([
+      waitForLessonDocuments(page, 'aes-key-expansion', 'en-US'),
+      page.goto('/learning/aes-key-expansion'),
+    ])
     await expect(page.getByRole('heading', { name: 'AES-style teaching key schedule', level: 2 })).toBeVisible()
     const section = page.getByRole('region', { name: 'AES-style teaching key schedule (64-bit key, not a FIPS-197 variant)', exact: true })
     await expect(section).toBeVisible()
@@ -447,7 +482,10 @@ scheduleTest.describe('Independent AES-192 schedule (#106)', () => {
       await fixture.warmDefaultTraceBrowserWorker()
     })
     await mockLessonDocuments(page, (language) => ({ lesson: scheduleLesson, locale: scheduleLocales[language] }))
-    await page.goto('/learning/aes192-v2-kat')
+    await Promise.all([
+      waitForLessonDocuments(page, 'aes192-v2-kat', 'en-US'),
+      page.goto('/learning/aes192-v2-kat'),
+    ])
     const section = page.getByRole('region', { name: 'AES-192 key expansion', exact: true })
     await expect(section).toBeVisible({ timeout: 15000 })
     const source = section.locator('[data-row-id="key.value"]')
@@ -517,7 +555,10 @@ scheduleTest.describe('Independent AES-192 schedule (#106)', () => {
     })
     workers.length = 0
     await mockLessonDocuments(page, (language) => ({ lesson: scheduleLesson, locale: scheduleLocales[language] }))
-    await page.goto('/learning/aes192-v2-kat')
+    await Promise.all([
+      waitForLessonDocuments(page, 'aes192-v2-kat', locale),
+      page.goto('/learning/aes192-v2-kat'),
+    ])
     const zh = locale === 'zh-CN'
     const section = page.getByRole('region', { name: zh ? 'AES-192 密钥扩展' : 'AES-192 key expansion', exact: true })
     await expect(section).toBeVisible({ timeout: 15000 })
@@ -591,7 +632,10 @@ scheduleTest.describe('Independent AES-192 schedule (#106)', () => {
     await page.screenshot({ path: testInfo.outputPath(`schedule-${locale}-light-narrow.png`) })
     // A new Lesson entry must start without a selection.
     await switched.locator('[data-row-id="key.value"]').getByRole('button').first().click()
-    await page.reload()
+    await Promise.all([
+      waitForLessonDocuments(page, 'aes192-v2-kat', locale),
+      page.reload(),
+    ])
     const reentered = page.getByRole('region', { name: /AES-192/ })
     await expect(reentered).toBeVisible({ timeout: 15000 })
     await expect(reentered.locator('button[aria-pressed="true"]')).toHaveCount(0)

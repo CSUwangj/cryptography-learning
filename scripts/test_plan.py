@@ -56,8 +56,11 @@ def plan_paths(paths, repo=ROOT):
     checks = {}
     prototype_paths = set(paths) & PROTOTYPE_ONLY_PATHS
     omissions = []
+    demo_browser_required = False
 
     def add(identifier, cwd, argv, reason):
+        nonlocal demo_browser_required
+        demo_browser_required |= identifier == "demo_browser"
         browser_check = identifier == "demo_browser" or identifier.startswith("browser_")
         if browser_check:
             signature = (cwd, tuple(argv), tuple(sorted(check(identifier, cwd, argv, reason).get("env", {}).items())))
@@ -228,7 +231,7 @@ def plan_paths(paths, repo=ROOT):
                     add("frontend_typecheck", "frontend", ["npm", "run", "typecheck"], "unknown browser helper; broad frontend fallback")
                     add("frontend_build", "frontend", ["npm", "run", "build"], "unknown browser helper; broad frontend fallback")
                 else:
-                    add(f"browser_{spec.removesuffix('.spec.ts')}", "frontend", ["npx", "playwright", "test", "--project=chromium", spec], "Vite-compatible browser test changed")
+                    add(f"browser_{spec.removesuffix('.spec.ts')}", "frontend", ["npx", "playwright", "test", "--project=chromium", f"e2e/{spec}"], "Vite-compatible browser test changed")
                     if spec in {
                         "aes-cipher-demo.spec.ts",
                         "home-layout.spec.ts",
@@ -285,7 +288,7 @@ def plan_paths(paths, repo=ROOT):
             "src/app/i18n/noEmbeddedUiResources.test.ts",
         ], "frontend changes must keep localized UI resources in JSON")
 
-    if prototype_paths and "demo_browser" not in checks:
+    if prototype_paths and not demo_browser_required:
         omissions.append({
             "id": "demo_browser",
             "status": "not-run",

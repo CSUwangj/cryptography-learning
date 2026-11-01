@@ -124,7 +124,16 @@ test.describe('Learning Lesson (#30)', () => {
     await page.getByRole('button', { name: '下一步' }).click()
     await expect(page.getByText('0x00ff (bits<16>)')).toBeVisible()
 
-    await page.goto('/learning/xor-intro')
+    await Promise.all([
+      ...['zh-CN', 'en-US'].map((language) => page.waitForResponse((response) => {
+        if (!response.url().endsWith('/query')) return false
+        const request = response.request().postDataJSON()
+        return request?.operationName === 'LessonDocuments'
+          && request.variables?.lessonId === 'xor-intro'
+          && request.variables?.language === language
+      })),
+      page.goto('/learning/xor-intro'),
+    ])
     await expect(page.getByRole('heading', { name: '探索异或' })).toBeVisible()
     expect(progressRequests).toEqual([])
   })
