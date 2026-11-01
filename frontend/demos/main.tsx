@@ -6,7 +6,8 @@ import { AesAvalancheDemo } from './AesAvalancheDemo'
 import { AesCipherDemo } from './AesCipherDemo'
 import { AvalancheDemo } from './AvalancheDemo'
 import { SpnDemo } from './SpnDemo'
-import { KeyExpansionPrototype } from './KeyExpansionPrototype'
+
+const SlidingWindowDemo = lazy(() => import('./SlidingWindowDemo').then((module) => ({ default: module.SlidingWindowDemo })))
 
 const Aes192OverlayPrototype = lazy(() => import('./Aes192OverlayPrototype').then((module) => ({ default: module.Aes192OverlayPrototype })))
 const LearningShellPrototype = lazy(() => import('./LearningShellPrototype').then((module) => ({ default: module.LearningShellPrototype })))
@@ -26,7 +27,7 @@ const Demos: React.FC = () => {
   const Demo = {
     '/testspn': SpnDemo,
     '/testavalanche': AvalancheDemo,
-    '/testkeyexpansion': KeyExpansionPrototype,
+    '/testkeyexpansion': SlidingWindowDemo,
     '/testaescipher': AesCipherDemo,
     '/testaesavalanche': AesAvalancheDemo,
   }[window.location.pathname]
@@ -38,7 +39,7 @@ const Demos: React.FC = () => {
         <option value="zh-CN">{t('i18n.zh-CN')}</option>
       </select></label>
     </nav>
-    {Demo && <Demo />}
+    {Demo && <Suspense fallback={<div role="status" aria-busy="true" />}><Demo /></Suspense>}
   </>
 }
 

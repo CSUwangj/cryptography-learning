@@ -38,6 +38,10 @@
       "compare-decrypt-key": "解密：翻转第 0 轮轮密钥第 0 位"
     }
   },
+  "slidingWindow": {
+    "masterKey": "主密钥",
+    "run": "运行密钥调度"
+  },
   "keyExpansion": {
     "title": "SPN 密钥扩展原型",
     "subtitle": "原型 — 选择任一轮密钥芯片，查看主密钥如何扩展为轮密钥，并与加密轨迹逐行对齐。",

@@ -53,7 +53,7 @@ const LearningFrame = styled(Card)`
   }
 `
 
-const PageFrame: React.FC<PropsWithChildren> = ({ children }) => (
+export const PageFrame: React.FC<PropsWithChildren> = ({ children }) => (
   <LearningFrame data-learning-page>{children}</LearningFrame>
 )
 

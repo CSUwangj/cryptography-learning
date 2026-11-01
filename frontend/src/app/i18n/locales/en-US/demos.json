@@ -38,6 +38,10 @@
       "compare-decrypt-key": "Decryption: flip round key 0 bit 0"
     }
   },
+  "slidingWindow": {
+    "masterKey": "Master key",
+    "run": "Run key schedule"
+  },
   "keyExpansion": {
     "title": "SPN key expansion prototype",
     "subtitle": "PROTOTYPE — select any round-key chip to show how the master key expands into round keys, aligned with the encryption trace.",
