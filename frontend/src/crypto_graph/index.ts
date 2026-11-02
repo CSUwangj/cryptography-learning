@@ -1213,8 +1213,9 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
             const roundKey = /^(.*)\.(\d+)\/key$/.exec(id)
             const cipherStage = /^cipher-(\d+)-(add-round-key|sub-bytes|shift-rows|mix-columns|inv-shift-rows|inv-sub-bytes|inv-mix-columns)$/.exec(id)
             if (compiledGraph.schema === 2) {
+              const port = operation.manifest.outputs[0].name
               appendTrace({
-                path: `${id}.value`,
+                path: `${id}.${port}`,
                 level: 'detail',
                 primitive: node.operation,
                 parameters: structuredClone(bound.get(id)!.traceParameters),
@@ -1222,7 +1223,7 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
                 ...(node.round === undefined ? {} : { round: node.round }),
                 ...(node.iteration === undefined ? {} : { iteration: node.iteration }),
                 ...(node.unit === undefined ? {} : { unit: node.unit }),
-                value: cloneValue(result.value),
+                value: cloneValue(result[port]),
               })
             } else if (compiledGraph.traceLevel === 'detail' && node.operation === 'core.source@1' && (id === 'plaintext' || id === 'state')) {
               appendTrace({ path: 'plaintext', level: 'detail', stage: 'input', value: cloneValue(result.value) })

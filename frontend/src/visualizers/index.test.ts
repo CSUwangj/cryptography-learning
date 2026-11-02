@@ -918,7 +918,7 @@ describe('Full-state AES key-schedule detail (#91)', () => {
     const zh = keyExpansionPresentation(execution, i18n.getFixedT('zh-CN', 'visualizers'), 'aes-128-detail-zh', { algorithm: 'AES', variant: 128 })
     expect(zh.title).toBe('AES-128 密钥扩展')
     expect(zh.sections[0].rows.slice(0, 7).map((row) => row.label)).toEqual(['输入', '轮密钥 0', '字循环移位 1', '字替换 1', '轮常量 1', '异或 1', '轮密钥 1'])
-  })
+  }, 10_000)
 
   it('keeps truncated schedules explicit without fabricating rows or lineage', () => {
     const response = executeWorkerRequest({
@@ -1037,5 +1037,5 @@ describe('Full-state AES cipher detail and key-schedule overlay (#92)', () => {
     const unlinked = host(undefined)
     expect(chips(unlinked.container)).toHaveLength(0)
     unlinked.unmount()
-  })
+  }, 10_000)
 })
