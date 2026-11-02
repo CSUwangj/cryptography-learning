@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs'
-import { expect, test, type Page } from '@playwright/test'
+import { fileURLToPath } from 'node:url'
+import { expect, test, type Locator, type Page, type TestInfo } from '@playwright/test'
 import { parse, stringify } from 'yaml'
 import { aesKeyExpansionDemoDocuments } from '../demos/aesKeyExpansionLesson'
 import { aesOverlayFixturePresentation } from './aes-learning-fixture'
@@ -462,6 +463,164 @@ test.describe('Shared AES presentation fixtures (#121)', () => {
   })
 })
 
+
+// Dense full-state traces retain screenshots/logs without per-action DOM recording.
+const scheduleTest = test.extend({ trace: 'off' })
+
+scheduleTest.describe('Runnable AES v2 Lessons (#110)', () => {
+  const demoOrigin = process.env.PLAYWRIGHT_DEMO_BASE_URL
+  const openLesson = async (page: Page, testInfo: TestInfo, variant: number, locale: string) => {
+    const zh = locale === 'zh-CN'
+    const workers: string[] = []
+    const errors: string[] = []
+    page.on('worker', (worker) => workers.push(worker.url()))
+    page.on('pageerror', (error) => {
+      errors.push(error.stack ?? error.message)
+      writeFileSync(testInfo.outputPath('page-errors.log'), errors.join('\n'))
+    })
+    await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' })
+    await page.goto(`${demoOrigin}/learning?lang=${locale}`, { waitUntil: 'networkidle' })
+    await page.evaluate(async (probeUrl) => {
+      const probe = await import(probeUrl)
+      await probe.warmDefaultTraceBrowserWorker()
+    }, `/@fs${fileURLToPath(new URL('./v2-default-trace-browser.tsx', import.meta.url))}`)
+    workers.length = 0
+    await page.getByRole('link', { name: `AES-${variant} v2 ${zh ? '计算' : 'calculation'}`, exact: true }).click()
+    await expect(page).toHaveURL(new RegExp(`/learning/aes${variant}-v2-kat$`))
+    const standalone = page.getByRole('region', { name: zh ? `AES-${variant} 密钥扩展` : `AES-${variant} key expansion`, exact: true })
+    await expect(standalone).toBeVisible({ timeout: 60000 })
+    expect(workers.some((url) => url.includes('worker'))).toBe(true)
+    return { standalone, errors }
+  }
+  const capture = async (page: Page, testInfo: TestInfo, scope: Locator, subject = 'overlay') => {
+    const status = await scope.getByRole('status').textContent()
+    for (const [width, theme] of [[1440, 'light'], [390, 'dark']] as const) {
+      await page.setViewportSize({ width, height: 900 })
+      if (await page.locator('[data-theme]').getAttribute('data-theme') !== theme) {
+        await page.getByRole('button', { name: theme === 'dark' ? 'Dark' : 'Light', exact: true }).click()
+      }
+      await expect(page.locator(`[data-theme="${theme}"]`)).toBeVisible()
+      await expect(scope.getByRole('status')).toHaveText(status!)
+      await scope.evaluate((element) => { element.scrollLeft = 0; element.scrollIntoView({ block: 'start' }) })
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
+      await page.screenshot({ path: testInfo.outputPath(`aes128-en-US-${subject}-${theme}-${width}.png`) })
+    }
+    await page.setViewportSize({ width: 1440, height: 900 })
+  }
+  scheduleTest('runs AES-128 v2 through the production Learning entry in en-US', async ({ page }, testInfo) => {
+    test.setTimeout(180000)
+    test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses the local runnable demos with real Workers')
+    const { standalone, errors } = await openLesson(page, testInfo, 128, 'en-US')
+    expect(await standalone.locator('tbody tr[data-row-id]').evaluateAll((rows) => rows.slice(0, 8).map((row) => row.getAttribute('data-row-id')))).toEqual([
+      'key.value', 'round-key-0.value', 'rot-1.value', 'sub-1.value', 'rcon-1.value', 'word-1.value', 'round-key-1.value', 'rot-2.value',
+    ])
+    await expect(standalone.locator('[data-row-id="round-key-1.value"]')).toContainText('0xd6aa74fdd2af72fadaa678f1d6ab76fe')
+    await expect(standalone.locator('[data-row-id="round-key-10.value"]')).toContainText('0x13111d7fe3944a17f307a78b4d2b30c5')
+    await expect(standalone.getByRole('combobox')).toHaveValue('1')
+    const scheduleSource = standalone.locator('[data-row-id="key.value"]')
+    await scheduleSource.getByRole('button').first().focus()
+    await page.keyboard.press('Enter')
+    await expect(scheduleSource.getByRole('button').first()).toHaveAttribute('aria-pressed', 'true')
+    for (const size of [4, 8, 32]) {
+      await standalone.getByRole('combobox').selectOption(String(size))
+      await expect(scheduleSource.getByRole('button')).toHaveCount(128 / size)
+      await expect(standalone.locator('button[aria-pressed="true"]')).toHaveCount(0)
+    }
+    await expect(standalone.locator('[data-row-id="key.value"] button')).toHaveCount(4)
+    await scheduleSource.getByRole('button').first().click()
+    await capture(page, testInfo, standalone, 'standalone')
+    await page.getByRole('button', { name: 'Next', exact: true }).click()
+    const cipher = page.getByRole('region', { name: 'AES-128 encryption', exact: true })
+    await expect(cipher).toBeVisible({ timeout: 60000 })
+    await expect(cipher.locator('[data-row-id="add-round-key-10.value"]')).toContainText('0x69c4e0d86a7b0430d8cdb78070b4c55a')
+    const show = 'Show key schedule'
+    const close = 'Close key schedule'
+    const toolbar = cipher.getByRole('toolbar')
+    const cipherMode = cipher.getByRole('combobox').first()
+    await cipherMode.selectOption('8')
+    await toolbar.getByRole('button', { name: show, exact: true }).click()
+    await cipher.getByRole('combobox').nth(1).selectOption('32')
+    await expect(cipherMode).toHaveValue('8')
+    await expect(cipher.locator('[data-lane-row="schedule:round-key-1.value"]').locator('..')).toContainText('0xd6aa74fdd2af72fadaa678f1d6ab76fe')
+    const laneRows = await cipher.locator('[data-lane-row]').evaluateAll((rows) => rows.map((row) => ({
+      id: row.getAttribute('data-lane-row'), cipherRow: row.closest('[data-row-id]')?.getAttribute('data-row-id'),
+    })))
+    expect(laneRows.filter((row) => row.id?.startsWith('schedule:round-key-'))).toEqual(
+      Array.from({ length: 11 }, (_, round) => ({ id: `schedule:round-key-${round}.value`, cipherRow: `add-round-key-${round}.value` })),
+    )
+    expect(new Set(laneRows.map((row) => row.id)).size).toBe(laneRows.length)
+    await toolbar.getByRole('button', { name: close, exact: true }).click()
+    const cipherKey = cipher.locator('[data-row-id="round-key-1.value"]')
+    await cipherKey.locator('button[title]').first().click()
+    await toolbar.getByRole('button', { name: show, exact: true }).click()
+    const relatedWord = cipher.locator('[data-lane-row="schedule:round-key-1.value"] button').first()
+    await expect(relatedWord).toHaveAttribute('data-state', 'related')
+    await expect(relatedWord).toHaveAttribute('aria-pressed', 'false')
+    await toolbar.getByRole('button', { name: close, exact: true }).click()
+    await expect(cipherKey.locator('button[title]').nth(1)).toHaveAttribute('data-state', 'default')
+    await toolbar.getByRole('button', { name: show, exact: true }).click()
+    await relatedWord.click()
+    await expect(relatedWord).toHaveAttribute('aria-pressed', 'true')
+    await capture(page, testInfo, cipher)
+    await toolbar.getByRole('button', { name: close, exact: true }).click()
+    await expect(cipherKey.locator('button[data-state="related"]')).toHaveCount(4)
+    await expect(cipherKey.locator('button[title]').nth(4)).toHaveAttribute('data-state', 'default')
+    expect(errors).toEqual([])
+  })
+
+  scheduleTest('opens the AES-256 v2 standalone schedule from the Chinese Learning catalog', async ({ page }, testInfo) => {
+    test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses the local runnable demos with real Workers')
+    const { standalone, errors } = await openLesson(page, testInfo, 256, 'zh-CN')
+    expect(await standalone.locator('tbody tr[data-row-id]').evaluateAll((rows) => rows.slice(0, 12).map((row) => row.getAttribute('data-row-id')))).toEqual([
+      'key.value', 'round-key-0.value', 'round-key-1.value', 'rot-0.value', 'sub-0.value', 'rcon-0.value',
+      'first-half-0.value', 'middle-sub-0.value', 'batch-0.value', 'round-key-2.value', 'round-key-3.value', 'rot-1.value',
+    ])
+    await expect(standalone.locator('[data-row-id="round-key-1.value"]')).toContainText('0x101112131415161718191a1b1c1d1e1f')
+    await expect(standalone.locator('[data-row-id="round-key-14.value"]')).toContainText('0x24fc79ccbf0979e9371ac23c6d68de36')
+    expect(errors).toEqual([])
+  })
+
+  scheduleTest('preserves AES-128 decryption consumption and generation order in en-US', async ({ page }, testInfo) => {
+    test.setTimeout(180000)
+    test.skip(!!process.env.PLAYWRIGHT_BASE_URL, 'uses the local runnable demos with real Workers')
+    const { errors } = await openLesson(page, testInfo, 128, 'en-US')
+    await page.getByRole('button', { name: 'Next', exact: true }).click()
+    const show = 'Show key schedule'
+    await page.getByRole('button', { name: 'Next', exact: true }).click()
+    const inverse = page.getByRole('region', { name: 'AES-128 decryption', exact: true })
+    await expect(inverse).toBeVisible({ timeout: 60000 })
+    await expect(inverse.locator('[data-row-id="add-round-key-0.value"]')).toContainText('0x00112233445566778899aabbccddeeff')
+    await expect(inverse.locator('[data-lane-row]')).toHaveCount(0)
+    await inverse.getByRole('combobox').selectOption('32')
+    await inverse.getByRole('toolbar').getByRole('button', { name: show, exact: true }).click()
+    await inverse.getByRole('combobox').nth(1).selectOption('32')
+    const blocks = Array.from({ length: 10 }, (_, index) => 10 - index).flatMap((round) => [
+      `rot-${round}.value`, `sub-${round}.value`, `rcon-${round}.value`, `word-${round}.value`, `round-key-${round}.value`,
+    ])
+    const laneRows = await inverse.locator('[data-lane-row]').evaluateAll((rows) => rows.map((row) => ({
+      id: row.getAttribute('data-lane-row'), cipherRow: row.closest('[data-row-id]')?.getAttribute('data-row-id'),
+    })))
+    expect(laneRows.map((row) => row.id)).toEqual(
+      [...blocks, 'key.value', 'round-key-0.value'].map((path) => `schedule:${path}`),
+    )
+    expect(laneRows.filter((row) => row.id?.startsWith('schedule:round-key-'))).toEqual(
+      Array.from({ length: 11 }, (_, index) => ({ id: `schedule:round-key-${10 - index}.value`, cipherRow: `add-round-key-${10 - index}.value` })),
+    )
+    await inverse.locator('summary', { hasText: /^Original generation order$/ }).click()
+    const original = inverse.locator('details')
+    expect(await original.locator('tbody tr').evaluateAll((rows) => rows.map((row) => row.getAttribute('data-row-id')))).toEqual([
+      'key.value', 'round-key-0.value', ...Array.from({ length: 10 }, (_, index) => index + 1).flatMap((round) => [
+        `rot-${round}.value`, `sub-${round}.value`, `rcon-${round}.value`, `word-${round}.value`, `round-key-${round}.value`,
+      ]),
+    ])
+    await expect(original.locator('[data-row-id="round-key-10.value"]')).toContainText('0x13111d7fe3944a17f307a78b4d2b30c5')
+    const source = inverse.locator('[data-lane-row="schedule:round-key-10.value"] button').first()
+    await source.click()
+    await expect(source).toHaveAttribute('aria-pressed', 'true')
+    await expect(inverse.getByRole('status')).toContainText('round-key-10.value')
+    expect(errors).toEqual([])
+  })
+})
 
 test.describe('Independent AES-192 schedule (#106)', () => {
   // One batch covers cross-batch projection and unrelated exports; aesV2.test.ts covers the full schedule and final tail.

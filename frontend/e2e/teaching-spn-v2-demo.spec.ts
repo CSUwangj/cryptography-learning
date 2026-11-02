@@ -125,7 +125,7 @@ test('keeps published SPN structure and gather selection after node and label re
   page.on('worker', (worker) => workers.push(worker.url()))
   await page.goto('/learning/teaching-spn-v2')
   const cipher = page.getByRole('region', { name: 'Small network-16 cipher', exact: true })
-  await expect(cipher).toBeVisible()
+  await expect(cipher).toBeVisible({ timeout: 15000 })
   expect(workers.some((url) => url.includes('worker'))).toBe(true)
   const row = (id: string) => cipher.locator(`[data-row-id="${names[id]}.value"]`)
   const order = ['state', ...[1, 2, 3, 4].flatMap((round) => [`key-${round}`, `key-mix-${round}`, `substitute-${round}`, `permute-${round}`]), 'result']

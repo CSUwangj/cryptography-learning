@@ -4,8 +4,12 @@ import React from 'react'
 import { act, cleanup, render } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeAll, describe, expect, it } from 'vitest'
+import { parse, stringify } from 'yaml'
 import { executeWorkerRequest, type WorkerExecutionSnapshot } from '../crypto_graph'
 import { compileLesson, type CompiledLesson } from '../lesson_runtime'
+import aes128 from '../lesson_runtime/fixture/aes128-v2.yaml?raw'
+import aes128En from '../lesson_runtime/fixture/aes128-v2-locales/en-US.yaml?raw'
+import aes128Zh from '../lesson_runtime/fixture/aes128-v2-locales/zh-CN.yaml?raw'
 import aes192 from '../lesson_runtime/fixture/aes192-v2.yaml?raw'
 import aes192En from '../lesson_runtime/fixture/aes192-v2-locales/en-US.yaml?raw'
 import aes192Zh from '../lesson_runtime/fixture/aes192-v2-locales/zh-CN.yaml?raw'
@@ -69,6 +73,44 @@ describe.each(fixtures)('Authored AES-$variant v2 shared trace rendering (#105)'
 
 
 describe('Independent compiled schedule inspection (#106)', () => {
+  it.each([
+    { variant: 128, lesson: aes128, locales: { 'en-US': aes128En, 'zh-CN': aes128Zh }, order: [
+      'key', 'round-key-0', 'rot-1', 'sub-1', 'rcon-1', 'word-1', 'round-key-1',
+      'rot-2', 'sub-2', 'rcon-2', 'word-2', 'round-key-2',
+    ] },
+    { ...fixtures[0], order: [
+      'key', 'round-key-0', 'rot-0', 'sub-0', 'rcon-0', 'batch-0', 'round-key-1', 'round-key-2',
+      'rot-1', 'sub-1', 'rcon-1', 'batch-1', 'round-key-3',
+    ] },
+    { ...fixtures[1], order: [
+      'key', 'round-key-0', 'round-key-1', 'rot-0', 'sub-0', 'rcon-0', 'first-half-0', 'middle-sub-0', 'batch-0', 'round-key-2', 'round-key-3',
+      'rot-1', 'sub-1', 'rcon-1', 'first-half-1', 'middle-sub-1', 'batch-1', 'round-key-4', 'round-key-5',
+    ] },
+  ])('interleaves AES-$variant round keys with their generating states', (fixture) => {
+    const lesson = parse(fixture.lesson)
+    const retained = new Set(fixture.order)
+    const schedule = lesson.graphs.schedule
+    schedule.nodes = schedule.nodes.filter((node: { id: string }) => retained.has(node.id))
+    schedule.outputs = schedule.outputs.filter((output: { node: string }) => retained.has(output.node))
+    lesson.graphs = { schedule }
+    lesson.steps = lesson.steps.filter((step: { id: string }) => step.id === 'schedule')
+    const compiled = compileLesson({ ...fixture, lesson: stringify(lesson) })
+    if (!compiled.ok) throw new Error(JSON.stringify(compiled.diagnostics))
+    const graph = compiled.value.graphs.schedule
+    const result = executeWorkerRequest({ requestId: 'ordered-schedule', kind: 'execute', payload: {
+      graph: graph.graph, inputs: { 'key.value': compiled.value.inputs.key.default },
+    } })
+    if (result.kind !== 'snapshot') throw new Error(JSON.stringify(result))
+    const view = render(React.createElement(I18nextProvider, { i18n: i18n.cloneInstance({ lng: 'en-US' }) }, React.createElement(RenderHost, {
+      execution: result.snapshot, compiledGraph: graph,
+      presentation: compiled.value.steps.find((step) => step.id === 'schedule')!.presentation,
+      executionIdentity: 'ordered-schedule', dimensions: { width: 1100, height: 700 }, reducedMotion: true,
+    })))
+    expect([...view.container.querySelectorAll('tbody tr[data-row-id]')].map((row) => row.getAttribute('data-row-id')))
+      .toEqual(fixture.order.map((id) => `${id}.value`))
+    cleanup()
+  })
+
   it('presents actual AES-192 full states and cross-batch exports without a cipher', () => {
     const fixture = fixtures[0]
     const compiled = compileLesson(fixture)

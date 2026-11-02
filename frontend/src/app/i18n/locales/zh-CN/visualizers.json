@@ -99,8 +99,6 @@
     "decrypt": "{{algorithm}} 解密"
   },
   "overlay": {
-    "generation": "生成行 {{index}}",
-    "generationHeader": "生成行",
     "source": "来源",
     "originalOrder": "原始生成顺序",
     "toggle": "显示密钥编排",

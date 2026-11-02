@@ -144,11 +144,13 @@ graphs:
 steps:
   - id: schedule
     prose: schedule-description
+    presentation: {kind: spn-cipher, mode: key-expansion, algorithm: AES, variant: 256}
     execute:
       graph: schedule
       bindings: {key.value: {input: key}}
   - id: cipher
     prose: cipher-description
+    presentation: {kind: spn-cipher, algorithm: AES, variant: 256, direction: encrypt, overlay: true}
     execute:
       graph: cipher
       bindings:

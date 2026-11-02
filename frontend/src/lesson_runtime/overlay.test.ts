@@ -80,8 +80,13 @@ describe('Overlay boundaries retained by #108', () => {
     if (result.ok) expect(result.value.steps[1].overlay).toBeUndefined()
   })
 
-  it('keeps unavailable or forward Step references in the existing category', () => {
-    expect(compile((lesson) => { lesson.steps[1].execute.bindings['round-key-4.value'].step = 'later' })).toMatchObject({ ok: false, diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'lesson.invalid-step-reference' })]) })
+  it.each(['unavailable', 'forward', 'non-execute'])('keeps %s Step references in the existing diagnostic category', (kind) => {
+    expect(compile((lesson) => {
+      const cipher = lesson.steps[1]
+      if (kind === 'forward') lesson.steps.push({ ...structuredClone(lesson.steps[0]), id: 'later' })
+      if (kind === 'non-execute') lesson.steps.splice(1, 0, { id: 'later', prose: 'schedule-description' })
+      cipher.execute.bindings['round-key-4.value'].step = 'later'
+    })).toMatchObject({ ok: false, diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'lesson.invalid-step-reference' })]) })
   })
 
   it('follows renamed graph nodes and accepts exported concat anchors with many output nodes', () => {

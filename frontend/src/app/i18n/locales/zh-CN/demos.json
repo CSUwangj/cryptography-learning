@@ -2,6 +2,10 @@
   "spnV2": {
     "title": "教学型 SPN v2"
   },
+  "aesV2": {
+    "link": "AES v2 课程",
+    "category": "AES v2"
+  },
   "spn": {
     "title": "教学 SPN 演示",
     "plaintext": "明文",

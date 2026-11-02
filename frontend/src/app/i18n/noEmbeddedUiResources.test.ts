@@ -15,6 +15,10 @@ function embeddedResources(source: string, filename = 'example.tsx'): string[] {
     ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)
       && node.moduleSpecifier.text.endsWith('.json') && node.importClause?.name
       ? [node.importClause.name.text] : []))
+  const yamlImports = new Set(file.statements.flatMap((node) =>
+    ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)
+      && /\.ya?ml\?raw$/.test(node.moduleSpecifier.text) && node.importClause?.name
+      ? [node.importClause.name.text] : []))
   const errors: string[] = []
   const name = (node: ts.Node): string => ts.isIdentifier(node) || ts.isStringLiteralLike(node)
     ? node.text : ts.isComputedPropertyName(node) ? name(node.expression) : ''
@@ -24,6 +28,17 @@ function embeddedResources(source: string, filename = 'example.tsx'): string[] {
     ? node.text : ts.isTemplateExpression(node)
       ? node.head.text + node.templateSpans.map((span) => '${value}' + span.literal.text).join('') : undefined
   const lessonDocument = (value: string): boolean => /^title:/.test(value) && /\ntexts:/.test(value)
+  const yamlReference = (node: ts.Node): boolean => {
+    node = unwrap(node)
+    return ts.isIdentifier(node) && yamlImports.has(node.text)
+  }
+  const lessonLocaleReference = (node: ts.PropertyAssignment): boolean => {
+    const locales = node.parent.parent
+    return yamlReference(node.initializer) && ts.isPropertyAssignment(locales) && name(locales.name) === 'locales'
+      && ts.isObjectLiteralExpression(locales.parent) && locales.parent.properties.some((property) =>
+        ts.isPropertyAssignment(property) ? name(property.name) === 'lesson' && yamlReference(property.initializer)
+          : ts.isShorthandPropertyAssignment(property) && property.name.text === 'lesson' && yamlReference(property.name))
+  }
   const jsonReference = (node: ts.Node): boolean => {
     node = unwrap(node)
     return ts.isIdentifier(node) ? jsonImports.has(node.text)
@@ -51,7 +66,7 @@ function embeddedResources(source: string, filename = 'example.tsx'): string[] {
     if (ts.isPropertyAssignment(node) && locale.test(name(node.name))) {
       const value = text(unwrap(node.initializer))
       // Authored Lesson YAML has its own locale contract; filenames are not exemptions.
-      if (!jsonReference(node.initializer) && !(value !== undefined && lessonDocument(value))) {
+      if (!jsonReference(node.initializer) && !lessonLocaleReference(node) && !(value !== undefined && lessonDocument(value))) {
         report(node, 'Embedded locale dictionary')
       }
     }
@@ -83,6 +98,13 @@ it.each([
   "const title = language.startsWith('zh') ? `运行 ${count}` : 'Run'",
   `function title() { if (i18n.language === 'zh-CN') return '运行'; return 'Run' }`,
   `function title(locale) { switch (locale) { case 'zh-CN': return '运行'; default: return 'Run' } }`,
+  `import copy from './en-US.yaml?raw'; const resources = { 'en-US': copy }`,
+  `import lesson from './lesson.yaml?raw'; import copy from './en-US.yaml?raw';
+   i18n.init({ resources: { 'en-US': copy } })`,
+  `import lesson from './lesson.yaml?raw'; import en from './en-US.yaml?raw';
+   const documents = { lesson, locales: { 'en-US': en, 'zh-CN': { title: '运行' } } }`,
+  `import lesson from './lesson.yaml?raw'; import en from './en-US.ts';
+   const documents = { lesson, locales: { 'en-US': en } }`,
 ])('rejects embedded resources even in a prototype fixture: %s', (source) => {
   expect(embeddedResources(source, 'demos/previewFixture.ts')).not.toEqual([])
 })
@@ -93,6 +115,10 @@ it.each([
   `const selected = locale === 'zh-CN' ? 'zh-CN' : 'en-US'`,
   `const title = locale === 'zh-CN' ? t('title') : input`,
   "const documents = { 'en-US': 'title: Demo\\ntexts: {}', 'zh-CN': `title: 示例\ntexts: {}` }",
+  `import lesson from './lesson.yaml?raw'; import en from './en-US.yaml?raw'; import zh from './zh-CN.yaml?raw';
+   const documents = { lesson, locales: { 'en-US': en, 'zh-CN': zh } }`,
+  `import lesson from './lesson.yml?raw'; import en from './en-US.yml?raw';
+   const documents = { lesson: lesson, locales: { 'en-US': (en as string) } }`,
   `const categories = [{ id: 'foundations', lessons: [{ id: 'xor' }] }]`,
   `const warning = { code: 'external.failure', message: rawMessage, path: 'inputs' }`,
 ])('allows JSON registration, language identifiers and authored data: %s', (source) => {

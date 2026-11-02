@@ -26,10 +26,9 @@ const fixtureDirectory = join(dirname(fileURLToPath(import.meta.url)), 'fixture'
 const frontendDirectory = join(fixtureDirectory, '..', '..', '..')
 const aes128V2Fixture: LessonDocuments = {
   lesson: readFileSync(join(fixtureDirectory, 'aes128-v2.yaml'), 'utf8'),
-  locales: {
-    'en-US': 'title: AES-128 v2 calculation\nsummary: Verify composed AES-128 execution.\ntexts: {}',
-    'zh-CN': 'title: AES-128 v2 计算\nsummary: 验证组合 AES-128 执行。\ntexts: {}',
-  },
+  locales: Object.fromEntries(['en-US', 'zh-CN'].map((locale) => [locale,
+    readFileSync(join(fixtureDirectory, 'aes128-v2-locales', `${locale}.yaml`), 'utf8'),
+  ])),
 }
 
 const fixture = (): LessonDocuments => ({
@@ -57,6 +56,46 @@ class WorkerStub {
 }
 
 describe('Lesson Runtime compiler (#29)', () => {
+  it('exposes the AES-128 schedule independently and all eleven binding-derived encryption anchors (#110)', () => {
+    const compiled = compileLesson(aes128V2Fixture)
+    if (!compiled.ok) throw new Error(JSON.stringify(compiled.diagnostics))
+    expect(compiled.value.steps[0]).toMatchObject({ id: 'schedule', presentation: { kind: 'spn-cipher', mode: 'key-expansion', algorithm: 'AES', variant: 128 } })
+    expect(compiled.value.steps[1]).toMatchObject({ id: 'cipher', presentation: { kind: 'spn-cipher', direction: 'encrypt', algorithm: 'AES', variant: 128 }, overlay: {
+      step: 'schedule',
+      anchors: Array.from({ length: 11 }, (_, round) => ({ cipherRow: `round-key-${round}.value`, scheduleRow: `round-key-${round}.value`, round })),
+    } })
+  })
+
+  it('decrypts the FIPS AES-128 ciphertext with rk10 through rk0 from the unchanged forward schedule (#110)', async () => {
+    const compiled = compileLesson(aes128V2Fixture)
+    if (!compiled.ok) throw new Error(JSON.stringify(compiled.diagnostics))
+    const inverse = compiled.value.steps.find((step) => step.id === 'decrypt')
+    expect(inverse).toMatchObject({ presentation: { kind: 'spn-cipher', direction: 'decrypt' }, overlay: {
+      step: 'schedule',
+      anchors: Array.from({ length: 11 }, (_, index) => ({ cipherRow: `round-key-${10 - index}.value`, scheduleRow: `round-key-${10 - index}.value`, round: 10 - index })),
+    } })
+    vi.stubGlobal('Worker', WorkerStub)
+    const session = createBrowserLessonSession(aes128V2Fixture, 'en-US', i18n.getFixedT('en-US', 'translations'))
+    if (!session.ok) throw new Error(JSON.stringify(session.diagnostics))
+    try {
+      const entered = await session.value.enter()
+      if (!entered.ok) throw new Error(JSON.stringify(entered.diagnostics))
+      const schedule = JSON.stringify(entered.value.snapshots.schedule)
+      await session.value.next()
+      const result = await session.value.next()
+      if (!result.ok) throw new Error(JSON.stringify(result.diagnostics))
+      expect(result.value.executionDiagnostics).toEqual({})
+      expect(hex(result.value.snapshots.decrypt.outputs['add-round-key-0.value'] as never)).toBe('0x00112233445566778899aabbccddeeff')
+      expect(result.value.snapshots.decrypt.trace.filter((event) => 'role' in event && event.role === 'round-key').map((event) => event.path)).toEqual(
+        Array.from({ length: 11 }, (_, index) => `round-key-${10 - index}.value`),
+      )
+      expect(JSON.stringify(result.value.snapshots.schedule)).toBe(schedule)
+    } finally {
+      session.value.dispose()
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('executes literal AES-128 v2 schedule and cipher Lessons with projected key binding', async () => {
     const compiled = compileLesson(aes128V2Fixture)
     expect(compiled.ok).toBe(true)

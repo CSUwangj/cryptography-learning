@@ -3,11 +3,12 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
+import { parse, stringify } from 'yaml'
 import { executeWorkerRequest, hex, type BitsValue, type TraceEvent, type WorkerExecutionSnapshot } from '../crypto_graph'
 import { compileLesson, createBrowserLessonSession, type LessonDocuments } from './index'
 
 const fixtureDirectory = join(dirname(fileURLToPath(import.meta.url)), 'fixture')
-const documents = (variant: 192 | 256): LessonDocuments => ({
+const documents = (variant: 128 | 192 | 256): LessonDocuments => ({
   lesson: readFileSync(join(fixtureDirectory, `aes${variant}-v2.yaml`), 'utf8'),
   locales: Object.fromEntries(['en-US', 'zh-CN'].map((locale) => [locale,
     readFileSync(join(fixtureDirectory, `aes${variant}-v2-locales`, `${locale}.yaml`), 'utf8'),
@@ -47,6 +48,72 @@ const outputHex = (snapshot: WorkerExecutionSnapshot, path: string) => hex(snaps
 const eventAt = (snapshot: WorkerExecutionSnapshot, path: string) => snapshot.trace.find((event) => event.path === path) as TraceEvent
 
 describe('Authored AES v2 calculations (#105)', () => {
+  it.each([
+    { variant: 128, lastRound: 10, ciphertext: '0x69c4e0d86a7b0430d8cdb78070b4c55a' },
+    { variant: 256, lastRound: 14, ciphertext: '0x8ea2b7ca516745bfeafc49904b496089' },
+  ] as const)('preserves AES-$variant values, lineage and binding structure when every node and algorithm label changes (#110)', ({ variant, lastRound, ciphertext }) => {
+    const source = documents(variant)
+    const original = compileLesson(source)
+    if (!original.ok) throw new Error(JSON.stringify(original.diagnostics))
+    const lesson = parse(source.lesson)
+    const names: Record<string, Record<string, string>> = {}
+    for (const [graphId, graph] of Object.entries(lesson.graphs) as [string, { nodes: { id: string; inputs?: Record<string, { node: string }> }[]; outputs: { node: string }[] }][]) {
+      names[graphId] = Object.fromEntries(graph.nodes.map((node, index) => [node.id, `stage-${index}`]))
+      for (const node of graph.nodes) {
+        node.id = names[graphId][node.id]
+        for (const input of Object.values(node.inputs ?? {})) input.node = names[graphId][input.node]
+      }
+      for (const output of graph.outputs) output.node = names[graphId][output.node]
+    }
+    const renamePath = (graphId: string, path: string) => `${names[graphId][path.slice(0, path.lastIndexOf('.'))]}.${path.slice(path.lastIndexOf('.') + 1)}`
+    for (const step of lesson.steps) {
+      step.presentation.algorithm = 'Another network'
+      step.presentation.variant = 37
+      step.execute.bindings = Object.fromEntries(Object.entries(step.execute.bindings).map(([target, reference]) => {
+        const binding = reference as { step?: string; output?: string }
+        const prior = original.value.steps.find((step) => step.id === binding.step)
+        return [renamePath(step.execute.graph, target), prior?.execute && binding.output
+          ? { ...binding, output: renamePath(prior.execute.graph, binding.output) } : reference]
+      }))
+    }
+    const renamed = compileLesson({ ...source, lesson: stringify(lesson) })
+    if (!renamed.ok) throw new Error(JSON.stringify(renamed.diagnostics))
+    for (const [graphId, graph] of Object.entries(original.value.graphs)) {
+      expect(renamed.value.graphs[graphId].lineage).toEqual(graph.lineage?.map((edge) => ({
+        ...edge, source: renamePath(graphId, edge.source), target: renamePath(graphId, edge.target),
+      })))
+    }
+    const snapshots: Record<string, WorkerExecutionSnapshot> = {}
+    for (const step of renamed.value.steps) {
+      if (!step.execute) continue
+      const prior = original.value.steps.find((candidate) => candidate.id === step.id)!
+      if (step.presentation?.kind !== 'spn-cipher' || prior.presentation?.kind !== 'spn-cipher') throw new Error('Expected the shared cipher presentation')
+      expect(step.presentation.rowOrder).toEqual(prior.presentation.rowOrder?.map((path) => renamePath(step.execute!.graph, path)))
+      expect(step.overlay?.anchors).toEqual(prior.overlay?.anchors.map((anchor) => ({
+        ...anchor, cipherRow: renamePath(step.execute!.graph, anchor.cipherRow), scheduleRow: renamePath('schedule', anchor.scheduleRow),
+      })))
+      const inputs = Object.fromEntries(Object.entries(step.execute.bindings).map(([target, binding]) => [target,
+        'input' in binding ? renamed.value.inputs[binding.input].default : 'constant' in binding ? renamed.value.constants[binding.constant] : snapshots[binding.step].outputs[binding.output],
+      ]))
+      const response = executeWorkerRequest({ requestId: step.id, kind: 'execute', payload: { graph: renamed.value.graphs[step.execute.graph].graph, inputs } })
+      if (response.kind !== 'snapshot') throw new Error(JSON.stringify(response))
+      snapshots[step.id] = response.snapshot
+    }
+    expect(outputHex(snapshots.cipher, renamePath('cipher', `add-round-key-${lastRound}.value`))).toBe(ciphertext)
+    if (variant === 128) expect(outputHex(snapshots.decrypt, renamePath('decrypt', 'add-round-key-0.value'))).toBe('0x00112233445566778899aabbccddeeff')
+  }, 15000)
+
+  it('exposes the AES-256 schedule independently and all fifteen binding-derived encryption anchors (#110)', () => {
+    const compiled = compileLesson(documents(256))
+    expect(compiled).toMatchObject({ ok: true, value: { steps: [
+      { id: 'schedule', presentation: { kind: 'spn-cipher', mode: 'key-expansion', algorithm: 'AES', variant: 256 } },
+      { id: 'cipher', presentation: { kind: 'spn-cipher', direction: 'encrypt', algorithm: 'AES', variant: 256 }, overlay: {
+        step: 'schedule',
+        anchors: Array.from({ length: 15 }, (_, round) => ({ cipherRow: `round-key-${round}.value`, scheduleRow: `round-key-${round}.value`, round })),
+      } },
+    ] } })
+  })
+
   it('executes AES-192 cross-batch round keys and the FIPS-197 Appendix C.2 cipher', async () => {
     const { schedule, cipher } = await run(192)
     expect(outputHex(schedule, 'round-key-0.value')).toBe('0x000102030405060708090a0b0c0d0e0f')

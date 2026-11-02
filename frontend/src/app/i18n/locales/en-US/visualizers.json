@@ -99,8 +99,6 @@
     "decrypt": "{{algorithm}} decryption"
   },
   "overlay": {
-    "generation": "Generation row {{index}}",
-    "generationHeader": "Generation row",
     "source": "Source",
     "originalOrder": "Original generation order",
     "toggle": "Show key schedule",

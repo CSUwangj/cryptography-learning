@@ -1,0 +1,6 @@
+title: AES-128 v2 计算
+summary: 验证组合 AES-128 密钥编排与加密。
+texts:
+  schedule-description: 每批通过 RotWord、SubWord、Rcon 和链式异或生成四个字。在加密前独立检查全部十一个轮密钥。
+  cipher-description: 使用导出的 128 位轮密钥，加密 FIPS-197 附录 C 的明文。打开密钥编排，追踪其结构关系。
+  decrypt-description: 使用同一份正向生成的密钥编排，按第 10 轮到第 0 轮的顺序消耗轮密钥，恢复 FIPS-197 明文。每个编排块保留原始生成顺序与标识。

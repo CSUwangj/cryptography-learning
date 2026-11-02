@@ -2,6 +2,10 @@
   "spnV2": {
     "title": "Teaching SPN v2"
   },
+  "aesV2": {
+    "link": "AES v2 Lessons",
+    "category": "AES v2"
+  },
   "spn": {
     "title": "Teaching SPN demo",
     "plaintext": "Plaintext",

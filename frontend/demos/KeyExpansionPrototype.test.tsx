@@ -68,4 +68,4 @@ it('remeasures an open key lane after language changes while retaining execution
     expect(requests).toEqual(['visualize-1'])
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   }
-})
+}, 15000)

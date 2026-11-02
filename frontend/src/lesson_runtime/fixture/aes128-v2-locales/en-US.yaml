@@ -1,0 +1,6 @@
+title: AES-128 v2 calculation
+summary: Verify the composed AES-128 schedule and cipher.
+texts:
+  schedule-description: Generate four words per batch with RotWord, SubWord, Rcon and chained XOR. Inspect all eleven round keys independently before encryption.
+  cipher-description: Encrypt the FIPS-197 Appendix C plaintext using the exported 128-bit round keys. Open the schedule to follow their structural relationships.
+  decrypt-description: Recover the FIPS-197 plaintext using the same forward-generated schedule in reverse consumption order, from round key 10 to round key 0. Each schedule block retains its generation order and original identities.

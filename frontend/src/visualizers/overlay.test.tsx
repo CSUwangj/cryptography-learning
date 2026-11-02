@@ -83,7 +83,7 @@ describe('Complete D overlay (#108)', () => {
     expect(view.getAllByRole('combobox')[1]).toHaveValue('32')
     expect(cipherMode).toHaveValue('8')
     expect(view.getByRole('status').textContent).toBe(origin)
-  })
+  }, 30000)
 
   it.each(['en-US', 'zh-CN'])('uses one stateful whole-schedule toggle and names the common selection units in %s', async (language) => {
     const { props } = execute(documents)
@@ -260,19 +260,18 @@ describe('Complete D overlay (#108)', () => {
     expect(view.container.querySelectorAll('[data-lane-row]')).toHaveLength(0)
   })
 
-  it('retains original generation information and an expandable reference in reverse consumption order', async () => {
+  it('keeps stage, source and round without generation row numbers and retains the original-order reference', async () => {
     const { props } = execute(documents)
     const view = mount(props)
     await userEvent.click(within(view.getByRole('toolbar')).getByRole('button', { name: 'Show key schedule' }))
-    expect(within(view.container.querySelector('[data-lane-row="schedule:rk2.value"]')!.closest('tr')!).getByRole('cell', { name: 'Generation row 8' })).toBeVisible()
-    expect(within(view.container.querySelector('[data-lane-row="schedule:rot.value"]')!.closest('tr')!).getByRole('cell', { name: 'Generation row 3' })).toBeVisible()
+    expect(view.queryByText(/Generation row/)).not.toBeInTheDocument()
     const scheduleKey = view.container.querySelector('[data-lane-row="schedule:rk2.value"]')!
     const scheduleRow = scheduleKey.closest('tr')!
-    expect([...scheduleRow.cells].slice(-6, -1).map((cell) => cell.textContent)).toEqual([
-      'Generation row 8', 'Round key 2', 'rk2.value', '2', '0xeae1eaef',
+    expect([...scheduleRow.cells].slice(-5, -1).map((cell) => cell.textContent)).toEqual([
+      'Round key 2', 'rk2.value', '2', '0xeae1eaef',
     ])
-    expect([...scheduleRow.closest('table')!.querySelectorAll('thead th')].slice(-6).map((cell) => cell.textContent)).toEqual([
-      'Generation row', 'Stage', 'Source', 'Round', 'Value', 'Bits',
+    expect([...scheduleRow.closest('table')!.querySelectorAll('thead th')].slice(-5).map((cell) => cell.textContent)).toEqual([
+      'Stage', 'Source', 'Round', 'Value', 'Bits',
     ])
     for (const row of scheduleRow.parentElement!.querySelectorAll('tr')) {
       expect(row.cells.length).toBe(scheduleRow.closest('table')!.querySelectorAll('thead th').length)

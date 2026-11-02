@@ -133,18 +133,32 @@ export const executionTracePresentation = (execution: WorkerExecutionSnapshot, t
   }
 }
 
+const scheduleBlocks = (graph: CompiledGraph) => {
+  const nodes = new Map(graph.graph.nodes.map((node) => [node.id, node]))
+  const visited = new Set<string>()
+  const visit = (id: string): string[] => {
+    if (visited.has(id)) return []
+    visited.add(id)
+    const node = nodes.get(id)
+    const parents = Object.values(node?.inputs ?? {}).flatMap((input) => visit(input.node))
+    return [...parents, `${id}.value`]
+  }
+  const keys = [...nodes.values()].filter((node) => node.role === 'round-key').sort((left, right) => (left.round ?? 0) - (right.round ?? 0))
+  const blocks = keys.map((node) => visit(node.id))
+  const remaining = [...nodes.keys()].flatMap(visit)
+  return { keys, blocks, remaining }
+}
+
 const spnPresentation = (execution: WorkerExecutionSnapshot, t: TFunction<'visualizers'>, executionIdentity: string, spn: NonNullable<ExecutionTraceRendererProps['spn']>, primitiveLabels?: Readonly<Record<string, string>>): LearningPresentation => {
   const base = executionTracePresentation(execution, t, executionIdentity, primitiveLabels)
   const { graph, presentation } = spn
   const schedule = presentation.mode === 'key-expansion'
   const events = execution.trace.filter((event): event is TraceEvent & { value: BitsValue } =>
     'value' in event && event.value?.type.family === 'bits' && 'bytes' in event.value)
-  const order = new Map((schedule ? graph.graph.nodes.map((node) => `${node.id}.value`) : presentation.rowOrder ?? []).map((path, index) => [path, index]))
-  // Schedules retain generation/export order; cipher rows use the compiler's state-chain order.
-  events.sort((left, right) => schedule ? Number(left.role === 'round-key') - Number(right.role === 'round-key')
-    || (left.role === 'round-key' ? (left.round ?? 0) - (right.round ?? 0) : (left.iteration ?? -1) - (right.iteration ?? -1))
-    || (order.get(left.path) ?? 0) - (order.get(right.path) ?? 0)
-    : order.get(left.path)! - order.get(right.path)!)
+  const blocks = schedule ? scheduleBlocks(graph) : undefined
+  const order = new Map((blocks ? [...blocks.blocks.flat(), ...blocks.remaining] : presentation.rowOrder ?? []).map((path, index) => [path, index]))
+  // Emit each round key after its dependencies; cipher rows retain their compiled order.
+  events.sort((left, right) => order.get(left.path)! - order.get(right.path)!)
   const retained = new Set(events.map((event) => event.path))
   const relationships = (graph.lineage ?? []).filter((edge) => retained.has(edge.source) && retained.has(edge.target))
     .map((edge) => ({ from: `${edge.source}#${edge.sourceBit}`, to: `${edge.target}#${edge.targetBit}` }))
@@ -190,19 +204,9 @@ const overlayPresentation = (base: LearningPresentation, overlay: NonNullable<Ex
   const schedule = spnPresentation(overlay.execution, t, base.executionIdentity!, { graph: overlay.graph, presentation: { ...presentation, mode: 'key-expansion' } }, presentation.labels)
   const rows = schedule.sections[0].rows
   const byId = new Map(rows.map((row) => [row.id, row]))
-  const nodes = new Map(overlay.graph.graph.nodes.map((node) => [node.id, node]))
-  const visited = new Set<string>()
-  const visit = (id: string): LearningRow[] => {
-    if (visited.has(id)) return []
-    visited.add(id)
-    const node = nodes.get(id)
-    const parents = Object.values(node?.inputs ?? {}).flatMap((input) => visit(input.node))
-    const row = byId.get(`${id}.value`)
-    return row ? [...parents, row] : parents
-  }
-  const keys = [...nodes.values()].filter((node) => node.role === 'round-key').sort((left, right) => (left.round ?? 0) - (right.round ?? 0))
-  const blocks = keys.map((node) => visit(node.id))
-  const remaining = [...nodes.keys()].flatMap(visit)
+  const { keys, blocks: paths, remaining: tail } = scheduleBlocks(overlay.graph)
+  const blocks = paths.map((block) => block.flatMap((path) => byId.get(path) ?? []))
+  const remaining = tail.flatMap((path) => byId.get(path) ?? [])
   const generation = [...blocks.flat(), ...remaining]
   const positions = overlay.anchors.map((anchor) => keys.findIndex((node) => `${node.id}.value` === anchor.scheduleRow))
   const ordered = [...(positions[0] > positions[positions.length - 1] ? blocks.toReversed() : blocks).flat(), ...remaining]
@@ -210,8 +214,8 @@ const overlayPresentation = (base: LearningPresentation, overlay: NonNullable<Ex
   const laneRows = ordered.map((row) => ({
     ...row, id: `schedule:${row.id}`,
     anchor: anchors.get(row.id),
-    label: `${t('overlay.generation', { index: generation.indexOf(row) + 1 })}; ${row.label} (${row.id}) [${row.cells[0].value}] ${row.cells[1].value}`,
-    cells: [{ value: t('overlay.generation', { index: generation.indexOf(row) + 1 }) }, { value: row.label }, { value: row.id }, ...row.cells],
+    label: `${row.label} (${row.id}) [${row.cells[0].value}] ${row.cells[1].value}`,
+    cells: [{ value: row.label }, { value: row.id }, ...row.cells],
     selectableBits: row.selectableBits?.map((bit) => ({ ...bit, id: `schedule:${bit.id}` })),
     relationships: row.relationships?.map((edge) => ({ from: `schedule:${edge.from}`, to: `schedule:${edge.to}` })),
   }))
@@ -224,7 +228,7 @@ const overlayPresentation = (base: LearningPresentation, overlay: NonNullable<Ex
     }),
     keyExpansionLane: {
       caption: t('overlay.title'), closeLabel: t('overlay.close'), rows: laneRows,
-      headers: [t('overlay.generationHeader'), t('keyExpansion.stage'), t('overlay.source'), t('keyExpansion.round'), t('keyExpansion.value'), t('keyExpansion.bits')],
+      headers: [t('keyExpansion.stage'), t('overlay.source'), t('keyExpansion.round'), t('keyExpansion.value'), t('keyExpansion.bits')],
       sharedSelection: { toggleLabel: t('overlay.toggle'), clearLabel: t('overlay.clear') },
       originalOrder: { kind: 'raw', caption: t('overlay.originalOrder'), headers: schedule.sections[0].headers.slice(0, 3), rows: generation },
     },

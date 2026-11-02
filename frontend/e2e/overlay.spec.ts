@@ -621,7 +621,8 @@ for (const language of ['en-US', 'zh-CN'] as const) overlayTest(`aligns cipher/s
   await expect(close).toHaveAttribute('aria-pressed', 'true')
   await expect(cipher.getByRole('status')).toHaveText(origin!)
   await expect(cipher.locator('[data-lane-row]')).toHaveCount(8)
-  await expect(cipher.getByRole('columnheader', { name: chinese ? '生成行' : 'Generation row', exact: true })).toBeVisible()
+  await expect(cipher.getByRole('columnheader', { name: chinese ? '生成行' : 'Generation row', exact: true })).toHaveCount(0)
+  await expect(cipher.getByText(chinese ? /生成行 \d+/ : /Generation row \d+/)).toHaveCount(0)
   await expect(cipher.getByRole('columnheader', { name: chinese ? '来源' : 'Source', exact: true })).toBeVisible()
   await expect(cipher.locator('[data-lane-row="schedule:input.value"]').locator('..').getByRole('cell', { name: 'input.value', exact: true })).toBeVisible()
   const scheduleMode = cipher.getByRole('combobox').nth(1)
@@ -638,8 +639,8 @@ for (const language of ['en-US', 'zh-CN'] as const) overlayTest(`aligns cipher/s
         const geometry = await cipher.evaluate((section) => {
           const lane = [...section.querySelectorAll('[data-lane-row]')]
           const starts = lane.flatMap((row) => row.querySelector('button')?.getBoundingClientRect().left ?? [])
-          const columns = lane.map((row) => [...row.closest('tr')!.cells].slice(-6))
-          const columnSpreads = Array.from({ length: 6 }, (_, index) => {
+          const columns = lane.map((row) => [...row.closest('tr')!.cells].slice(-5))
+          const columnSpreads = Array.from({ length: 5 }, (_, index) => {
             const starts = columns.map((cells) => cells[index].getBoundingClientRect().left)
             return Math.max(...starts) - Math.min(...starts)
           })
@@ -665,7 +666,7 @@ for (const language of ['en-US', 'zh-CN'] as const) overlayTest(`aligns cipher/s
         })
         await testInfo.attach(`${theme}-${width}-${size}`, { body: JSON.stringify(geometry), contentType: 'application/json' })
         expect(geometry.startSpread).toBeLessThanOrEqual(1)
-        expect(geometry.columnSpreads).toHaveLength(6)
+        expect(geometry.columnSpreads).toHaveLength(5)
         for (const spread of geometry.columnSpreads) expect(spread).toBeLessThanOrEqual(1)
         expect(geometry.headersMatch).toBe(true)
         expect(geometry.markerCount).toBeGreaterThan(0)
