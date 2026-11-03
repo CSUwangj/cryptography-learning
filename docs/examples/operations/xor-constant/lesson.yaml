@@ -1,0 +1,18 @@
+version: 2
+id: constant-xor-example
+default_locale: en-US
+inputs:
+  plaintext: {type: {family: bits, size: 64}, encoding: hex, default: "0x0011223344556677"}
+constants: {}
+graphs:
+  inject:
+    nodes:
+      - {id: state, operation: core.source@1, parameters: {type: {family: bits, size: 64}}, role: state, round: 0, unit: 32}
+      - {id: mixed, operation: core.xor-constant@1, inputs: {value: {node: state, port: value}}, parameters: {target: 1, constant: 16777216}, role: state, round: 0, unit: 32}
+      - {id: result, operation: core.output@1, inputs: {value: {node: mixed, port: value}}, role: state, round: 0, unit: 32}
+    outputs: [{node: result, port: value}]
+steps:
+  - id: run
+    execute:
+      graph: inject
+      bindings: {state.value: {input: plaintext}}

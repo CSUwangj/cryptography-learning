@@ -1,0 +1,21 @@
+version: 1
+id: v1-minimal
+default_locale: en-US
+inputs:
+  plaintext: {type: {family: bits, size: 16}, encoding: hex, default: "0x1234"}
+constants:
+  mask: {type: {family: bits, size: 16}, encoding: hex, value: "0x00ff"}
+graphs:
+  mix:
+    nodes:
+      - {id: state, operation: core.source@1, parameters: {type: {family: bits, size: 16}}}
+      - {id: mask, operation: core.source@1, parameters: {type: {family: bits, size: 16}}}
+      - {id: mixed, operation: core.xor@1, inputs: {left: {node: state, port: value}, right: {node: mask, port: value}}}
+      - {id: result, operation: core.output@1, inputs: {value: {node: mixed, port: value}}}
+    outputs: [{node: result, port: value}]
+    traceLevel: summary
+steps:
+  - id: run
+    execute:
+      graph: mix
+      bindings: {state.value: {input: plaintext}, mask.value: {constant: mask}}

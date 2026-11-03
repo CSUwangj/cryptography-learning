@@ -81,6 +81,39 @@ class TestPlanTest(unittest.TestCase):
         root_fallback = test_plan.plan_paths(["unknown-config.toml"])
         self.assertTrue({"backend_tests", "frontend-tests", "tooling"} <= {item["id"] for item in root_fallback["checks"]})
 
+    def test_documentation_companions_select_direct_consumers(self):
+        examples = (
+            ("docs/examples/migration/xor-v1", "src/lesson_runtime/migrationExample.test.ts"),
+            ("docs/examples/migration/xor-v2", "src/lesson_runtime/migrationExample.test.ts"),
+            ("docs/examples/migration/projection", "src/lesson_runtime/migrationExample.test.ts"),
+            ("docs/examples/operations/xor-constant", "src/crypto_graph/operationExample.test.ts"),
+        )
+        command = ["npm", "test", "--", "--maxWorkers=1", "--passWithNoTests=false"]
+        for root, consumer in examples:
+            for name in ("lesson.yaml", "locales/en-US.yaml", "locales/zh-CN.yaml"):
+                path = f"{root}/{name}"
+                with self.subTest(path=path):
+                    checks = {item["id"]: item for item in test_plan.plan_paths([path])["checks"]}
+                    self.assertEqual(set(checks), {"frontend-tests"})
+                    self.assertEqual(checks["frontend-tests"]["argv"], [*command, consumer])
+        mixed = test_plan.plan_paths([
+            *(f"{root}/lesson.yaml" for root, _ in examples),
+            "frontend/src/practice/map.test.ts", "scripts/test_plan.py",
+        ])
+        checks = {item["id"]: item for item in mixed["checks"]}
+        self.assertEqual(set(checks), {"frontend-tests", "frontend_typecheck", "tooling"})
+        self.assertEqual(checks["frontend-tests"]["argv"], [*command, *sorted({
+            *(consumer for _, consumer in examples),
+            "src/practice/map.test.ts", "src/app/i18n/noEmbeddedUiResources.test.ts",
+        })])
+        for unknown in ("docs/examples/unrelated/lesson.yaml", "docs/examples/operations/other/lesson.yaml",
+                        "docs/examples/migration/tool.py"):
+            with self.subTest(unknown=unknown):
+                fallback = test_plan.plan_paths([f"{examples[0][0]}/lesson.yaml", unknown])
+                checks = {item["id"]: item for item in fallback["checks"]}
+                self.assertTrue({"backend_tests", "frontend-tests", "tooling"} <= set(checks))
+                self.assertEqual(checks["frontend-tests"]["argv"], command)
+
     def test_frontend_leaf_selects_named_test_and_empty_selection_fails(self):
         leaf = "frontend/src/crypto_graph/index.test.ts"
         plan = test_plan.plan_paths([leaf])

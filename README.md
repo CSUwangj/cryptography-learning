@@ -15,6 +15,17 @@ Challenge, either from a terminal embedded in the page or with their own tooling
 The Challenges themselves, the Lab Descriptions and the Lab Registry live in the
 private content repo, not here.
 
+## Existing Operations
+
+See the [Operation overview](docs/OPERATIONS.md#registered-public-operations) for
+the registered core, SPN, AES and classical Operations, with descriptions and
+source links.
+
+## Add an Operation
+
+See [Add an Operation](docs/OPERATIONS.md) for implementation and registration
+steps, bilingual labels, a runnable Lesson and tests.
+
 ## Deploy independently
 
 Run the web tier from this checkout with the checked-in synthetic content:

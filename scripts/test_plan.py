@@ -105,6 +105,12 @@ def plan_paths(paths, repo=ROOT):
         if path.startswith("baseline/content/"):
             image_check("smoke", "mounted content is runtime fixture data")
             continue
+        if path.startswith("docs/examples/migration/") and path.endswith(".yaml"):
+            frontend(["frontend/src/lesson_runtime/migrationExample.test.ts"], reason="migration companion Lesson or locale changed")
+            continue
+        if path.startswith("docs/examples/operations/xor-constant/") and path.endswith(".yaml"):
+            frontend(["frontend/src/crypto_graph/operationExample.test.ts"], reason="Operation companion Lesson or locale changed")
+            continue
         if path.startswith("frontend/demos/") and path.endswith((".test.ts", ".test.tsx")):
             frontend([path], reason="only the demo test changed")
             add("frontend_typecheck", "frontend", ["npm", "run", "typecheck"], "TypeScript demo test changed")
