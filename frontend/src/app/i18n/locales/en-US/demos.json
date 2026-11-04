@@ -141,6 +141,28 @@
     "practiceCategory": "Classical cryptography",
     "practiceTitle": "Caesar cipher"
   },
+  "classicalCipher": {
+    "title": "Classical Cipher Prototype",
+    "subtitle": "Horizontal layout with vertical reels",
+    "algorithm": "Algorithm",
+    "plaintext": "Plaintext",
+    "ciphertext": "Ciphertext",
+    "shift": "Shift",
+    "key": "Key",
+    "multiplier": "Multiplier (a)",
+    "addend": "Addend (b)",
+    "animate": "Animate",
+    "reducedMotion": "Reduced motion",
+    "algorithms": {
+      "caesar": "Caesar (vertical reel)",
+      "vigenere": "Vigenere (vertical reel)",
+      "affine": "Affine (direct mapping)",
+      "substitution": "Substitution (direct mapping)"
+    },
+    "characterTransformations": "Character Transformations",
+    "verticalReelDescription": "Vertical scroll shows alphabet shift",
+    "directMappingDescription": "Direct mapping (no rolling effect)"
+  },
   "uiOptimization": {
     "prototype": "UI prototype",
     "previous": "Previous layout",

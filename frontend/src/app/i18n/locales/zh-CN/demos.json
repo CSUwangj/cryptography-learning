@@ -141,6 +141,28 @@
     "practiceCategory": "古典密码",
     "practiceTitle": "凯撒密码"
   },
+  "classicalCipher": {
+    "title": "古典密码原型",
+    "subtitle": "横向布局 + 纵向滚筒",
+    "algorithm": "算法",
+    "plaintext": "明文",
+    "ciphertext": "密文",
+    "shift": "位移",
+    "key": "密钥",
+    "multiplier": "乘数 (a)",
+    "addend": "加数 (b)",
+    "animate": "动画",
+    "reducedMotion": "减少动画",
+    "algorithms": {
+      "caesar": "Caesar（纵向滚筒）",
+      "vigenere": "Vigenere（纵向滚筒）",
+      "affine": "Affine（直接映射）",
+      "substitution": "Substitution（直接映射）"
+    },
+    "characterTransformations": "字符变换",
+    "verticalReelDescription": "纵向滚动显示字母表位移",
+    "directMappingDescription": "直接映射（无滚动效果）"
+  },
   "uiOptimization": {
     "prototype": "UI 原型",
     "previous": "上一个布局",
