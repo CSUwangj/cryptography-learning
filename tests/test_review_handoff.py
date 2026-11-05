@@ -1,9 +1,12 @@
 """Public CLI coverage for staged handoff packets."""
 
 from pathlib import Path
+from datetime import datetime, timezone
 import json
 import hashlib
 import os
+import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -47,13 +50,13 @@ class ReviewHandoffTest(unittest.TestCase):
     def data(self):
         return json.loads(self.packet.read_text())
 
-    def fake_fish(self, *, fail_first=False, interrupt=False, mutate=None):
+    def fake_fish(self, *, fail_first=False, interrupt=None, mutate=None):
         bindir = self.directory / "bin"
         bindir.mkdir(exist_ok=True)
         counter = self.directory / "fish-count"
         fish = bindir / "fish"
         mutation = f"\nfrom pathlib import Path; Path({str(mutate)!r}).write_text('mutated by check\\n')" if mutate else ""
-        action = "import os; os.kill(os.getppid(), 9)" if interrupt else (
+        action = f"import os; os.kill(os.getppid(), {int(interrupt)})" if interrupt else (
             f"from pathlib import Path; p=Path({str(counter)!r}); n=int(p.read_text()) if p.exists() else 0; p.write_text(str(n+1)); "
             + ("\nif n == 0: raise SystemExit(7)" if fail_first else "")
             + mutation
@@ -131,10 +134,20 @@ class ReviewHandoffTest(unittest.TestCase):
         planned = [item["id"] for item in self.data()["plan"]["checks"]]
         self.assertGreaterEqual(len(planned), 2)
         env = self.fake_fish(fail_first=True)
+        before = datetime.now(timezone.utc)
         self.cli("run", self.packet, env=env, expected=1)
+        after = datetime.now(timezone.utc)
         data = self.data()
         self.assertEqual([data["checks"][name][-1]["status"] for name in planned[1:]], ["passed"] * (len(planned) - 1))
         self.assertEqual(data["checks"][planned[0]][0]["status"], "failed")
+        for name in planned:
+            attempt = data["checks"][name][0]
+            finished = datetime.fromisoformat(attempt["finished_at"])
+            self.assertLessEqual(before, finished)
+            self.assertLessEqual(finished, after)
+            self.assertEqual(finished.utcoffset().total_seconds(), 0)
+            self.assertGreaterEqual(attempt["elapsed_seconds"], 0)
+            self.assertEqual(attempt["exit_code"], 7 if name == planned[0] else 0)
         self.assertTrue(Path(data["checks"][planned[0]][0]["log"]).is_file())
         self.cli("run", self.packet, "--label", planned[0], env=env)
         self.cli("verify", self.packet, "--require-passed")
@@ -169,6 +182,46 @@ class ReviewHandoffTest(unittest.TestCase):
             self.assertEqual(attempts[0]["status"], "passed", name)
         self.cli("verify", self.packet, "--require-passed")
 
+    def test_summary_preserves_history_and_distinguishes_zero_from_legacy_unknown(self):
+        self.stage_frontend_test()
+        self.create()
+
+        def history(*flags):
+            result = self.cli("verify", self.packet, *flags)
+            line = next(line for line in result.stdout.splitlines() if line.startswith("Check history: "))
+            return json.loads(line.removeprefix("Check history: "))["frontend-tests"]
+
+        self.assertEqual(history(), {
+            "latest_status": "not-run", "attempts": 0, "elapsed_seconds": None,
+            "previous_failed": 0, "previous_unavailable": 0,
+        })
+        self.cli("run", self.packet, env=self.fake_fish(fail_first=True), expected=1)
+        self.cli("run", self.packet, "--label", "frontend-tests",
+                 env=self.fake_fish(interrupt=signal.SIGKILL), expected=-9)
+        earlier = self.data()["checks"]["frontend-tests"]
+        self.cli("run", self.packet, "--label", "frontend-tests", env=self.fake_fish())
+        data = self.data()
+        attempts = data["checks"]["frontend-tests"]
+        self.assertEqual(attempts[:-1], earlier)
+        self.assertEqual(history("--require-passed"), {
+            "latest_status": "passed", "attempts": 3,
+            "elapsed_seconds": attempts[-1]["elapsed_seconds"],
+            "previous_failed": 1, "previous_unavailable": 1,
+        })
+
+        attempts[-1]["elapsed_seconds"] = 0
+        self.packet.write_text(json.dumps(data))
+        self.assertEqual(history("--require-passed")["elapsed_seconds"], 0)
+        for check_attempts in data["checks"].values():
+            for attempt in check_attempts:
+                attempt.pop("finished_at", None)
+                attempt.pop("elapsed_seconds", None)
+        self.packet.write_text(json.dumps(data))
+        self.assertEqual(history("--require-passed"), {
+            "latest_status": "passed", "attempts": 3, "elapsed_seconds": None,
+            "previous_failed": 1, "previous_unavailable": 1,
+        })
+
     def test_extra_check_labels_cannot_satisfy_verify(self):
         self.stage("docs/agents/target.md")
         self.create()
@@ -193,13 +246,63 @@ class ReviewHandoffTest(unittest.TestCase):
         self.stage("frontend/src/crypto_graph/index.test.ts", "changed fixture\n")
         self.assertIn("snapshot changed", self.cli("verify", self.packet, expected=1).stderr)
 
-    def test_interrupted_runner_records_unavailable_attempt(self):
+    def test_timed_success_does_not_replace_command_identity_or_formal_reviews(self):
         self.stage_frontend_test()
         self.create()
-        self.cli("run", self.packet, env=self.fake_fish(interrupt=True), expected=-9)
+        self.cli("run", self.packet, env=self.fake_fish())
+        result = self.cli("verify", self.packet, "--require-passed", "--require-reviewed", expected=1)
+        self.assertIn("both formal-review axes must pass", result.stderr)
+        data = self.data()
+        data["checks"]["frontend-tests"][0]["command"] = ["true"]
+        self.packet.write_text(json.dumps(data))
+        result = self.cli("verify", self.packet, "--require-passed", expected=1)
+        self.assertIn("command or working directory changed", result.stderr)
+
+    def test_failed_launch_records_unavailable_without_completion(self):
+        self.stage_frontend_test()
+        self.create()
+        env = self.fake_fish()
+        git_executable = shutil.which("git")
+        self.assertIsNotNone(git_executable)
+        (self.directory / "bin/git").symlink_to(git_executable)
+        env["PATH"] = str(self.directory / "bin")
+        (self.directory / "bin/fish").write_text("Invalid executable format\n")
+        self.cli("run", self.packet, "--label", "frontend-tests", env=env, expected=1)
         attempt = self.data()["checks"]["frontend-tests"][0]
         self.assertEqual(attempt["status"], "unavailable")
         self.assertIsNone(attempt["exit_code"])
+        self.assertIn("fish", attempt["reason"])
+        self.assertIsNone(attempt.get("finished_at"))
+        self.assertIsNone(attempt.get("elapsed_seconds"))
+        self.cli("verify", self.packet)
+        self.cli("verify", self.packet, "--require-passed", expected=1)
+
+    def test_handled_interrupt_records_unavailable_without_completion(self):
+        self.stage_frontend_test()
+        self.create()
+        self.cli("run", self.packet, "--label", "frontend-tests",
+                 env=self.fake_fish(interrupt=signal.SIGINT), expected=1)
+        attempt = self.data()["checks"]["frontend-tests"][0]
+        self.assertEqual(attempt["status"], "unavailable")
+        self.assertIsNone(attempt["exit_code"])
+        self.assertEqual(attempt["reason"], "Check interrupted.")
+        self.assertIsNone(attempt.get("finished_at"))
+        self.assertIsNone(attempt.get("elapsed_seconds"))
+        self.cli("verify", self.packet)
+        self.cli("verify", self.packet, "--require-passed", expected=1)
+
+    def test_abruptly_killed_runner_records_unavailable_without_completion(self):
+        self.stage_frontend_test()
+        self.create()
+        self.cli("run", self.packet, env=self.fake_fish(interrupt=signal.SIGKILL), expected=-9)
+        attempt = self.data()["checks"]["frontend-tests"][0]
+        self.assertEqual(attempt["status"], "unavailable")
+        self.assertIsNone(attempt["exit_code"])
+        self.assertIn("No completion recorded", attempt["reason"])
+        self.assertIsNone(attempt.get("finished_at"))
+        self.assertIsNone(attempt.get("elapsed_seconds"))
+        self.cli("verify", self.packet)
+        self.cli("verify", self.packet, "--require-passed", expected=1)
 
     def test_check_mutating_target_is_unavailable_and_invalidates_packet(self):
         self.stage_frontend_test()

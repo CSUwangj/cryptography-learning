@@ -14,6 +14,7 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import time
 
 import test_plan
 
@@ -273,7 +274,9 @@ def verify(args: argparse.Namespace) -> int:
     print("Snapshot matches. Check status: " + json.dumps(results, sort_keys=True))
     history = {
         name: {
+            "latest_status": results[name],
             "attempts": len(attempts),
+            "elapsed_seconds": attempts[-1].get("elapsed_seconds") if attempts else None,
             "previous_failed": sum(a["status"] == "failed" for a in attempts[:-1]),
             "previous_unavailable": sum(a["status"] == "unavailable" for a in attempts[:-1]),
         }
@@ -366,8 +369,11 @@ def execute_check(file: Path, data: dict, label: str) -> dict:
             local_command = command
             if Path(command[0]).name in {"npm", "npx", "node"}:
                 local_command = ["fish", "-lc", "nvm use; and " + shlex.join(command)]
+            started = time.monotonic()
             result = subprocess.run(local_command, cwd=cwd, env={**os.environ, **planned.get("env", {})}, stdout=stream, stderr=subprocess.STDOUT, check=False)
             attempt.update(
+                finished_at=datetime.now(timezone.utc).isoformat(),
+                elapsed_seconds=time.monotonic() - started,
                 exit_code=result.returncode,
                 status="passed" if result.returncode == 0 else "failed",
                 reason="",

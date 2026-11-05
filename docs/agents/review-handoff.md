@@ -109,9 +109,16 @@ when needed to make environment-dependent evidence interpretable.
   reviewers must assess whether excluded work affects ticket behavior.
 - `run` checks the snapshot before and after the command, captures stdout/stderr
   in a sibling log, and saves the command, cwd and actual exit code. Attempts
-  are retained. A failed command is `failed`; a command with no recorded
+  are retained. When the command returns, the attempt also records `finished_at`
+  as an observed UTC completion timestamp and `elapsed_seconds` as nonnegative
+  execution time measured with a monotonic clock. This duration covers command
+  execution, including process launch, rather than snapshot verification.
+  A failed command is `failed`; a command with no recorded
   completion, failed launch or changed snapshot is `unavailable`. A check with
   no attempt is `not-run`. Only exit zero on the recorded snapshot is `passed`.
+  Failed launch and handled interruption keep an explicit reason and a null
+  exit code, without `finished_at` or `elapsed_seconds`. Abrupt abandonment leaves
+  the initial unavailable record without inventing completion metadata.
 - Planner-selected labels accept only their frozen argv and cwd. Local npm/npx/node
   commands run through Fish+nvm. Caller-supplied commands and working directories are
   rejected before execution and cannot replace earlier evidence.
@@ -120,9 +127,13 @@ when needed to make environment-dependent evidence interpretable.
 - `verify` checks snapshot and log identity. `--require-passed` also requires
   every planner-selected check to be declared, consistent command identities, and
   the latest attempt of every declared check to pass. Its summary
-  includes latest status, attempt count, earlier failed/unavailable attempts and
-  incomplete checks. An unchanged rerun may pass without hiding earlier failures.
-  Older packets remain readable, but missing mandatory checks or mixed commands
+  includes latest status, attempt count, the latest attempt's `elapsed_seconds`,
+  earlier failed/unavailable counts and incomplete checks. Full attempt records
+  and logs remain in the packet. Unknown timing appears as JSON null in the
+  summary, distinct from a recorded numeric zero. An unchanged rerun may pass
+  without hiding earlier failures.
+  Older packets without timing fields remain readable with unknown timing and
+  unchanged verification behavior, but missing mandatory checks or mixed commands
   cannot satisfy `--require-passed`; create a new packet and recheck as needed.
   `--require-reviewed` separately requires both formal-review axes to pass on this
   snapshot with no open or disputed findings. Normal delivery requires both flags. Ordinary
