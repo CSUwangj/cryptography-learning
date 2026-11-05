@@ -85,26 +85,26 @@
   in Key Consumption Order while retaining their internal Schedule Generation Order
   and original identities.
 - **Key-Change Avalanche Comparison** — An `avalanche@1` comparison in which the
-  key binding is the single changed input while plaintext and other declared
-  inputs remain shared. It uses the same semantic comparison model as
-  plaintext-change avalanche.
+  original key differs by exactly one bit while the cipher data and other
+  independent inputs remain identical. It uses the same semantic comparison
+  model as data-change avalanche.
 - **Schedule Comparison** — The baseline/changed comparison of key-expansion
   trace checkpoints produced by one key-change avalanche execution. It may be
   shown as a Key-Expansion Overlay or as a standalone schedule presentation
   when no cipher state-flow is present.
-- **Key-Change Binding Contract** — A key-change comparison has exactly one
-  changed `key` binding. Baseline and changed keys have equal width; arbitrary
-  bit differences are allowed. Decryption schedule rows follow cipher
-  consumption order while retaining source iteration metadata. Paired rows
-  align only by stable semantic path/id. Incomplete pairs keep explicit gaps;
-  their ratio is unavailable. Key-change views require explicit Lesson
+- **Key-Change Binding Contract** — A key-change avalanche comparison has exactly
+  one changed bit in its original `key` input. Baseline and changed keys have
+  equal width; derived round keys may differ by multiple bits. Decryption
+  schedule rows follow cipher consumption order while retaining source iteration
+  metadata. Paired rows align only by stable semantic path/id. Incomplete pairs
+  keep explicit gaps; their ratio is unavailable. Key-change views require explicit Lesson
   declaration and never appear in the default plaintext-change view.
 - **View-Local Lineage** — The Key-Change Avalanche Comparison's lineage scope,
   limited to the currently active schedule or cipher view. Cross-view relationships are
   not drawn as lineage edges; baseline/changed value differences may still be
   marked in each view and summarized accessibly.
 - **View-Scoped Selection** — The Key-Change Avalanche Comparison's selection scope,
-  in which a selected bit belongs only to the active view.
+  in which one selected Lineage Unit belongs only to the active view.
   Switching between schedule and cipher views clears selection; no cross-view
   selected-bit identity is retained.
 - **Mobile Practice View** — The narrow-viewport presentation of Practice in

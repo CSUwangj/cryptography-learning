@@ -16,6 +16,7 @@ const LearningShellPrototype = lazy(() => import('./LearningShellPrototype').the
 const UiOptimizationPrototype = lazy(() => import('./UiOptimizationPrototype').then((module) => ({ default: module.UiOptimizationPrototype })))
 const AesV2Demo = lazy(() => import('./AesV2Demo').then((module) => ({ default: module.AesV2Demo })))
 const HorizontalClassicalCipherPrototype = lazy(() => import('./HorizontalClassicalCipherPrototype').then((module) => ({ default: module.HorizontalClassicalCipherPrototype })))
+const ComparisonPrototype = lazy(() => import('./ComparisonPrototype').then((module) => ({ default: module.ComparisonPrototype })))
 
 const Demos: React.FC = () => {
   const { t, i18n } = useTranslation()
@@ -42,7 +43,7 @@ const Demos: React.FC = () => {
     '/testavalanche': AvalancheDemo,
     '/testkeyexpansion': SlidingWindowDemo,
     '/testaescipher': AesCipherDemo,
-    '/testaesavalanche': AesAvalancheDemo,
+    '/testaesavalanche': import.meta.env.DEV && new URLSearchParams(window.location.search).get('prototype') === 'comparison' ? ComparisonPrototype : AesAvalancheDemo,
   }[window.location.pathname]
   return <>
     <nav>

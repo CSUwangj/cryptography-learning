@@ -35,3 +35,7 @@
   transform: translateY(-50%);
   width: 1px;
 }
+
+.learning-comparison-unit {
+  background-color: var(--learning-canvas, #fbfdff);
+}

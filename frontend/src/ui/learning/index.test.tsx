@@ -184,6 +184,75 @@ describe('Key expansion lane (#83)', () => {
 })
 
 describe('Learning presentation primitives', () => {
+  it('keeps paired differences independent of selection and clears comparison selection on view switches', async () => {
+    const user = userEvent.setup()
+    const pairedRow = (id: string, baseline: string, changed: string): LearningRow => ({
+      id, label: id, cells: [],
+      selectableBits: [...baseline].map((value, bit) => ({
+        id: `${id}-${bit}`, bit, value, ariaLabel: `${id} bit ${bit}`,
+        comparisonValue: changed[bit] === '1' ? '1' : '0',
+      })),
+    })
+    const paired: LearningPresentation = {
+      title: 'Trace', executionIdentity: 'pair-1',
+      comparison: { baselineLabel: 'Baseline', changedLabel: 'Changed', differentLabel: 'Different' },
+      unitSelection: {
+        label: 'Unit', sizeLabel: String,
+        rangeLabel: (row, start, end) => `${row.id} bits ${start}-${end}`,
+        selectedLabel: 'Selected', relatedLabel: 'Related',
+      },
+      sections: [{
+        kind: 'trace', caption: 'Trace', headers: ['Stage', 'Values'],
+        rows: [{
+          ...pairedRow('input', '00000000', '10000000'),
+          relationships: [{ from: 'input-0', to: 'output-0' }],
+          selectableKey: { id: 'key-chip', value: 'Key', ariaLabel: 'Open schedule' },
+        }, pairedRow('output', '00000000', '10000010')],
+      }],
+      keyExpansionLane: {
+        caption: 'Schedule', closeLabel: 'Close schedule',
+        sharedSelection: { toggleLabel: 'Open schedule', clearLabel: 'Clear' },
+        rows: [pairedRow('key', '00000000', '10000000')],
+      },
+    }
+    const view = render(<LearningPresentationView presentation={paired} />)
+    const first = screen.getByRole('button', { name: /^input bit 0;/ })
+    expect(first).toHaveAccessibleName('input bit 0; Baseline: 0; Changed: 1; Different')
+    expect(first).toHaveTextContent('0|1')
+    expect(first.querySelector('u')).toHaveTextContent('0|1')
+    expect(screen.getByRole('button', { name: /^input bit 1;/ })).toHaveTextContent('0|0')
+    expect(screen.getByRole('button', { name: /^input bit 1;/ }).querySelector('u')).toBeNull()
+    first.focus()
+    await user.keyboard('{Enter}')
+    expect(first).toHaveAttribute('aria-pressed', 'true')
+    expect(first).toHaveAttribute('data-different', 'true')
+    expect(first.querySelector('u')).toHaveTextContent('0|1')
+    expect(screen.getByRole('button', { name: /^output bit 0;/ })).toHaveAttribute('data-state', 'related-changed')
+    const unrelatedDifference = screen.getByRole('button', { name: /^output bit 6;/ })
+    expect(unrelatedDifference).toHaveAttribute('data-state', 'changed')
+    expect(unrelatedDifference).toHaveAttribute('data-different', 'true')
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Trace: Unit' }), '8')
+    const grouped = screen.getByRole('button', { name: 'input bits 0-7; Baseline: 0x00; Changed: 0x80; Different' })
+    expect(grouped).toHaveAttribute('aria-pressed', 'false')
+    expect(grouped).toHaveTextContent('0x00|0x80')
+    expect(grouped.querySelector('u')).toHaveTextContent('0x00|0x80')
+    await user.click(grouped)
+    await user.click(screen.getAllByRole('button', { name: 'Open schedule' })[0])
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Schedule: Unit' }), '4')
+    await user.click(screen.getByRole('button', { name: /^key bits 0-3;/ }))
+    await user.click(screen.getAllByRole('button', { name: 'Close schedule' })[1])
+    expect(screen.getByRole('combobox', { name: 'Trace: Unit' })).toHaveValue('8')
+    expect(screen.getByRole('button', { name: /^input bits 0-7;/ })).toHaveAttribute('aria-pressed', 'false')
+    await user.click(screen.getAllByRole('button', { name: 'Open schedule' })[0])
+    expect(screen.getByRole('combobox', { name: 'Schedule: Unit' })).toHaveValue('4')
+    expect(screen.getByRole('button', { name: /^key bits 0-3;/ })).toHaveAttribute('aria-pressed', 'false')
+
+    view.rerender(<LearningPresentationView presentation={{ ...paired, executionIdentity: 'pair-2' }} />)
+    expect(screen.queryByRole('combobox', { name: 'Schedule: Unit' })).toBeNull()
+    expect(screen.getByRole('combobox', { name: 'Trace: Unit' })).toHaveValue('1')
+  })
+
   it.each(locales)('renders $locale caller-provided content and states', ({ caption, stage, baseline, changed, value, selected, selection }) => {
     render(<TraceTable caption={caption} headers={[stage, baseline, changed]}>
       <ComparisonRow label={stage}>

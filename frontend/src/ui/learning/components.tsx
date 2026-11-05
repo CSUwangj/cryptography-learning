@@ -95,6 +95,7 @@ export type LearningBit = {
   readonly id: string
   readonly bit: number
   readonly value: ReactNode
+  readonly comparisonValue?: '0' | '1'
   readonly state?: LearningState
   readonly ariaLabel: string
 }
@@ -170,6 +171,8 @@ export type LearningDiagnostic = {
 
 export type LearningPresentation = {
   readonly title: string
+  /** Opt-in paired unit display. Comparison view switches clear the current selection. */
+  readonly comparison?: { readonly baselineLabel: string; readonly changedLabel: string; readonly differentLabel: string }
   readonly instructions?: string
   /** Structured issues (stable code/path/details) about the data behind this presentation, such
    * as a truncated trace - distinct from `instructions`/`selectionStatus`, which are plain
@@ -247,8 +250,8 @@ const bitGroups = (row: Pick<LearningRow, 'selectableBits' | 'bitGrouping'>): re
   return Array.from({ length: Math.ceil(selectable.length / size) }, (_, group) => selectable.slice(group * size, (group + 1) * size))
 }
 
-const unitValue = (unit: readonly LearningBit[]): string => {
-  const binary = unit.map((bit) => bit.value).join('')
+const unitValue = (unit: readonly LearningBit[], comparison = false): string => {
+  const binary = unit.map((bit) => comparison ? bit.comparisonValue : bit.value).join('')
   return unit.length >= 4 ? `0x${BigInt(`0b${binary}`).toString(16).padStart(Math.ceil(unit.length / 4), '0')}` : binary
 }
 
@@ -402,7 +405,8 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
       onClick={() => {
         const closing = lane?.sharedSelection ? laneOpen : openKeyId === key.id
         setOpenKeyId(closing ? undefined : key.id)
-        if (!presentation.keyExpansionLane?.sharedSelection) select(closing ? undefined : { kind: 'key', id: key.id })
+        if (presentation.comparison) select(undefined)
+        else if (!presentation.keyExpansionLane?.sharedSelection) select(closing ? undefined : { kind: 'key', id: key.id })
       }}
       ref={targetRef(key.id)}
       style={{ ...stateStyles[state], borderColor: learningColors.border, color: learningColors.text, position: 'relative' }}
@@ -441,31 +445,18 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
           const group = groupSize && start % groupSize === 0 ? start / groupSize : undefined
           const isRelated = unit.some((bit) => related.has(bit.id))
           const isSelected = selected?.kind === 'bit' && selected.id === first.id && selected.bitIds?.length === unit.length
-          const state: LearningState = isSelected ? 'selected' : isRelated ? 'related' : 'default'
           const value = unitValue(unit)
+          const comparison = presentation.comparison
+          const changedValue = comparison && unit.every((bit) => bit.comparisonValue !== undefined) ? unitValue(unit, true) : undefined
+          const different = changedValue !== undefined && changedValue !== value
+          const state: LearningState = isSelected ? 'selected' : isRelated ? (different ? 'related-changed' : 'related') : different ? 'changed' : 'default'
           const label = size === 1 ? first.ariaLabel : copy.rangeLabel(row, first.bit, unit[unit.length - 1].bit, value)
-          const description = `${label}${isSelected ? `; ${copy.selectedLabel}` : isRelated ? `; ${copy.relatedLabel}` : ''}`
-          return <button
-            aria-label={description}
-            aria-pressed={isSelected}
-            data-bit-group={group}
-            data-state={state}
-            key={first.id}
-            onClick={() => select({ kind: 'bit', id: first.id, bitIds: unit.map((bit) => bit.id) })}
-            ref={(target) => {
-              for (const bit of unit) {
-                if (target) targets.current.set(bit.id, target)
-                else targets.current.delete(bit.id)
-              }
-            }}
-            style={{ ...stateStyles[state], borderColor: learningColors.border, boxShadow: group ? `-1px 0 0 ${learningColors.border}` : undefined, boxSizing: 'content-box', color: learningColors.text, flexShrink: 0, fontFamily: 'monospace', position: 'relative', width: `${(size === 1 ? 3 : Math.max(8, size >= 4 ? Math.ceil(size / 4) + 2 : size)) + Math.max(0, Math.ceil(size / 8) - 1) * 0.25}ch`, outline: isSelected ? `2px solid ${learningColors.text}` : undefined }}
-            title={description}
-            type="button"
-          >{[...value].map((character, index) => {
-            const offset = size >= 4 ? size - (value.length - index) * 4 : index
+          const description = `${label}${comparison && changedValue !== undefined ? `; ${comparison.baselineLabel}: ${value}; ${comparison.changedLabel}: ${changedValue}${different ? `; ${comparison.differentLabel}` : ''}` : ''}${isSelected ? `; ${copy.selectedLabel}` : isRelated ? `; ${copy.relatedLabel}` : ''}`
+          const renderValue = (displayValue: string): ReactNode => [...displayValue].map((character, index) => {
+            const offset = size >= 4 ? size - (displayValue.length - index) * 4 : index
             // Authored boundaries can fall inside a hexadecimal digit.
             const boundaries = groupSize ? Array.from({ length: size >= 4 ? 4 : 1 }, (_, bit) => bit).filter((bit) => offset + bit > 0 && (start + offset + bit) % groupSize === 0) : []
-            const byteStart = size > 8 && index > 2 && (value.length - index) % 2 === 0
+            const byteStart = size > 8 && index > 2 && (displayValue.length - index) % 2 === 0
             return boundaries.length || byteStart
               ? <span className={byteStart ? 'learning-hex-byte-gap' : undefined} key={index} style={{ display: 'inline-block', position: 'relative' }}>{character}{[...new Set([...boundaries, ...(byteStart ? [0] : [])])].map((bit) => <span
                 aria-hidden="true"
@@ -475,7 +466,30 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
                 style={{ left: byteStart && bit === 0 ? '-0.125ch' : `${bit * (size >= 4 ? 25 : 100)}%` }}
               />)}</span>
               : character
-          })}</button>
+          })
+          const values = changedValue === undefined ? renderValue(value) : <>{renderValue(value)}|{renderValue(changedValue)}</>
+          const width = changedValue === undefined
+            ? (size === 1 ? 3 : Math.max(8, size >= 4 ? Math.ceil(size / 4) + 2 : size)) + Math.max(0, Math.ceil(size / 8) - 1) * 0.25
+            : value.length * 2 + 1 + Math.max(0, Math.ceil(size / 8) - 1) * 0.5
+          return <button
+            aria-label={description}
+            aria-pressed={isSelected}
+            className={changedValue !== undefined ? 'learning-comparison-unit' : undefined}
+            data-bit-group={group}
+            data-different={changedValue !== undefined ? String(different) : undefined}
+            data-state={state}
+            key={first.id}
+            onClick={() => select({ kind: 'bit', id: first.id, bitIds: unit.map((bit) => bit.id) })}
+            ref={(target) => {
+              for (const bit of unit) {
+                if (target) targets.current.set(bit.id, target)
+                else targets.current.delete(bit.id)
+              }
+            }}
+            style={{ ...stateStyles[state], borderColor: learningColors.border, boxShadow: group ? `-1px 0 0 ${learningColors.border}` : undefined, boxSizing: 'content-box', color: learningColors.text, flexShrink: 0, fontFamily: 'monospace', position: 'relative', width: `${width}ch`, outline: isSelected ? `2px solid ${learningColors.text}` : undefined }}
+            title={description}
+            type="button"
+          >{different ? <u>{values}</u> : values}</button>
         })}
       </span>
     </>
@@ -600,7 +614,10 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
     {presentation.selectionStatus && <p aria-live="polite" role="status">{presentation.selectionStatus(selectedTarget)}</p>}
     {renderUnitControl(rows, unitSize, setUnitSize, presentation.title)}
     {presentation.keyExpansionLane?.sharedSelection && <div role="toolbar" aria-label={presentation.keyExpansionLane.caption}>
-      <Button active={laneOpen} aria-pressed={laneOpen} onClick={() => setOpenKeyId(laneOpen ? undefined : 'schedule')}>{laneOpen ? presentation.keyExpansionLane.closeLabel : presentation.keyExpansionLane.sharedSelection.toggleLabel}</Button>
+      <Button active={laneOpen} aria-pressed={laneOpen} onClick={() => {
+        setOpenKeyId(laneOpen ? undefined : 'schedule')
+        if (presentation.comparison) select(undefined)
+      }}>{laneOpen ? presentation.keyExpansionLane.closeLabel : presentation.keyExpansionLane.sharedSelection.toggleLabel}</Button>
       <Button onClick={() => select(undefined)}>{presentation.keyExpansionLane.sharedSelection.clearLabel}</Button>
     </div>}
     {presentation.unitSelection && laneOpen && <div>{renderUnitControl(laneRows, laneUnitSize, setLaneUnitSize, presentation.keyExpansionLane!.caption)}</div>}
