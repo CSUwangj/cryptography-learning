@@ -47,6 +47,65 @@ An acceptance exception still requires explicit maintainer approval under the
 delivery rules. Report a planner mismatch instead of silently replacing its
 frozen command or expanding the plan to chase a passing result.
 
+## Run local checks across worktrees
+
+Use `scripts/local_check.py -- COMMAND [ARG ...]` for development checks. Run it
+from the command's working directory so Fish+nvm finds the pinned Node version:
+
+```sh
+cd frontend
+python3 ../scripts/local_check.py -- npx playwright test --project=chromium e2e/local-run.spec.ts
+python3 ../scripts/local_check.py -- npm test -- --maxWorkers=1
+python3 ../scripts/local_check.py -- npm run build
+python3 ../scripts/local_check.py -- npm test -- --maxWorkers=1 src/crypto_graph/index.test.ts
+```
+
+The development entry and `review_handoff.py run` share one advisory lock at
+`~/.cache/cryptography-learning/heavy-check.lock`. It is outside every worktree
+and shared by managed invocations under the same local account. The executable
+classification in `scripts/local_check.py` leaves Python unittest commands, Rust
+formatting, frontend typecheck/codegen, and npm tests selecting only existing
+`.test.ts` or `.test.tsx` files outside the lock when their combined positional
+filters leave at least one actual unit test unselected. The inventory uses the
+command directory's `src` and `demos` trees, excluding `node_modules`, `dist`,
+and `e2e`. A selection covering that entire inventory takes the slot, even when
+all files are named explicitly. An empty inventory also takes the slot.
+Test file paths are resolved from the command's working directory. Named tests may also use
+`--maxWorkers=...` and `--passWithNoTests=...`. Other test arguments conservatively
+take the heavyweight slot, including broad filters such as `.test.ts`.
+Other commands take the heavyweight slot,
+including browser suites, full frontend tests, builds, installs, and image
+acceptance. The planner records this classification as `heavyweight` on each
+check after combining test selections. Hosted CI keeps its existing planner
+execution route and check selections without acquiring the local lock.
+
+Both local routes activate direct npm/npx/node commands through Fish+nvm, retain
+argv and cwd, and preserve the command's endpoint and artifact settings. The
+development entry prints a `Local check:` JSON record to stderr with separate
+`wait_seconds` and `elapsed_seconds` values and the command exit code. Handoff
+attempts record the same durations. Lightweight checks record zero wait.
+Execution time includes launch and owned-child cleanup, excluding resource
+waiting and snapshot verification. Invoke `review_handoff.py run` directly.
+Nested heavyweight entry fails explicitly rather than reacquiring or bypassing
+the lock. Lightweight nested commands remain available.
+
+The Linux local routes adopt command descendants, including detached process
+groups. After success, failure, or handled SIGINT/SIGTERM, they send SIGTERM to
+remaining owned children and wait for them to exit and be reaped before releasing
+the slot. Cancelling a waiter does not stop its owner. A handled cancellation
+returns exit 1 and records an unavailable attempt or development record with a
+null command exit code and no invented execution completion. Further SIGINT and
+SIGTERM signals are ignored during cleanup so they cannot release the slot early.
+
+This boundary covers cooperative repository tooling on one development machine.
+Commands outside these routes can still contend for resources. A child that
+ignores termination can keep cleanup and the slot occupied; inspect and terminate
+only confirmed owned processes manually. After abrupt runner termination such as
+SIGKILL, inspect and stop any confirmed owned leftovers before retrying. Do not
+delete the lock file while managed invocations are active. There is no automatic
+crash recovery, multi-user or distributed coordination, machine-wide enforcement,
+or zero-flake guarantee.
+
 ## Transfer the work
 
 Give the next agent these facts, with links rather than copied conversation:
@@ -107,12 +166,15 @@ when needed to make environment-dependent evidence interpretable.
   full index fingerprint, unstaged diff fingerprint and non-ignored untracked
   file fingerprints. Changes outside the target also invalidate evidence;
   reviewers must assess whether excluded work affects ticket behavior.
-- `run` checks the snapshot before and after the command, captures stdout/stderr
+- `run` checks the snapshot before waiting, again after acquiring the execution
+  slot and before launch, and after the command. A candidate changed while waiting
+  receives unavailable evidence without launching the check. It captures stdout/stderr
   in a sibling log, and saves the command, cwd and actual exit code. Attempts
   are retained. When the command returns, the attempt also records `finished_at`
   as an observed UTC completion timestamp and `elapsed_seconds` as nonnegative
-  execution time measured with a monotonic clock. This duration covers command
-  execution, including process launch, rather than snapshot verification.
+  execution time measured with a monotonic clock. `wait_seconds` records resource
+  waiting separately, including an interrupted wait. Execution duration covers
+  process launch and owned-child cleanup, rather than waiting or snapshot verification.
   A failed command is `failed`; a command with no recorded
   completion, failed launch or changed snapshot is `unavailable`. A check with
   no attempt is `not-run`. Only exit zero on the recorded snapshot is `passed`.
@@ -127,13 +189,14 @@ when needed to make environment-dependent evidence interpretable.
 - `verify` checks snapshot and log identity. `--require-passed` also requires
   every planner-selected check to be declared, consistent command identities, and
   the latest attempt of every declared check to pass. Its summary
-  includes latest status, attempt count, the latest attempt's `elapsed_seconds`,
+  includes latest status, attempt count, the latest attempt's `wait_seconds` and `elapsed_seconds`,
   earlier failed/unavailable counts and incomplete checks. Full attempt records
   and logs remain in the packet. Unknown timing appears as JSON null in the
   summary, distinct from a recorded numeric zero. An unchanged rerun may pass
   without hiding earlier failures.
-  Older packets without timing fields remain readable with unknown timing and
-  unchanged verification behavior, but missing mandatory checks or mixed commands
+  Packets without timing fields remain readable with unknown timing when their
+  frozen plan still matches. Plan changes, including added classification metadata,
+  require a new packet. Missing mandatory checks or mixed commands
   cannot satisfy `--require-passed`; create a new packet and recheck as needed.
   `--require-reviewed` separately requires both formal-review axes to pass on this
   snapshot with no open or disputed findings. Normal delivery requires both flags. Ordinary
@@ -183,7 +246,8 @@ permission context in the notes. Changed test selections or parallelism are
 diagnostic evidence. Run heavyweight checks sequentially, including base/target
 comparisons, and use ticket-loop's failure diagnosis branch when causality is unclear.
 After a runner interruption, confirm its command has exited before retrying.
-The helper neither monitors nor cleans up abandoned child processes.
+Handled SIGINT/SIGTERM waits for owned-child cleanup. Abrupt termination still
+requires manual inspection and cleanup of confirmed owned leftovers.
 
 Keep notes, packets and logs outside the checkout. Ignored dependencies/build
 outputs, external services, and transient edits restored before verification

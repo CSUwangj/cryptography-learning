@@ -141,6 +141,43 @@ class TestPlanTest(unittest.TestCase):
         self.assertEqual(len(checks), 1)
         self.assertEqual(checks[0]["argv"], ["npm", "test", "--", "--maxWorkers=1", "--passWithNoTests=false"])
 
+    def test_plans_classify_heavy_checks_and_leave_named_units_lightweight(self):
+        cases = (
+            ("frontend/e2e/local-run.spec.ts", "browser_local-run", True),
+            ("frontend/package.json", "frontend-tests", True),
+            ("frontend/package.json", "frontend_build", True),
+            ("backend/Cargo.toml", "backend_build", True),
+            ("acceptance/run.sh", "image_smoke", True),
+            ("frontend/src/crypto_graph/index.test.ts", "frontend-tests", False),
+            ("scripts/test_plan.py", "tooling", False),
+        )
+        for path, identifier, expected in cases:
+            with self.subTest(path=path, identifier=identifier):
+                checks = {item["id"]: item for item in test_plan.plan_paths([path])["checks"]}
+                self.assertIs(checks[identifier].get("heavyweight", False), expected)
+
+    def test_named_frontend_union_covering_the_full_suite_is_heavy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            leaves = ["src/crypto_graph/index.test.ts", "src/practice/map.test.ts"]
+            guard = "src/app/i18n/noEmbeddedUiResources.test.ts"
+            for name in [*leaves, guard]:
+                path = repo / "frontend" / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("test('fixture', () => {})\n")
+            for selected, heavy in ((leaves[:1], False), (leaves[1:], False), (leaves, True)):
+                with self.subTest(selected=selected):
+                    checks = {item["id"]: item for item in test_plan.plan_paths(
+                        [f"frontend/{name}" for name in selected], repo=repo,
+                    )["checks"]}
+                    check = checks["frontend-tests"]
+                    self.assertEqual(check["cwd"], "frontend")
+                    self.assertEqual(check["argv"], [
+                        "npm", "test", "--", "--maxWorkers=1", "--passWithNoTests=false",
+                        *sorted([*selected, guard]),
+                    ])
+                    self.assertIs(check["heavyweight"], heavy)
+
     def test_backend_only_changes_do_not_select_ui_resource_guard(self):
         plan = test_plan.plan_paths(["backend/apps/web-server/src/serve.rs"])
         self.assertNotIn("frontend-tests", {item["id"] for item in plan["checks"]})

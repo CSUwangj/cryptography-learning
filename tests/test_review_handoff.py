@@ -10,10 +10,12 @@ import signal
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "review_handoff.py"
+LOCAL_SCRIPT = ROOT / "scripts" / "local_check.py"
 
 
 class ReviewHandoffTest(unittest.TestCase):
@@ -67,6 +69,399 @@ class ReviewHandoffTest(unittest.TestCase):
 
     def stage_frontend_test(self):
         self.stage("frontend/src/crypto_graph/index.test.ts", "test('fixture', () => {})\n")
+
+    def start_cli(self, *args, env=None, cwd=None, script=SCRIPT):
+        process = subprocess.Popen(
+            [sys.executable, str(script), *map(str, args)], cwd=cwd, env=env,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+        )
+
+        def stop():
+            if process.poll() is None:
+                process.terminate()
+            try:
+                process.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.communicate(timeout=5)
+
+        self.addCleanup(stop)
+        return process
+
+    def wait_for_file(self, path):
+        deadline = time.monotonic() + 5
+        while not path.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertTrue(path.exists(), f"command did not create {path}")
+
+    def gated_fish(self):
+        env = self.fake_fish()
+        (self.directory / "bin/fish").write_text(
+            f"#!{sys.executable}\n"
+            "import os, time\n"
+            "from pathlib import Path\n"
+            "Path(os.environ['CHECK_STARTED']).touch()\n"
+            "while not Path(os.environ['CHECK_RELEASE']).exists():\n"
+            "    time.sleep(0.01)\n"
+        )
+        return env
+
+    def owned_child_fish(self, case, *, exit_code=None):
+        case.mkdir()
+        child = case / "child.py"
+        child.write_text(
+            "import os, signal, time\n"
+            "from pathlib import Path\n"
+            f"case = Path({str(case)!r})\n"
+            "def stop(signum, frame):\n"
+            "    (case / 'child-stopping').touch()\n"
+            "    while not (case / 'release-cleanup').exists():\n"
+            "        time.sleep(0.01)\n"
+            "    raise SystemExit(0)\n"
+            "signal.signal(signal.SIGTERM, stop)\n"
+            "(case / 'child.pid').write_text(str(os.getpid()))\n"
+            "while True:\n"
+            "    time.sleep(0.01)\n"
+        )
+        env = self.fake_fish()
+        (self.directory / "bin/fish").write_text(
+            f"#!{sys.executable}\n"
+            "import subprocess, sys, time\n"
+            "from pathlib import Path\n"
+            f"case = Path({str(case)!r})\n"
+            f"subprocess.Popen([sys.executable, {str(child)!r}], start_new_session=True)\n"
+            "while not (case / 'child.pid').exists():\n"
+            "    time.sleep(0.01)\n"
+            "(case / 'leader-ready').touch()\n"
+            + (f"raise SystemExit({exit_code})\n" if exit_code is not None else
+               "while True:\n    time.sleep(0.01)\n")
+        )
+
+        def stop_child():
+            (case / "release-cleanup").touch()
+            if (case / "child.pid").exists():
+                try:
+                    os.kill(int((case / "child.pid").read_text()), signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+
+        self.addCleanup(stop_child)
+        return env
+
+    def test_heavy_handoff_checks_exclude_each_other_across_worktrees(self):
+        other_repo = self.directory / "second worktree"
+        self.git("worktree", "add", "--detach", str(other_repo), "HEAD")
+        self.stage("frontend/e2e/local-run.spec.ts", "// Controlled browser command fixture.\n")
+        self.create()
+        other_target = other_repo / "frontend/e2e/local-run.spec.ts"
+        other_target.write_text("// Second controlled browser command fixture.\n")
+        subprocess.run(["git", "-C", str(other_repo), "add", "frontend/e2e/local-run.spec.ts"], check=True)
+        other_packet = self.directory / "other-packet.json"
+        self.cli("create", "--repo", other_repo, "--issue", "#132", "--notes", self.notes,
+                 "--output", other_packet)
+        env = self.gated_fish()
+        first_started, second_started = [self.directory / name for name in ("first-started", "second-started")]
+        first_release, second_release = [self.directory / name for name in ("first-release", "second-release")]
+        first = self.start_cli("run", self.packet, "--label", "browser_local-run", cwd=self.repo,
+                               env={**env, "CHECK_STARTED": str(first_started), "CHECK_RELEASE": str(first_release)})
+        self.addCleanup(first_release.touch)
+        self.wait_for_file(first_started)
+        second = self.start_cli("run", other_packet, "--label", "browser_local-run", cwd=other_repo,
+                                env={**env, "CHECK_STARTED": str(second_started), "CHECK_RELEASE": str(second_release)})
+        self.addCleanup(second_release.touch)
+        self.assertIn("Running browser_local-run", second.stdout.readline())
+        time.sleep(0.2)
+        self.assertFalse(second_started.exists(), "heavy commands overlapped across worktrees")
+        first_release.touch()
+        output, _ = first.communicate(timeout=5)
+        self.assertEqual(first.returncode, 0, output)
+        self.wait_for_file(second_started)
+        second_release.touch()
+        output, _ = second.communicate(timeout=5)
+        self.assertEqual(second.returncode, 0, output)
+
+    def test_development_checks_share_handoff_slot_and_named_units_remain_independent(self):
+        self.stage("frontend/e2e/local-run.spec.ts", "// Controlled browser command fixture.\n")
+        self.create()
+        env = self.gated_fish()
+        holder_started, heavy_started, light_started = [
+            self.directory / name for name in ("holder-started", "heavy-started", "light-started")
+        ]
+        holder_release, heavy_release, light_release = [
+            self.directory / name for name in ("holder-release", "heavy-release", "light-release")
+        ]
+        holder = self.start_cli("run", self.packet, "--label", "browser_local-run",
+                               env={**env, "CHECK_STARTED": str(holder_started), "CHECK_RELEASE": str(holder_release)})
+        self.addCleanup(holder_release.touch)
+        self.wait_for_file(holder_started)
+        heavy = self.start_cli("--", "npm", "run", "build", script=LOCAL_SCRIPT, cwd=self.repo / "frontend",
+                              env={**env, "CHECK_STARTED": str(heavy_started), "CHECK_RELEASE": str(heavy_release)})
+        self.addCleanup(heavy_release.touch)
+        time.sleep(0.2)
+        self.assertIsNone(heavy.poll(), "heavy development entry returned while handoff still owned the slot")
+        self.assertFalse(heavy_started.exists())
+        light_release.touch()
+        light = self.start_cli("--", "npm", "test", "--", "src/crypto_graph/index.test.ts",
+                              script=LOCAL_SCRIPT, cwd=self.repo / "frontend",
+                              env={**env, "CHECK_STARTED": str(light_started), "CHECK_RELEASE": str(light_release)})
+        output, _ = light.communicate(timeout=5)
+        self.assertEqual(light.returncode, 0, output)
+        self.assertTrue(light_started.exists(), "named unit check did not run independently")
+        holder_release.touch()
+        output, _ = holder.communicate(timeout=5)
+        self.assertEqual(holder.returncode, 0, output)
+        self.wait_for_file(heavy_started)
+        heavy_release.touch()
+        output, _ = heavy.communicate(timeout=5)
+        self.assertEqual(heavy.returncode, 0, output)
+
+    def test_full_frontend_filters_wait_while_existing_named_tests_run_independently(self):
+        self.stage_frontend_test()
+        all_tests = [
+            path.removeprefix("frontend/") for path in self.git("ls-files", "--", "frontend").stdout.splitlines()
+            if path.endswith((".test.ts", ".test.tsx"))
+        ]
+        env = self.gated_fish()
+        holder_started, holder_release = [self.directory / name for name in ("holder-started", "holder-release")]
+        holder = self.start_cli("--", "npm", "run", "build", script=LOCAL_SCRIPT, cwd=self.repo / "frontend",
+                               env={**env, "CHECK_STARTED": str(holder_started), "CHECK_RELEASE": str(holder_release)})
+        self.addCleanup(holder_release.touch)
+        self.wait_for_file(holder_started)
+        waiters = []
+        selections = (["--exclude", "old.test.ts"], ["--exclude=old.test.ts"], [".test.ts"], all_tests)
+        for index, selection in enumerate(selections):
+            started = self.directory / f"full-suite-{index}-started"
+            release = self.directory / f"full-suite-{index}-release"
+            release.touch()
+            waiter = self.start_cli("--", "npm", "test", "--", "--maxWorkers=1", *selection,
+                                    script=LOCAL_SCRIPT, cwd=self.repo / "frontend",
+                                    env={**env, "CHECK_STARTED": str(started), "CHECK_RELEASE": str(release)})
+            waiters.append((waiter, started))
+            first_line = waiter.stdout.readline()
+            with self.subTest(selection=selection):
+                self.assertFalse(started.exists(), "full frontend suite bypassed the occupied heavyweight slot")
+                self.assertIn("Waiting for heavyweight slot:", first_line)
+                self.assertIsNone(waiter.poll())
+        named_started, named_release = [self.directory / name for name in ("named-started", "named-release")]
+        named_release.touch()
+        named = self.start_cli("--", "npm", "test", "--", "--maxWorkers=1", "--passWithNoTests=false",
+                               "src/crypto_graph/index.test.ts", script=LOCAL_SCRIPT, cwd=self.repo / "frontend",
+                               env={**env, "CHECK_STARTED": str(named_started), "CHECK_RELEASE": str(named_release)})
+        output, _ = named.communicate(timeout=5)
+        self.assertEqual(named.returncode, 0, output)
+        self.assertTrue(named_started.exists(), "existing named-file check did not run independently")
+        self.assertIsNone(holder.poll(), "heavyweight owner exited before the named-file check completed")
+        holder_release.touch()
+        output, _ = holder.communicate(timeout=5)
+        self.assertEqual(holder.returncode, 0, output)
+        for waiter, started in waiters:
+            output, _ = waiter.communicate(timeout=5)
+            self.assertEqual(waiter.returncode, 0, output)
+            self.assertTrue(started.exists(), "full frontend suite did not start after the owner released")
+
+    def test_nested_heavy_development_entry_is_rejected_without_running_or_deadlocking(self):
+        env = self.fake_fish()
+        marker = self.directory / "nested-command-started"
+        (self.directory / "bin/fish").write_text(
+            f"#!{sys.executable}\nfrom pathlib import Path\nPath({str(marker)!r}).touch()\n"
+        )
+        program = (
+            "import subprocess, sys\n"
+            "try:\n"
+            f"    result = subprocess.run([sys.executable, {str(LOCAL_SCRIPT)!r}, '--', 'npm', 'run', 'build'], timeout=1)\n"
+            "except subprocess.TimeoutExpired:\n"
+            "    print('Nested heavyweight entry deadlocked.', flush=True)\n"
+            "    raise SystemExit(70)\n"
+            "raise SystemExit(result.returncode)\n"
+        )
+        process = self.start_cli("--", sys.executable, "-c", program, script=LOCAL_SCRIPT, env=env)
+        output, _ = process.communicate(timeout=5)
+        self.assertEqual(process.returncode, 1, output)
+        self.assertIn("Nested heavyweight entry is not supported", output)
+        self.assertFalse(marker.exists(), "nested heavyweight command bypassed the occupied slot")
+
+    def test_snapshot_changed_while_waiting_rejects_the_check_before_launch(self):
+        target = "frontend/e2e/local-run.spec.ts"
+        self.stage(target, "// Controlled browser command fixture.\n")
+        self.create()
+        env = self.gated_fish()
+        holder_started, waiting_started = [self.directory / name for name in ("holder-started", "waiting-started")]
+        holder_release, waiting_release = [self.directory / name for name in ("holder-release", "waiting-release")]
+        waiting_release.touch()
+        holder = self.start_cli("--", "npm", "run", "build", script=LOCAL_SCRIPT, cwd=self.repo / "frontend",
+                               env={**env, "CHECK_STARTED": str(holder_started), "CHECK_RELEASE": str(holder_release)})
+        self.addCleanup(holder_release.touch)
+        self.wait_for_file(holder_started)
+        waiting = self.start_cli("run", self.packet, "--label", "browser_local-run",
+                                env={**env, "CHECK_STARTED": str(waiting_started), "CHECK_RELEASE": str(waiting_release)})
+        self.assertIn("Running browser_local-run", waiting.stdout.readline())
+        self.assertIn("Waiting for heavyweight slot", waiting.stdout.readline())
+        (self.repo / target).write_text("// Candidate changed during resource waiting.\n")
+        holder_release.touch()
+        output, _ = holder.communicate(timeout=5)
+        self.assertEqual(holder.returncode, 0, output)
+        output, _ = waiting.communicate(timeout=5)
+        self.assertEqual(waiting.returncode, 1, output)
+        self.assertFalse(waiting_started.exists(), "stale candidate command ran after waiting")
+        attempt = self.data()["checks"]["browser_local-run"][0]
+        self.assertEqual(attempt["status"], "unavailable")
+        self.assertIsNone(attempt["exit_code"])
+        self.assertIn("target files have unstaged changes", attempt["reason"])
+        self.assertNotIn("finished_at", attempt)
+        self.assertNotIn("elapsed_seconds", attempt)
+
+    def test_wait_time_is_separate_from_execution_in_attempts_and_summary(self):
+        self.stage("frontend/e2e/local-run.spec.ts", "// Controlled browser command fixture.\n")
+        self.create()
+        env = self.gated_fish()
+        holder_started, waiting_started = [self.directory / name for name in ("holder-started", "waiting-started")]
+        holder_release, waiting_release = [self.directory / name for name in ("holder-release", "waiting-release")]
+        waiting_release.touch()
+        holder = self.start_cli("--", "npm", "run", "build", script=LOCAL_SCRIPT, cwd=self.repo / "frontend",
+                               env={**env, "CHECK_STARTED": str(holder_started), "CHECK_RELEASE": str(holder_release)})
+        self.addCleanup(holder_release.touch)
+        self.wait_for_file(holder_started)
+        waiting = self.start_cli("run", self.packet, "--label", "browser_local-run",
+                                env={**env, "CHECK_STARTED": str(waiting_started), "CHECK_RELEASE": str(waiting_release)})
+        self.assertIn("Running browser_local-run", waiting.stdout.readline())
+        self.assertIn("Waiting for heavyweight slot", waiting.stdout.readline())
+        time.sleep(0.25)
+        holder_release.touch()
+        holder_output, _ = holder.communicate(timeout=5)
+        self.assertEqual(holder.returncode, 0, holder_output)
+        output, _ = waiting.communicate(timeout=5)
+        self.assertEqual(waiting.returncode, 0, output)
+        attempt = self.data()["checks"]["browser_local-run"][0]
+        self.assertIsInstance(attempt.get("wait_seconds"), (float, int))
+        self.assertGreaterEqual(attempt["wait_seconds"], 0.2)
+        total = (datetime.fromisoformat(attempt["finished_at"]) - datetime.fromisoformat(attempt["started_at"])).total_seconds()
+        self.assertLessEqual(attempt["wait_seconds"] + attempt["elapsed_seconds"], total + 0.005)
+        summary = self.cli("verify", self.packet).stdout
+        history = json.loads(next(line.removeprefix("Check history: ") for line in summary.splitlines()
+                                  if line.startswith("Check history: ")))
+        self.assertEqual(history["browser_local-run"]["wait_seconds"], attempt["wait_seconds"])
+        development = json.loads(next(line.removeprefix("Local check: ") for line in holder_output.splitlines()
+                                      if line.startswith("Local check: ")))
+        self.assertGreaterEqual(development["wait_seconds"], 0)
+        self.assertGreaterEqual(development["elapsed_seconds"], 0.25)
+
+    def test_cancelling_a_waiter_records_no_execution_and_preserves_the_owner(self):
+        self.stage("frontend/e2e/local-run.spec.ts", "// Controlled browser command fixture.\n")
+        self.create()
+        env = self.gated_fish()
+        holder_started, waiting_started = [self.directory / name for name in ("holder-started", "waiting-started")]
+        holder_release, waiting_release = [self.directory / name for name in ("holder-release", "waiting-release")]
+        waiting_release.touch()
+        holder = self.start_cli("--", "npm", "run", "build", script=LOCAL_SCRIPT, cwd=self.repo / "frontend",
+                               env={**env, "CHECK_STARTED": str(holder_started), "CHECK_RELEASE": str(holder_release)})
+        self.addCleanup(holder_release.touch)
+        self.wait_for_file(holder_started)
+        for cancellation in (signal.SIGINT, signal.SIGTERM):
+            with self.subTest(signal=cancellation):
+                waiting = self.start_cli("run", self.packet, "--label", "browser_local-run",
+                                        env={**env, "CHECK_STARTED": str(waiting_started), "CHECK_RELEASE": str(waiting_release)})
+                self.assertIn("Running browser_local-run", waiting.stdout.readline())
+                self.assertIn("Waiting for heavyweight slot", waiting.stdout.readline())
+                waiting.send_signal(cancellation)
+                output, _ = waiting.communicate(timeout=5)
+                self.assertEqual(waiting.returncode, 1, output)
+                self.assertIsNone(holder.poll(), "cancelling a waiter stopped the slot owner")
+                self.assertFalse(waiting_started.exists())
+                attempt = self.data()["checks"]["browser_local-run"][-1]
+                self.assertEqual(attempt["status"], "unavailable")
+                self.assertEqual(attempt["reason"], "Check interrupted.")
+                self.assertIsNone(attempt["exit_code"])
+                self.assertGreaterEqual(attempt["wait_seconds"], 0)
+                self.assertNotIn("finished_at", attempt)
+                self.assertNotIn("elapsed_seconds", attempt)
+        holder_release.touch()
+        output, _ = holder.communicate(timeout=5)
+        self.assertEqual(holder.returncode, 0, output)
+
+    def test_success_and_failure_hold_the_slot_until_detached_children_exit(self):
+        self.stage("frontend/e2e/local-run.spec.ts", "// Controlled browser command fixture.\n")
+        self.create()
+        unrelated_script = self.directory / "unrelated.py"
+        unrelated_script.write_text("import time\ntime.sleep(30)\n")
+        unrelated = self.start_cli(script=unrelated_script)
+        for exit_code in (0, 7):
+            with self.subTest(exit_code=exit_code):
+                case = self.directory / f"exit-{exit_code}"
+                env = self.owned_child_fish(case, exit_code=exit_code)
+                owner = self.start_cli("run", self.packet, "--label", "browser_local-run", env=env)
+                self.addCleanup((case / "release-cleanup").touch)
+                self.wait_for_file(case / "leader-ready")
+                follower_started = case / "follower-started"
+                program = f"from pathlib import Path; Path({str(follower_started)!r}).touch()"
+                follower = self.start_cli("--", sys.executable, "-c", program, script=LOCAL_SCRIPT)
+                self.assertIn("Waiting for heavyweight slot", follower.stdout.readline())
+                time.sleep(0.2)
+                self.assertFalse(follower_started.exists(), "slot released while a detached command child was still running")
+                self.wait_for_file(case / "child-stopping")
+                self.assertIsNone(owner.poll(), "runner returned before child cleanup finished")
+                (case / "release-cleanup").touch()
+                output, _ = owner.communicate(timeout=5)
+                self.assertEqual(owner.returncode, 0 if exit_code == 0 else 1, output)
+                attempt = self.data()["checks"]["browser_local-run"][-1]
+                self.assertEqual(attempt["exit_code"], exit_code)
+                self.assertEqual(attempt["status"], "passed" if exit_code == 0 else "failed")
+                child_pid = int((case / "child.pid").read_text())
+                with self.assertRaises(ProcessLookupError):
+                    os.kill(child_pid, 0)
+                output, _ = follower.communicate(timeout=5)
+                self.assertEqual(follower.returncode, 0, output)
+                self.assertTrue(follower_started.exists())
+                self.assertIsNone(unrelated.poll(), "owned-child cleanup killed an unrelated invocation")
+
+    def test_running_cancellation_cleans_detached_children_before_releasing_the_slot(self):
+        self.stage("frontend/e2e/local-run.spec.ts", "// Controlled browser command fixture.\n")
+        self.create()
+        other_repo = self.directory / "unrelated worktree"
+        self.git("worktree", "add", "--detach", str(other_repo), "HEAD")
+        unrelated_script = self.directory / "unrelated.py"
+        unrelated_script.write_text("import time\ntime.sleep(30)\n")
+        unrelated = self.start_cli(script=unrelated_script, cwd=other_repo)
+        for route in ("handoff", "development"):
+            for cancellation in (signal.SIGINT, signal.SIGTERM):
+                with self.subTest(route=route, signal=cancellation):
+                    case = self.directory / f"cancel-{route}-{int(cancellation)}"
+                    env = self.owned_child_fish(case)
+                    if route == "handoff":
+                        owner = self.start_cli("run", self.packet, "--label", "browser_local-run", env=env)
+                    else:
+                        owner = self.start_cli("--", "npm", "run", "build", script=LOCAL_SCRIPT,
+                                               cwd=self.repo / "frontend", env=env)
+                    self.addCleanup((case / "release-cleanup").touch)
+                    self.wait_for_file(case / "leader-ready")
+                    owner.send_signal(cancellation)
+                    self.wait_for_file(case / "child-stopping")
+                    follower_started = case / "follower-started"
+                    program = f"from pathlib import Path; Path({str(follower_started)!r}).touch()"
+                    follower = self.start_cli("--", sys.executable, "-c", program, script=LOCAL_SCRIPT)
+                    self.assertIn("Waiting for heavyweight slot", follower.stdout.readline())
+                    time.sleep(0.2)
+                    self.assertFalse(follower_started.exists(), "cancellation released the slot before child cleanup")
+                    self.assertIsNone(owner.poll(), "cancellation returned before child cleanup")
+                    (case / "release-cleanup").touch()
+                    output, _ = owner.communicate(timeout=5)
+                    self.assertEqual(owner.returncode, 1, output)
+                    if route == "handoff":
+                        attempt = self.data()["checks"]["browser_local-run"][-1]
+                        self.assertEqual(attempt["status"], "unavailable")
+                    else:
+                        attempt = json.loads(next(line.removeprefix("Local check: ") for line in output.splitlines()
+                                                  if line.startswith("Local check: ")))
+                    self.assertIsNone(attempt["exit_code"])
+                    self.assertEqual(attempt["reason"], "Check interrupted.")
+                    self.assertNotIn("finished_at", attempt)
+                    self.assertNotIn("elapsed_seconds", attempt)
+                    child_pid = int((case / "child.pid").read_text())
+                    with self.assertRaises(ProcessLookupError):
+                        os.kill(child_pid, 0)
+                    output, _ = follower.communicate(timeout=5)
+                    self.assertEqual(follower.returncode, 0, output)
+                    self.assertTrue(follower_started.exists())
+                    self.assertIsNone(unrelated.poll(), "cancellation killed an unrelated worktree process")
 
     def test_create_discovers_staged_scope_and_requires_exclusions(self):
         self.stage("docs/agents/target.md")
@@ -192,7 +587,7 @@ class ReviewHandoffTest(unittest.TestCase):
             return json.loads(line.removeprefix("Check history: "))["frontend-tests"]
 
         self.assertEqual(history(), {
-            "latest_status": "not-run", "attempts": 0, "elapsed_seconds": None,
+            "latest_status": "not-run", "attempts": 0, "elapsed_seconds": None, "wait_seconds": None,
             "previous_failed": 0, "previous_unavailable": 0,
         })
         self.cli("run", self.packet, env=self.fake_fish(fail_first=True), expected=1)
@@ -205,20 +600,24 @@ class ReviewHandoffTest(unittest.TestCase):
         self.assertEqual(attempts[:-1], earlier)
         self.assertEqual(history("--require-passed"), {
             "latest_status": "passed", "attempts": 3,
+            "wait_seconds": attempts[-1]["wait_seconds"],
             "elapsed_seconds": attempts[-1]["elapsed_seconds"],
             "previous_failed": 1, "previous_unavailable": 1,
         })
 
         attempts[-1]["elapsed_seconds"] = 0
+        attempts[-1]["wait_seconds"] = 0
         self.packet.write_text(json.dumps(data))
         self.assertEqual(history("--require-passed")["elapsed_seconds"], 0)
+        self.assertEqual(history("--require-passed")["wait_seconds"], 0)
         for check_attempts in data["checks"].values():
             for attempt in check_attempts:
                 attempt.pop("finished_at", None)
                 attempt.pop("elapsed_seconds", None)
+                attempt.pop("wait_seconds", None)
         self.packet.write_text(json.dumps(data))
         self.assertEqual(history("--require-passed"), {
-            "latest_status": "passed", "attempts": 3, "elapsed_seconds": None,
+            "latest_status": "passed", "attempts": 3, "elapsed_seconds": None, "wait_seconds": None,
             "previous_failed": 1, "previous_unavailable": 1,
         })
 

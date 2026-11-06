@@ -9,6 +9,8 @@ from pathlib import Path
 import subprocess
 import sys
 
+import local_check
+
 ROOT = Path(__file__).resolve().parents[1]
 
 # Maintainers add exact throwaway prototype paths here. Shared production and
@@ -322,6 +324,8 @@ def plan_paths(paths, repo=ROOT):
             "status": "not-run",
             "reason": "registered UI prototype does not change the real demo contract",
         })
+    for item in checks.values():
+        item["heavyweight"] = local_check.is_heavy(item["argv"], repo / item["cwd"])
     plan = {
         "kind": "checks" if checks else "docs-only",
         "paths": paths,
