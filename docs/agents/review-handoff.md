@@ -13,6 +13,37 @@
   interactions, rejected alternatives and reasons, and unresolved questions in
   the issue before implementing dependent work. Silence is not approval.
 
+## Preview checks during development
+
+Before running development checks, and whenever a new file category is introduced,
+preview the current working-tree plan from the repository root:
+
+```sh
+python3 scripts/test_plan.py local --explain
+```
+
+Inspect the changed paths, selected check IDs, commands, working directories,
+configured environment, combined reasons, and intentional omissions. Working
+directories are relative to the displayed repository root. Configured environment
+values supplement the caller's environment; the preview does not capture that
+environment. Unknown-path warnings retain the planner's conservative fallback
+checks. Correct an unsuitable mapping in `scripts/test_plan.py` and preview again
+before execution; do not drop paths or override coverage to shorten the plan.
+
+The preview is read-only: it runs no checks and creates no acceptance evidence.
+Its provisional scope includes net differences between HEAD and the working tree
+plus non-ignored untracked paths. Staged changes canceled in the working tree can
+be absent, such as a staged new file whose working copy is deleted. Recompute when
+paths or file categories change. The default output remains JSON:
+
+```sh
+python3 scripts/test_plan.py local
+```
+
+Final handoff capture still discovers its own classified staged target and freezes
+its own plan. The preview does not replace exclusions, snapshot verification, or
+the rejection of caller-defined acceptance commands described below.
+
 ## Verification scope and stopping
 
 Start with the reported failure, changed behavior and directly affected consumers.

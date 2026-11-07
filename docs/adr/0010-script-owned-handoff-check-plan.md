@@ -16,3 +16,10 @@ trade-off is that a missing or unsuitable check must be corrected in the
 internal planner, followed by a new packet; routine callers lose custom check
 commands and paths. CI continues to invoke the planner directly so its existing
 coverage remains unchanged.
+
+The scoped amendment in [#133](https://github.com/CSUWangj/cryptography-learning/issues/133)
+allows a read-only development preview through `scripts/test_plan.py local --explain`.
+It formats the existing planner's provisional working-tree plan; the default local
+output remains JSON. Final `create` still discovers classified staged scope and
+freezes its own plan. This preview grants no custom acceptance commands or coverage
+overrides.

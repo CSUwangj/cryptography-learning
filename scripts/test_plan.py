@@ -6,6 +6,7 @@ import base64
 import json
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 
@@ -373,6 +374,39 @@ def plan_records(records, repo=ROOT):
     return plan_paths(paths, repo)
 
 
+def explain_plan(plan, repo):
+    lines = [
+        "Working-tree preview (provisional)",
+        f"Repository: {shlex.quote(str(repo))}",
+        "Scope: net differences between HEAD and the working tree plus non-ignored untracked paths, relative to the repository root.",
+        "Staged changes canceled in the working tree can be absent from this preview.",
+        "Read-only: no checks run; no acceptance evidence recorded.",
+        "Recompute when paths change. Final handoff create discovers its classified staged scope and freezes its own plan.",
+        f"Plan kind: {plan['kind']}",
+    ]
+    warnings = dict.fromkeys(
+        reason for item in plan["checks"] for reason in item["reasons"] if "fallback" in reason
+    )
+    lines.extend(f"WARNING: {reason}" for reason in warnings)
+    lines.append(f"Changed paths ({len(plan['paths'])}):")
+    lines.extend(f"  - {shlex.quote(path)}" for path in plan["paths"])
+    lines.append(f"Selected checks ({len(plan['checks'])}):")
+    for item in plan["checks"]:
+        configured_env = shlex.join(f"{key}={value}" for key, value in sorted(item.get("env", {}).items()))
+        lines.extend([
+            f"  - {item['id']}",
+            f"    cwd: {shlex.quote(item['cwd'])}",
+            f"    command: {shlex.join(item['argv'])}",
+            f"    configured env: {configured_env or '(none; inherits caller environment)'}",
+            "    reasons:",
+            *(f"      - {reason}" for reason in item["reasons"]),
+        ])
+    lines.append(f"Intentional omissions ({len(plan['omissions'])}):")
+    for item in plan["omissions"]:
+        lines.extend([f"  - {item['id']}: {item['status']}", f"    reason: {item['reason']}"])
+    return "\n".join(lines)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     subs = parser.add_subparsers(dest="action", required=True)
@@ -381,6 +415,7 @@ def main():
     plan_parser.add_argument("--repo", type=Path, default=ROOT)
     local = subs.add_parser("local")
     local.add_argument("--repo", type=Path, default=ROOT)
+    local.add_argument("--explain", action="store_true", help="show a read-only human-readable working-tree preview instead of JSON")
     runner = subs.add_parser("run")
     runner.add_argument("--plan", required=True, help="base64-encoded JSON plan")
     runner.add_argument("--id", required=True)
@@ -393,6 +428,9 @@ def main():
         names = set(os.fsdecode(p) for p in _git(repo, "diff", "--no-renames", "--name-only", "-z", "HEAD").split(b"\0") if p)
         names.update(os.fsdecode(p) for p in _git(repo, "ls-files", "--others", "--exclude-standard", "-z").split(b"\0") if p)
         result = plan_paths(names, repo)
+        if args.explain:
+            print(explain_plan(result, repo))
+            return 0
     elif args.action == "run":
         plan = json.loads(base64.b64decode(args.plan))
         selected = next((item for item in plan["checks"] if item["id"] == args.id), None)

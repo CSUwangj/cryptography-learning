@@ -167,6 +167,9 @@ Do not ask for another approval just because preparation has finished.
 ## Implement and capture
 
 Give the implementer the checkout, base, issue, note and its selected skill paths.
+Before development checks, and as each new file category is introduced, follow
+the handoff guide's [development preview](../../../docs/agents/review-handoff.md#preview-checks-during-development).
+Recompute the preview when scope changes; final staged capture freezes its own plan.
 For behavior changes, use one source-backed failing behavior test followed by
 the smallest implementation per cycle. A launch, import or environment failure
 is not a red behavior test. An already-passing case is existing coverage; record

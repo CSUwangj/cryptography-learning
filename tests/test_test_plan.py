@@ -2,7 +2,10 @@
 
 from pathlib import Path
 import base64
+import hashlib
 import json
+import os
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -620,6 +623,194 @@ class TestPlanTest(unittest.TestCase):
             self.assertEqual(result.returncode, 1)
         finally:
             generated.unlink(missing_ok=True)
+
+
+class LocalPreviewTest(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="plan-preview-")
+        self.addCleanup(self.temp.cleanup)
+        self.repo = Path(self.temp.name) / "repo with spaces"
+        subprocess.run(["git", "clone", "--quiet", "--shared", str(ROOT), str(self.repo)], check=True)
+
+    def change(self, name):
+        path = self.repo / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(path.read_text() + "\n" if path.exists() else "preview fixture\n")
+
+    def preview(self, *args, env=None):
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts/test_plan.py"), "local", "--repo", str(self.repo), *args],
+            text=True, capture_output=True, check=False, env=env,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        return result.stdout
+
+    def test_explanation_reports_the_existing_plan_without_changing_json(self):
+        path = "docs/examples/migration/xor-v1/lesson.yaml"
+        self.change(path)
+        plan = test_plan.plan_paths([path], repo=self.repo)
+        self.assertEqual(json.loads(self.preview()), plan)
+        explanation = self.preview("--explain")
+        self.assertIn("Working-tree preview (provisional)", explanation)
+        self.assertIn("net differences between HEAD and the working tree plus non-ignored untracked paths", explanation)
+        self.assertIn("Final handoff create discovers its classified staged scope", explanation)
+        self.assertIn(f"  - {path}", explanation)
+        self.assertIn("Plan kind: checks", explanation)
+        self.assertIn("Selected checks (1):", explanation)
+        self.assertIn("  - frontend-tests\n", explanation)
+        self.assertIn("cwd: frontend", explanation)
+        self.assertIn("command: npm test -- --maxWorkers=1 --passWithNoTests=false src/lesson_runtime/migrationExample.test.ts", explanation)
+        self.assertIn("configured env: (none; inherits caller environment)", explanation)
+        self.assertIn("migration companion Lesson or locale changed", explanation)
+        self.assertNotIn("backend_build", explanation)
+        for item in plan["checks"]:
+            self.assertIn(f"command: {shlex.join(item['argv'])}", explanation)
+            self.assertIn(f"cwd: {shlex.quote(item['cwd'])}", explanation)
+            for reason in item["reasons"]:
+                self.assertIn(f"      - {reason}", explanation)
+
+    def test_unknown_paths_warn_without_suppressing_conservative_checks(self):
+        paths = [
+            "unmapped-config.yaml",
+            "frontend/src/newmodule/feature.ts",
+            "scripts/new-executable.py",
+        ]
+        for path in paths:
+            self.change(path)
+        plan = json.loads(self.preview())
+        explanation = self.preview("--explain")
+        for warning in (
+            "unknown root executable path fallback: unmapped-config.yaml",
+            "unknown frontend module newmodule; broad fallback",
+            "unknown executable path fallback: scripts/new-executable.py",
+        ):
+            self.assertEqual(explanation.count(f"WARNING: {warning}\n"), 1)
+        self.assertTrue({
+            "backend_tests", "backend_fmt", "backend_clippy", "backend_build",
+            "frontend-tests", "frontend_typecheck", "frontend_build", "tooling",
+        } <= {item["id"] for item in plan["checks"]})
+        self.assertEqual(plan, test_plan.plan_paths(paths, repo=self.repo))
+        for path in paths:
+            self.assertIn(f"  - {path}\n", explanation)
+        for item in plan["checks"]:
+            self.assertIn(f"  - {item['id']}\n", explanation)
+            self.assertIn(f"command: {shlex.join(item['argv'])}\n", explanation)
+            for reason in item["reasons"]:
+                self.assertIn(f"      - {reason}\n", explanation)
+
+    def test_registered_prototype_explains_its_intentional_omission(self):
+        self.change("frontend/demos/UiOptimizationPrototype.tsx")
+        explanation = self.preview("--explain")
+        self.assertIn("Intentional omissions (1):", explanation)
+        self.assertIn("  - demo_browser: not-run\n", explanation)
+        self.assertIn("registered UI prototype does not change the real demo contract", explanation)
+        self.assertNotIn("  - demo_browser\n", explanation)
+        self.assertIn("  - frontend-tests\n", explanation)
+        self.change("frontend/src/visualizers/index.ts")
+        mixed = self.preview("--explain")
+        self.assertIn("  - demo_browser\n", mixed)
+        self.assertIn("Intentional omissions (0):", mixed)
+        self.assertNotIn("  - demo_browser: not-run\n", mixed)
+
+    def test_mixed_explanation_keeps_configured_env_and_merged_browser_reasons(self):
+        paths = [
+            "frontend/package.json", "frontend/e2e/visualizers.spec.ts",
+            "frontend/src/visualizers/index.ts", "docs/examples/operations/xor-constant/lesson.yaml",
+        ]
+        for path in paths:
+            self.change(path)
+        plan = test_plan.plan_paths(paths, repo=self.repo)
+        self.assertEqual(json.loads(self.preview()), plan)
+        explanation = self.preview("--explain")
+        self.assertIn("Vite-compatible browser test changed", explanation)
+        self.assertIn("real lesson runtime or visualizer behavior changed", explanation)
+        self.assertIn("Operation companion Lesson or locale changed", explanation)
+        for item in plan["checks"]:
+            self.assertEqual(explanation.count(f"  - {item['id']}\n"), 1)
+            self.assertIn(f"cwd: {shlex.quote(item['cwd'])}\n", explanation)
+            self.assertIn(f"command: {shlex.join(item['argv'])}\n", explanation)
+            for key, value in item.get("env", {}).items():
+                self.assertIn(f"configured env: {shlex.quote(f'{key}={value}')}\n", explanation)
+            for reason in item["reasons"]:
+                self.assertIn(f"      - {reason}\n", explanation)
+        self.assertIn("configured env: VITE_FEEDBACK_URL=", explanation)
+        self.assertNotIn("WARNING:", explanation)
+
+    def test_documentation_only_preview_has_no_checks_or_omissions(self):
+        path = "docs/preview with spaces.md"
+        self.change(path)
+        explanation = self.preview("--explain")
+        self.assertIn("Plan kind: docs-only\n", explanation)
+        self.assertIn(f"  - '{path}'\n", explanation)
+        self.assertIn("Selected checks (0):\n", explanation)
+        self.assertIn("Intentional omissions (0):\n", explanation)
+        self.assertNotIn("WARNING:", explanation)
+
+    def test_preview_describes_net_head_scope_when_staged_yaml_is_deleted(self):
+        staged = "preview-scope.yaml"
+        docs = "docs/spec-preview-probe.md"
+        self.change(staged)
+        subprocess.run(["git", "-C", str(self.repo), "add", "--", staged], check=True)
+        (self.repo / staged).unlink()
+        self.change(docs)
+        staged_paths = subprocess.run(
+            ["git", "-C", str(self.repo), "diff", "--cached", "--name-only"],
+            text=True, capture_output=True, check=True,
+        ).stdout.splitlines()
+        self.assertEqual(staged_paths, [staged])
+        self.assertIn("backend_build", {
+            item["id"] for item in test_plan.plan_paths(staged_paths, repo=self.repo)["checks"]
+        })
+        self.assertEqual(json.loads(self.preview()), {
+            "kind": "docs-only", "paths": [docs], "checks": [], "omissions": [],
+        })
+        explanation = self.preview("--explain")
+        self.assertIn(f"  - {docs}\n", explanation)
+        self.assertNotIn(f"  - {staged}\n", explanation)
+        self.assertIn("Selected checks (0):\n", explanation)
+        self.assertIn("net differences between HEAD and the working tree", explanation)
+        self.assertIn("non-ignored untracked paths", explanation)
+        self.assertIn("Staged changes canceled in the working tree can be absent from this preview.", explanation)
+        self.assertIn("Final handoff create discovers its classified staged scope", explanation)
+
+    def test_preview_preserves_files_index_and_status_without_launching_checks(self):
+        staged = "docs/examples/migration/xor-v1/lesson.yaml"
+        self.change(staged)
+        subprocess.run(["git", "-C", str(self.repo), "add", "--", staged], check=True)
+        self.change("Dockerfile")
+        untracked = "unmapped-config.yaml"
+        self.change(untracked)
+        marker = Path(self.temp.name) / "check-launched"
+        sentinel = f"#!/bin/sh\nprintf launched >> {shlex.quote(str(marker))}\nexit 97\n"
+        bindir = Path(self.temp.name) / "bin"
+        bindir.mkdir()
+        for program in ("npm", "npx", "cargo", "python3", "fish"):
+            executable = bindir / program
+            executable.write_text(sentinel)
+            executable.chmod(0o755)
+        (self.repo / "acceptance/run.sh").write_text(sentinel)
+        env = {**os.environ, "PATH": str(bindir) + os.pathsep + os.environ["PATH"]}
+
+        def state():
+            status = subprocess.run(
+                ["git", "-C", str(self.repo), "status", "--porcelain=v1", "-z"],
+                capture_output=True, check=True,
+            ).stdout
+            files = {
+                str(path.relative_to(self.repo)): (hashlib.sha256(path.read_bytes()).hexdigest(), path.stat().st_mode)
+                for path in self.repo.rglob("*") if path.is_file() and ".git" not in path.relative_to(self.repo).parts
+            }
+            return status, (self.repo / ".git/index").read_bytes(), files
+
+        before = state()
+        plan = json.loads(self.preview(env=env))
+        explanation = self.preview("--explain", env=env)
+        self.assertEqual(state(), before)
+        self.assertFalse(marker.exists(), "preview launched a selected check")
+        self.assertEqual(set(plan["paths"]), {staged, "Dockerfile", untracked, "acceptance/run.sh"})
+        for path in plan["paths"]:
+            self.assertIn(f"  - {shlex.quote(path)}\n", explanation)
+        self.assertIn("Read-only: no checks run; no acceptance evidence recorded.", explanation)
 
 
 if __name__ == "__main__":
