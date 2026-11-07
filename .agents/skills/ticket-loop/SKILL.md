@@ -143,8 +143,8 @@ timeout and exit evidence; any lifecycle repair still needs to be within scope.
    do not copy partially verified work between checkouts after a permission failure.
 3. Write a short English execution note outside the checkout. Map each criterion
    to its authoritative source, public entry point, expected result and check.
-   For an error-prone restriction, use the handoff document's constrained-object,
-   allowed-example and rejected-example format to distinguish wrong interpretations.
+   For a restriction that is easy to misread, use the specification template's
+   [constrained-object and example format](../../../docs/agents/spec-template.md#restrictions-that-are-easy-to-misread).
    Record test interfaces/coverage limits, reuse points, likely files, non-goals,
    accepted risks, selected skill paths/model mapping and every applicable issue
    and repository check, including full suites and currently unavailable checks.
@@ -152,10 +152,13 @@ timeout and exit evidence; any lifecycle repair still needs to be within scope.
    the conflicting or missing sources and ask for the smallest decision. Persist
    approved changes in the proper authority before dependent work; obtain tracker
    publication permission if absent. An execution note is not a second specification.
-5. For behavior-changing tickets, use the selected Formal review model to review
-   the approved ticket, acceptance criteria, repository contracts, non-goals and
-   execution note for conflicts, omissions and invented requirements. Record its
-   verdict and open questions in the note before dispatching implementation.
+5. For behavior-changing tickets, use the selected Formal review model for a
+   requirements review. Establish expected behavior from the approved ticket,
+   linked decisions and repository contracts before reading the execution note
+   or implementation conclusions. Check acceptance criteria, non-goals and the
+   note for conflicts, omissions and invented requirements. Passing tests and
+   reviewer agreement are not requirement authority. Record the verdict and open
+   questions in the note before dispatching implementation.
    The reviewer identifies ambiguity; only the maintainer resolves product
    requirements. The reviewer does not add requirements or choose the
    implementation design. This is a requirements review, not a `code-review` run

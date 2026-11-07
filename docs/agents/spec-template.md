@@ -18,6 +18,16 @@ Group requirements when they share a source. For each group, cite one of:
 
 Requirements without one of these sources are proposals, not acceptance criteria.
 
+### Restrictions that are easy to misread
+
+Use this format only for restrictions that are genuinely easy to misread. Name
+the constrained object and distinguish the approved rule from a plausible wrong
+interpretation. Ordinary unambiguous requirements need no extra table.
+
+| Restriction | Constrained object | Allowed example | Rejected example | Authoritative source |
+| --- | --- | --- | --- | --- |
+| `<requirement ID>` | `<entity and scope>` | `<valid case the wrong reading would reject>` | `<invalid case>` | `<approved requirement or decision link>` |
+
 ## Operating assumptions
 
 Reference the repository operating and threat model. State only task-specific deviations.

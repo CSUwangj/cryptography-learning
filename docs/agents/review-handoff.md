@@ -3,7 +3,12 @@
 ## Execute a confirmed phase
 
 - Use the approved issue and linked decisions as the acceptance boundary.
-  Carry forward non-goals, accepted risks, and approved exceptions.
+  For successively corrected requirements, restore the owning issue's
+  [current-decision index](grill-decision-ledger.md#current-decision-index) and
+  read its source decisions. Carry forward non-goals, accepted risks, and
+  approved exceptions.
+- For restrictions that are easy to misread, use the canonical
+  [constrained-object and example format](spec-template.md#restrictions-that-are-easy-to-misread).
 - A ticket is ready only when its dependencies and recorded product checkpoints
   are satisfied. Execute independent ready work while affected work waits.
 - When using implement-spec, deliver staged changes for maintainer review;
@@ -339,10 +344,12 @@ deliberate tampering. Preserve artifacts until maintainer acceptance.
 
 ## Converge the review
 
-- Before reading the implementation diff, establish expected behavior from the
-  approved issue and linked decisions, checking the notes' scope and examples
-  against those sources. Then review the actual diff and evidence against that
-  boundary. The implementer's summary is an index, not proof.
+- Before reading implementation conclusions or the diff, establish expected
+  behavior from the approved issue and linked decisions. Check the notes' scope
+  and examples against those sources, then review the actual diff and evidence
+  against that boundary. Passing implementation tests, prototype behavior and
+  reviewer agreement are not requirement authority. The implementer's summary
+  is an index, not proof.
 - Keep finding IDs across rounds. Recheck fixes and affected behavior; a new
   blocker still needs an authorized requirement or a concrete defect under
   AGENTS.md. Reviewer preference is not requirement authority.
