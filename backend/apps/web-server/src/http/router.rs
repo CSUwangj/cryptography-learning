@@ -220,7 +220,7 @@ mod tests {
         fs::write(static_root.join("app.js"), "console.log('bundle');").unwrap();
         fs::create_dir_all(static_root.join("assets")).unwrap();
         fs::write(static_root.join("assets/main.js"), "export {};").unwrap();
-        let lesson_directory = static_root.parent().unwrap().join("lesson");
+        let lesson_directory = static_root.join("lesson");
         fs::create_dir_all(lesson_directory.join("locales")).unwrap();
         fs::create_dir_all(lesson_directory.join("assets")).unwrap();
         fs::write(lesson_directory.join("lesson.yaml"), "version: 1").unwrap();
@@ -495,6 +495,20 @@ mod tests {
             .unwrap();
         assert_eq!(root.status(), StatusCode::OK);
         assert!(body_text(root).await.contains("Crypto Learn"));
+    }
+
+    #[tokio::test]
+    async fn lesson_assets_are_removed_with_the_test_fixture() {
+        let tmp = tempfile::tempdir().unwrap();
+        let app = sample_app(tmp.path()).await;
+        assert_eq!(
+            app.lesson_catalog().asset("xor-intro", "xor.txt").unwrap(),
+            b"xor asset"
+        );
+
+        tmp.close().unwrap();
+
+        assert!(app.lesson_catalog().asset("xor-intro", "xor.txt").is_err());
     }
 
     #[tokio::test]
