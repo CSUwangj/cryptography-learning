@@ -78,6 +78,57 @@ An acceptance exception still requires explicit maintainer approval under the
 delivery rules. Report a planner mismatch instead of silently replacing its
 frozen command or expanding the plan to chase a passing result.
 
+## Coordinate shared check failures
+
+When several tickets may have the same failure, coordinate diagnosis before
+starting another baseline campaign:
+
+1. Find an existing related issue and name one owning ticket and one investigator.
+   Use that issue as the discoverable evidence record rather than requiring a new
+   issue per ticket. Record a stable finding ID, affected tickets, failing baseline
+   and candidate revisions, relevant source versions, command and cwd, fixtures,
+   failure stage and symptom, execution conditions, evidence, known limits and
+   repair revision when known. Mark unknown fields explicitly. Link the record
+   and its open or resolved blocker status from each affected ticket.
+2. Before reusing diagnosis, compare each ticket's relevant source and baseline
+   with the record, including test/assertion and fixture versions, exact command
+   and cwd, toolchain/dependencies, workers, settings and permission context.
+   Record matches, differences and unknowns, and explain why the demonstrated
+   cause applies. A same-named test or generic timeout is insufficient. Incompatible
+   baselines, missing applicability evidence and new failure stages stay separate
+   from the shared diagnosis until evidence supports attribution.
+3. Carry the finding ID, evidence, consumed investigation rounds and remaining
+   budget across investigators, tickets and agents for the same source-backed
+   failure rule. Apply [verification scope and stopping](#verification-scope-and-stopping)
+   to their aggregate effort. Transfers and renamed findings do not reset it.
+   When correcting attribution, preserve the old record and its spent budget;
+   link a separate finding for a genuinely different cause. At the stopping limit,
+   report the remaining gap and seek maintainer direction before more diagnosis.
+4. Keep each ticket's original failed attempts and final candidate checks on its
+   own snapshot under the staged-handoff rules. Reuse diagnosis, never another
+   candidate's pass. Shared diagnosis grants no acceptance exception or automatic
+   flaky classification. Keep an unresolved shared blocker visible in every
+   affected ticket while unaffected independent work continues. After a repair,
+   record its revision and applicability limits, then run each ticket's required
+   final checks; retain earlier failures even when those checks pass.
+
+Keep detailed logs, traces and private execution configuration outside the
+checkout and published records. Issue conclusions contain only public-safe
+symptoms, source/evidence references, attribution, limits and next steps. This
+procedure grants no tracker-write permission. Without it, keep publication drafts
+outside the checkout and hand them off with the unresolved publication action.
+
+### Example of a shared diagnosis
+
+- When three tickets match on the byte-span source, contiguous-value assertion,
+  fixtures and execution conditions, they can reuse one accessible-value diagnosis
+  under one owning ticket.
+- An initial loading failure stays in a separate branch even when its test name
+  matches the accessible-value case.
+- Transfer the same finding ID with its already-spent investigation budget.
+  The recipient stops if that budget is exhausted. Each ticket retains its original
+  failed attempts and runs its own required final candidate checks.
+
 ## Run local checks across worktrees
 
 Use `scripts/local_check.py -- COMMAND [ARG ...]` for development checks. Run it

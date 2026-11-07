@@ -213,6 +213,9 @@ another investigation budget.
 1. Preserve the first failed command, exit/timeout evidence and logs or browser
    traces. Classify the observed failure as an assertion, permission/launch error,
    timeout or unfinished process. A warning alone does not establish the cause.
+   If another ticket reports a potentially matching failure, follow
+   [shared check failures](../../../docs/agents/review-handoff.md#coordinate-shared-check-failures)
+   to locate its investigation record and check applicability before repeating diagnosis.
 2. Run heavyweight checks sequentially. Record pinned tool versions, worker count
    and permission context; use the planner-selected frontend suite for immediate
    acceptance and the nightly workflow for full coverage. Resolve permission
