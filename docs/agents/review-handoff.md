@@ -51,12 +51,17 @@ the rejection of caller-defined acceptance commands described below.
 
 ## Verification scope and stopping
 
-Start with the reported failure, changed behavior and directly affected consumers.
-Use the planner-selected checks as the required handoff baseline. Add supplemental
+Match verification to the risk and changed behavior. Start with the narrowest
+meaningful check for the reported failure, changed behavior and directly affected
+consumers. Run broader checks when a cross-tree contract, build path or deployable
+behavior is affected.
+The [planner](../../scripts/test_plan.py) owns check commands and path-to-check
+mappings. Use its selected checks as the required handoff baseline. Add supplemental
 checks only for an explicit acceptance criterion or a concrete regression path;
 record what the extra check proves. A shared component justifies its affected
-consumers, not every suite in the repository. Full-suite commands in `AGENTS.md`
-are references, not an additional checklist on top of the plan.
+consumers, not every suite in the repository. Full-suite coverage runs in the
+[nightly workflow](../../.github/workflows/nightly.yml), not as an additional
+checklist on top of the plan.
 
 Default to one relevant validation round and, if needed, one affected recheck
 after a correction. Run final required checks once on the candidate and reuse
@@ -80,8 +85,30 @@ this branch with its remaining gap rather than starting another investigation.
 This budget limits investigation effort, not evidence honesty. Required failed
 or unrun checks remain incomplete; a focused pass is not a full-suite pass.
 An acceptance exception still requires explicit maintainer approval under the
-delivery rules. Report a planner mismatch instead of silently replacing its
+[delivery rules](../../.agents/skills/ticket-loop/SKILL.md#deliver). Report a planner mismatch instead of silently replacing its
 frozen command or expanding the plan to chase a passing result.
+
+## Diagnose uncertain check failures
+
+Preserve the first failed command, exit/timeout evidence and logs or browser
+traces. Classify the observed failure as an assertion, permission/launch error,
+timeout or unfinished process. A warning alone does not establish the cause.
+Resolve ordinary failures from existing logs and source first. For finite slow
+tests, apply the bounded test-budget adjustment under
+[verification scope and stopping](#verification-scope-and-stopping).
+
+If a base comparison is necessary within the authorized investigation budget,
+use complete checkouts and equivalent fixtures/dependencies/settings. Keep the
+implementation checkout intact and record comparison confounders. A base failure
+predates the change but does not prove every affected behavior is unchanged.
+For tool versions, worker count, permission context, diagnostic variants and
+sequential heavyweight comparisons, follow the [staged evidence rules](#capture-a-staged-handoff).
+If another ticket reports a potentially matching failure, follow
+[shared check failures](#coordinate-shared-check-failures) before repeating diagnosis.
+
+Stop when evidence identifies the cause or the specific remaining evidence gap.
+Rerun only to test a stated hypothesis or verify a correction. Do not expand
+retries, application deadlines or task scope to obtain a passing run.
 
 ## Coordinate shared check failures
 
@@ -146,6 +173,8 @@ python3 ../scripts/local_check.py -- npm test -- --maxWorkers=1
 python3 ../scripts/local_check.py -- npm run build
 python3 ../scripts/local_check.py -- npm test -- --maxWorkers=1 src/crypto_graph/index.test.ts
 ```
+
+Use `npm run lint` for a read-only check. Run `npm run lint:fix` only when repairs are intended.
 
 The development entry and `review_handoff.py run` share one advisory lock at
 `~/.cache/cryptography-learning/heavy-check.lock`. It is outside every worktree
@@ -350,16 +379,11 @@ deliberate tampering. Preserve artifacts until maintainer acceptance.
   against that boundary. Passing implementation tests, prototype behavior and
   reviewer agreement are not requirement authority. The implementer's summary
   is an index, not proof.
-- Keep finding IDs across rounds. Recheck fixes and affected behavior; a new
-  blocker still needs an authorized requirement or a concrete defect under
-  AGENTS.md. Reviewer preference is not requirement authority.
-- The coordinator validates each blocker's source, scope and counterexample
-  before forwarding it for repair, recording the assessment in the existing
-  finding disposition. Return unsupported interpretations to the reviewer.
-  Fix confirmed clear defects directly. For disputed requirements or new product behavior,
-  pause affected work and record the maintainer's decision in the issue first.
-- Keep optional improvements non-blocking. Do not automatically implement every
-  finding merely because implement-spec asks to address review feedback.
+
+For finding adjudication and repair rounds, follow
+[ticket-loop's convergence rules](../../.agents/skills/ticket-loop/SKILL.md#review-and-converge).
+If repairs stall or recur, follow its
+[escalation branch](../../.agents/skills/ticket-loop/SKILL.md#when-repairs-stall-or-recur).
 
 ## Report the review
 

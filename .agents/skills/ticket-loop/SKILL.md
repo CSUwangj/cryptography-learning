@@ -172,7 +172,6 @@ Do not ask for another approval just because preparation has finished.
 Give the implementer the checkout, base, issue, note and its selected skill paths.
 Before development checks, and as each new file category is introduced, follow
 the handoff guide's [development preview](../../../docs/agents/review-handoff.md#preview-checks-during-development).
-Recompute the preview when scope changes; final staged capture freezes its own plan.
 For behavior changes, use one source-backed failing behavior test followed by
 the smallest implementation per cycle. A launch, import or environment failure
 is not a red behavior test. An already-passing case is existing coverage; record
@@ -188,53 +187,22 @@ Use the host's normal permission flow for blocked commands. Assignment cannot
 grant permissions or turn an unavailable check into a pass. Schedule dependency
 installation outside review and browser runs so it cannot mutate their environment.
 
-Run focused checks during development. Stage the candidate ticket files and
-run `review_handoff.py create --issue ISSUE --notes NOTES`; it discovers scope
-and freezes every applicable check before pre-review. Unfinished checks remain
-`not-run`. The planner selects applicable checks; the packet records their
-frozen commands and working directories. Focused tests are the immediate
-evidence; the full suite runs in the nightly workflow. Keep
-command and cwd fixed across attempts and record
-diagnostic variants separately. Stop editing while reviewers inspect that snapshot.
+When implementation is ready, follow the handoff guide's
+[staged capture and check execution](../../../docs/agents/review-handoff.md#capture-a-staged-handoff)
+before review.
 Only the currently assigned implementer edits ticket files. The coordinator
 confirms delivery is finished, the packet exists and `verify` passes before any
 review. Return missing files, unstaged fixes or stale evidence as delivery
 problems, not code findings.
 
-After pre-review repairs, run the required checks on the candidate for formal
-review. Do not repeat unchanged passing checks merely for another review stage.
-After any edit, create a new packet and rerun affected checks; justify unaffected
-prior evidence under the handoff rules. Never copy old passing attempts into it.
-Environment failures require honest limits and the normal permission flow.
+After pre-review repairs, prepare the candidate for formal review under those
+same snapshot and check-evidence rules.
 
 ## Diagnose uncertain check failures
 
-Apply the handoff guide's [verification scope and stopping](../../../docs/agents/review-handoff.md#verification-scope-and-stopping)
-rules across implementation, diagnosis and review; delegation does not grant
-another investigation budget.
-
-1. Preserve the first failed command, exit/timeout evidence and logs or browser
-   traces. Classify the observed failure as an assertion, permission/launch error,
-   timeout or unfinished process. A warning alone does not establish the cause.
-   If another ticket reports a potentially matching failure, follow
-   [shared check failures](../../../docs/agents/review-handoff.md#coordinate-shared-check-failures)
-   to locate its investigation record and check applicability before repeating diagnosis.
-2. Run heavyweight checks sequentially. Record pinned tool versions, worker count
-   and permission context; use the planner-selected frontend suite for immediate
-   acceptance and the nightly workflow for full coverage. Resolve permission
-   failures through the normal host flow.
-3. Resolve ordinary failures from existing logs and source first; apply the
-   handoff guide's bounded test-budget adjustment for finite slow tests.
-   If a base comparison is necessary within the authorized investigation budget,
-   use complete checkouts and equivalent fixtures/dependencies/settings. Keep
-   the implementation checkout intact and record comparison confounders.
-4. Report what the evidence establishes: a base failure predates the change but
-   does not prove every affected behavior is unchanged. A later pass preserves
-   earlier failure history; focused success does not establish nightly full-suite coverage.
-5. Stop when evidence identifies the cause or the specific remaining evidence gap.
-   Rerun only to test a stated hypothesis or verify a correction. An unresolved
-   required check remains incomplete under Deliver's exception rules; do not
-   expand retries, application deadlines or task scope to obtain a passing run.
+When check causality is unclear, follow the handoff guide's
+[failure diagnosis](../../../docs/agents/review-handoff.md#diagnose-uncertain-check-failures)
+and [verification scope and stopping](../../../docs/agents/review-handoff.md#verification-scope-and-stopping) rules.
 
 ## Review and converge
 

@@ -40,25 +40,15 @@
 
 ## Verification
 
-Run the smallest checks that cover the change, normally one validation round and
-one affected recheck after a correction. Before expanding scope or investigating
-a timeout, follow [verification scope and stopping](docs/agents/review-handoff.md#verification-scope-and-stopping).
-Report checks not run. These full-suite commands are references for applicable
-gates, not instructions to run every suite for every edit:
+Before phase execution, delegation, or diff review, read the
+[handoff guide](docs/agents/review-handoff.md).
+Before development checks, follow its [preview](docs/agents/review-handoff.md#preview-checks-during-development)
+and [local execution](docs/agents/review-handoff.md#run-local-checks-across-worktrees) rules.
+For staged delivery, follow [snapshot capture and evidence](docs/agents/review-handoff.md#capture-a-staged-handoff).
+For failed checks or broader verification, follow [verification scope and stopping](docs/agents/review-handoff.md#verification-scope-and-stopping).
 
-- Backend or schema: `cd backend && cargo test --locked -- --nocapture`
-- Frontend: use `frontend/.nvmrc`, then `cd frontend && npm ci && npm run typecheck && npm test -- --maxWorkers=1 && npm run build`
-- Deployable behavior: `./baseline/run.sh` (requires Docker)
-
-Detailed verification and execution handoff rules live in
-[`docs/agents/review-handoff.md`](docs/agents/review-handoff.md); ticket workflow
-is defined by [ticket-loop](.agents/skills/ticket-loop/SKILL.md). The planner in
-`scripts/test_plan.py` owns path-to-check coverage.
-
-Use `npm run lint` for a read-only check. Run `npm run lint:fix` only when repairs are intended.
-
-Before phase execution, delegation, or diff review, read the handoff guide. Its
-review report format does not apply to grilling or specification sessions.
+For ticket stages and roles, use [ticket-loop](.agents/skills/ticket-loop/SKILL.md).
+The handoff review report format does not apply to grilling or specification sessions.
 
 ## Keep changes reviewable
 
@@ -67,9 +57,6 @@ review report format does not apply to grilling or specification sessions.
   make that change safe or possible.
 - Keep work easy to review. Split independently understandable changes at a
   meaningful boundary; if a larger change must stay together, explain why.
-- Match verification to the risk and changed behavior. Start with the narrowest
-  meaningful check; run broader checks when a cross-tree contract, build path,
-  or deployable behavior is affected. Say which relevant checks were not run.
 - Tests should show the requested observable behavior or guard a credible
   regression. Do not rely only on implementation-detail assertions or mocks
   that merely repeat the implementation's assumptions.
