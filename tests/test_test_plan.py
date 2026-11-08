@@ -17,6 +17,25 @@ import test_plan
 
 
 class TestPlanTest(unittest.TestCase):
+    def test_frontend_paths_select_the_read_only_lint_command(self):
+        for path in (
+            "frontend/src/app/home/HomePage.tsx",
+            "frontend/src/practice/map.test.ts",
+            "frontend/src/lesson_runtime/fixture/aes192-first-round.ts",
+            "frontend/demos/UiOptimizationPrototype.tsx",
+            "frontend/e2e/learning.spec.ts",
+            "frontend/scripts/playwright-server.mjs",
+            "frontend/vite.config.mts",
+            "frontend/eslint.config.mjs",
+            "frontend/package.json",
+            "frontend/package-lock.json",
+        ):
+            with self.subTest(path=path):
+                checks = {item["id"]: item for item in test_plan.plan_paths([path])["checks"]}
+                self.assertIn("frontend_lint", checks)
+                self.assertEqual(checks["frontend_lint"]["cwd"], "frontend")
+                self.assertEqual(checks["frontend_lint"]["argv"], ["npm", "run", "lint"])
+
     def test_range_uses_existing_full_git_range(self):
         result = subprocess.run(
             ["git", "rev-parse", "--verify", "HEAD~1^{commit}"],

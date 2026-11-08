@@ -314,6 +314,7 @@ def plan_paths(paths, repo=ROOT):
                 add("frontend_build", "frontend", ["npm", "run", "build"], f"unknown root executable path fallback: {path}")
 
     if any(path.startswith("frontend/") and not path.endswith(".md") for path in paths):
+        add("frontend_lint", "frontend", ["npm", "run", "lint"], "frontend source or tooling changed")
         add("frontend-tests", "frontend", [
             "npm", "test", "--", "--maxWorkers=1", "--passWithNoTests=false",
             "src/app/i18n/noEmbeddedUiResources.test.ts",

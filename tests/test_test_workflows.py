@@ -11,6 +11,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class TestWorkflowTest(unittest.TestCase):
+    def test_nightly_frontend_runs_the_shared_lint_command(self):
+        workflow = (ROOT / ".github/workflows/nightly.yml").read_text()
+        frontend = workflow.split("  frontend:\n", 1)[1].split("  vite-acceptance:\n", 1)[0]
+        self.assertIn("          npm run lint\n", frontend)
+
     def test_workflows_use_actions_with_node24_runtimes(self):
         minimum_versions = {
             "actions/checkout": 5,

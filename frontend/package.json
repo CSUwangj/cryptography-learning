@@ -49,7 +49,8 @@
     "validate-lessons": "node scripts/validate_lessons.mjs",
     "test:terminal-browser": "playwright test",
     "gen": "graphql-codegen --config .codegen.yml",
-    "lint": "eslint '*/**/*.{js,ts,tsx}' --quiet --fix"
+    "lint": "eslint . --quiet",
+    "lint:fix": "eslint . --quiet --fix"
   },
   "browserslist": {
     "production": [
@@ -68,6 +69,7 @@
     "@graphql-codegen/cli": "^7.2.0",
     "@graphql-codegen/client-preset": "^6.1.0",
     "@playwright/test": "^1.62.1",
+    "@stylistic/eslint-plugin": "5.10.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
@@ -78,7 +80,11 @@
     "@types/react-dom": "^19.2.0",
     "@types/react-router-dom": "^5.3.1",
     "@types/react-syntax-highlighter": "^11.0.5",
+    "@typescript-eslint/eslint-plugin": "8.72.1",
+    "@typescript-eslint/parser": "8.72.1",
     "@vitejs/plugin-react": "^6.0.5",
+    "eslint": "9.39.5",
+    "eslint-plugin-react": "7.37.5",
     "jsdom": "^26.1.0",
     "typescript": "~6.0.3",
     "vite": "^8.2.0",

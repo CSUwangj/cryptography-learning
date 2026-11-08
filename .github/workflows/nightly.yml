@@ -114,6 +114,7 @@ jobs:
             exit 1
           fi
           npm run typecheck
+          npm run lint
           npm test -- --maxWorkers=1
           npm run build
           end=$(date +%s)
