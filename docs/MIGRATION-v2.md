@@ -27,13 +27,21 @@ annotations, projections, tables and parameter references in v1 fail with
 `lesson.v2-feature-in-v1`. Do not author internal `schema`, `traceParameters` or
 compiled `rowOrder` fields.
 
-V1 remains supported throughout v1.2, including its registered operation
-identities, existing demos, comparison and classical presentations. Deprecation
-is a compilation notice exposed through `compileLesson` and validation tooling,
-not a new student-facing notice panel. No retirement date or automatic converter
-is defined. The [public version audit](lesson-version-audit.md) records public
-roots at its stated historical snapshot; the complete examples below extend
-that inventory. Private Lesson auditing and migration remain maintainer-owned.
+Lesson schema v1 remains supported unchanged through public v1.3, including its
+registered operation identities, existing demos, comparison and classical
+presentations. Deprecation is a compilation notice exposed through `compileLesson`
+and validation tooling, not a new student-facing notice panel. The maintainer's
+[November 4, 2026 compatibility decision](https://github.com/CSUWangj/cryptography-learning/issues/129#issuecomment-6640465797)
+sets public v1.4 as the release that retires Lesson schema v1. Retirement
+implementation is separate work; no automatic converter is approved. Lesson
+schema versions and Visualizer descriptor major versions are independent.
+
+The same decision assigns the new classical presentation to Lesson v2 only.
+Public v1.3 comparison and presentation work is still pending; the supported
+presentation table below describes the implemented path. The
+[public version audit](lesson-version-audit.md) records public roots at its stated
+historical snapshot; the complete examples below extend that inventory. Private
+Lesson auditing and migration remain maintainer-owned.
 
 ## Complete paired example
 

@@ -79,11 +79,16 @@ and row-control-removal clauses in the preceding record. Both the toolbar and
 generic bound-row controls toggle the complete schedule; outside content fades.
 Their actions follow global visibility, without per-key opener state or filtering.
 
-V1 remains supported throughout v1.2 with a tooling deprecation notice. Explicit
-v2 and omitted version use v2. The initial #96 migration-guide URL remains valid.
-V1 retirement requires separate later-version work; no timetable or automatic
-content conversion is defined. Public synthetic content stays here; private
-content auditing and migration belong to the maintainer's private repository.
+Lesson schema v1 remains supported unchanged through public v1.3, with the existing
+tooling deprecation notice. Explicit v2 and omitted version use v2. The initial
+#96 migration-guide URL remains valid. The maintainer's
+[November 4, 2026 compatibility decision](https://github.com/CSUWangj/cryptography-learning/issues/129#issuecomment-6640465797)
+sets public v1.4 as the release that retires Lesson schema v1, superseding the
+earlier absence of a timetable. Retirement implementation is separate work; no
+automatic content conversion is approved. This policy concerns Lesson schema
+versions, not Visualizer descriptor major versions. Public synthetic content stays
+here; private content auditing and migration belong to the maintainer's private
+repository.
 
 ## Consequences and alternatives
 
