@@ -1,8 +1,8 @@
-import type { AuthoredNode, BitsValue, CryptoValue, PortType, IntegerValue, AlphabetMapping, AlphabetPolicyValue, AlphabetTextValue } from '../index'
+import type { BitsValue } from '../index'
 import type { Operation } from '../operation'
-import { diagnostic, bytes, bits } from '../operation_support'
+import { diagnostic, bits } from '../operation_support'
 
-export type AesXorWordsParameters = { start: number; count: number }
+export type AesXorWordsParameters = { start: number, count: number }
 
 export const aesXorWords: Operation<'aes.xor-words@1', AesXorWordsParameters> = {
   manifest: {

@@ -100,7 +100,6 @@ describe('Lesson Runtime compiler (#29)', () => {
     const compiled = compileLesson(aes128V2Fixture)
     expect(compiled.ok).toBe(true)
     if (!compiled.ok) return
-    const scheduleStep = compiled.value.steps.find((step) => step.id === 'schedule')!
     const cipherStep = compiled.value.steps.find((step) => step.id === 'cipher')!
     expect(cipherStep.execute?.bindings['round-key-1.value']).toEqual({ step: 'schedule', output: 'round-key-1.value' })
     expect(compiled.value.graphs.schedule.graph.nodes.find((node) => node.id === 'word-1')?.inputs?.temp.bits).toEqual([96, 32])

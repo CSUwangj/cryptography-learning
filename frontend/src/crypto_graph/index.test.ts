@@ -49,12 +49,13 @@ describe('CryptoGraph Worker request deadline (#124)', () => {
     postMessage = vi.fn()
     terminate = vi.fn()
 
+    static instance: ControlledWorker
+
     constructor() {
       super()
-      worker = this
+      ControlledWorker.instance = this
     }
   }
-  let worker: ControlledWorker
   let client: CryptoGraphWorkerClient
   const request = (): WorkerRequest => ({ requestId: 'deadline', kind: 'execute', payload: { graph: xorGraph() } })
 
@@ -75,24 +76,24 @@ describe('CryptoGraph Worker request deadline (#124)', () => {
     const message = request()
     const pending = client.execute(message)
     await vi.advanceTimersByTimeAsync(1_500)
-    worker.dispatchEvent(new MessageEvent('message', { data: executeWorkerRequest(message) }))
+    ControlledWorker.instance.dispatchEvent(new MessageEvent('message', { data: executeWorkerRequest(message) }))
     const response = await pending.result
     expect(response.kind).toBe('snapshot')
     if (response.kind === 'snapshot') expect(hex(response.snapshot.outputs['xor.value'] as ReturnType<typeof bits>)).toBe('0x0ff0')
     expect(client.running).toBe(false)
     expect(vi.getTimerCount()).toBe(0)
     await vi.advanceTimersByTimeAsync(500)
-    expect(worker.terminate).not.toHaveBeenCalled()
+    expect(ControlledWorker.instance.terminate).not.toHaveBeenCalled()
   })
 
   it('times out and terminates a nonresponding Worker at 2000 ms', async () => {
     const pending = client.execute(request())
     await vi.advanceTimersByTimeAsync(1_999)
     expect(client.running).toBe(true)
-    expect(worker.terminate).not.toHaveBeenCalled()
+    expect(ControlledWorker.instance.terminate).not.toHaveBeenCalled()
     await vi.advanceTimersByTimeAsync(1)
     expect(await pending.result).toMatchObject({ kind: 'diagnostic', diagnostics: [{ code: 'execution.timeout' }] })
-    expect(worker.terminate).toHaveBeenCalledTimes(1)
+    expect(ControlledWorker.instance.terminate).toHaveBeenCalledTimes(1)
     expect(client.running).toBe(false)
     expect(vi.getTimerCount()).toBe(0)
   })
@@ -114,7 +115,7 @@ describe('CryptoGraph Worker request deadline (#124)', () => {
     expect(client.running).toBe(true)
     await vi.advanceTimersByTimeAsync(1)
     expect(await pending.result).toMatchObject({ kind: 'diagnostic', diagnostics: [{ code: 'execution.timeout' }] })
-    expect(worker.terminate).toHaveBeenCalledTimes(1)
+    expect(ControlledWorker.instance.terminate).toHaveBeenCalledTimes(1)
     expect(client.running).toBe(false)
     expect(vi.getTimerCount()).toBe(0)
   })
@@ -125,7 +126,7 @@ describe('CryptoGraph Worker request deadline (#124)', () => {
       await vi.advanceTimersByTimeAsync(500)
       if (action === 'request cancellation') pending.cancel()
       else if (action === 'client cancellation') client.cancel()
-      else if (action === 'Worker error') worker.dispatchEvent(new Event('error'))
+      else if (action === 'Worker error') ControlledWorker.instance.dispatchEvent(new Event('error'))
       else client.dispose()
       expect(await pending.result).toMatchObject(action === 'Worker error'
         ? { kind: 'diagnostic', diagnostics: [{ code: 'execution.worker-error' }] }
@@ -133,7 +134,7 @@ describe('CryptoGraph Worker request deadline (#124)', () => {
       expect(client.running).toBe(false)
       expect(vi.getTimerCount()).toBe(0)
       await vi.advanceTimersByTimeAsync(2_000)
-      expect(worker.terminate).toHaveBeenCalledTimes(action === 'Worker error' || action === 'disposal' ? 1 : 0)
+      expect(ControlledWorker.instance.terminate).toHaveBeenCalledTimes(action === 'Worker error' || action === 'disposal' ? 1 : 0)
     },
   )
 })
@@ -1021,7 +1022,7 @@ describe('CryptoGraph compile/execute seam (#26)', () => {
   })
 
   it('transposes Unicode text with incomplete rows in both directions', () => {
-    const graph = (direction: 'encrypt' | 'decrypt'): AuthoredGraph => ({
+    const graph = (): AuthoredGraph => ({
       nodes: [
         { id: 'text', operation: 'core.source@1', parameters: { type: { family: 'text' } } },
         { id: 'rows', operation: 'core.source@1', parameters: { type: { family: 'integer', signed: true, safe: true } } },
@@ -1030,12 +1031,12 @@ describe('CryptoGraph compile/execute seam (#26)', () => {
       ],
       outputs: [{ node: 'cipher', port: 'text' }],
     })
-    const encrypted = compile(graph('encrypt'))
+    const encrypted = compile(graph())
     expect(encrypted.ok).toBe(true)
     if (!encrypted.ok) return
     const result = encrypted.value.execute({ 'text.value': { type: { family: 'text' }, symbols: [...'ABCDEFG'] }, 'rows.value': integer(2), 'direction.value': alphabetDirection('encrypt') })
     expect(result.ok && result.value.outputs['cipher.text']).toMatchObject({ symbols: [...'ACEGBDF'] })
-    const decrypted = compile(graph('decrypt'))
+    const decrypted = compile(graph())
     expect(decrypted.ok).toBe(true)
     if (!decrypted.ok) return
     const back = decrypted.value.execute({ 'text.value': { type: { family: 'text' }, symbols: [...'ACEGBDF'] }, 'rows.value': integer(2), 'direction.value': alphabetDirection('decrypt') })
@@ -1083,13 +1084,13 @@ describe('Classical cipher operations (#65)', () => {
         ? [{ id: 'shift', operation: 'core.source@1', parameters: { type: { family: 'integer', signed: true as const, safe: true as const } } }]
         : operation === 'classical.affine@1'
           ? [
-              { id: 'a', operation: 'core.source@1', parameters: { type: { family: 'integer', signed: true as const, safe: true as const } } },
-              { id: 'b', operation: 'core.source@1', parameters: { type: { family: 'integer', signed: true as const, safe: true as const } } },
-            ]
+            { id: 'a', operation: 'core.source@1', parameters: { type: { family: 'integer', signed: true as const, safe: true as const } } },
+            { id: 'b', operation: 'core.source@1', parameters: { type: { family: 'integer', signed: true as const, safe: true as const } } },
+          ]
           : [
-              { id: 'key', operation: 'core.source@1', parameters: { type: { family: 'alphabet-text', mapping: 'latin' } } },
-              { id: 'direction', operation: 'core.source@1', parameters: { type: { family: 'alphabet-direction' } } },
-            ]),
+            { id: 'key', operation: 'core.source@1', parameters: { type: { family: 'alphabet-text', mapping: 'latin' } } },
+            { id: 'direction', operation: 'core.source@1', parameters: { type: { family: 'alphabet-direction' } } },
+          ]),
       {
         id: 'cipher',
         operation,
@@ -2251,7 +2252,8 @@ describe('AES-192/256 encryption and decryption (#85)', () => {
         diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'graph.single-output-required', path: 'result.operation' })]),
       })
 
-      const { schema: _, ...v1Graph } = graph
+      const v1Graph = { ...graph }
+      delete v1Graph.schema
       expect(compile(v1Graph)).toMatchObject({ ok: true })
     } finally {
       manifest.outputs = originalOutputs

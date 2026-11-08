@@ -15,28 +15,28 @@ export type Diagnostic = {
 export type Size = number | string
 
 export type PortType =
-  | { family: 'bits'; size: Size }
-  | { family: 'bytes'; size: Size }
-  | { family: 'words'; size: Size; wordSize: 8 }
-  | { family: 'alphabet-symbol'; mapping: string }
-  | { family: 'alphabet-text'; mapping: string }
+  | { family: 'bits', size: Size }
+  | { family: 'bytes', size: Size }
+  | { family: 'words', size: Size, wordSize: 8 }
+  | { family: 'alphabet-symbol', mapping: string }
+  | { family: 'alphabet-text', mapping: string }
   | { family: 'text' }
-  | { family: 'integer'; signed: true; safe: true }
+  | { family: 'integer', signed: true, safe: true }
   | { family: 'alphabet-policy' }
   | { family: 'alphabet-direction' }
 
 export type BitsValue = {
-  type: { family: 'bits'; size: number }
+  type: { family: 'bits', size: number }
   bytes: Uint8Array
 }
 
 export type BytesValue = {
-  type: { family: 'bytes'; size: number }
+  type: { family: 'bytes', size: number }
   bytes: Uint8Array
 }
 
 export type WordsValue = {
-  type: { family: 'words'; size: number; wordSize: 8 }
+  type: { family: 'words', size: number, wordSize: 8 }
   words: Uint8Array
 }
 
@@ -46,18 +46,18 @@ export type AlphabetMapping = {
 }
 
 export type AlphabetSymbolValue = {
-  type: { family: 'alphabet-symbol'; mapping: string }
+  type: { family: 'alphabet-symbol', mapping: string }
   symbol: string
 }
 
 export type AlphabetTextValue = {
-  type: { family: 'alphabet-text'; mapping: string }
+  type: { family: 'alphabet-text', mapping: string }
   symbols: readonly string[]
 }
-export type TextValue = { type: { family: 'text' }; symbols: readonly string[] }
+export type TextValue = { type: { family: 'text' }, symbols: readonly string[] }
 
 export type IntegerValue = {
-  type: { family: 'integer'; signed: true; safe: true }
+  type: { family: 'integer', signed: true, safe: true }
   value: number
 }
 
@@ -73,15 +73,11 @@ export type AlphabetDirectionValue = {
 
 export type CryptoValue = BitsValue | BytesValue | WordsValue | AlphabetSymbolValue | AlphabetTextValue | TextValue | IntegerValue | AlphabetPolicyValue | AlphabetDirectionValue
 
-type ByteValue = BitsValue | BytesValue | WordsValue
-
 const isIntegerValue = (value: CryptoValue): value is IntegerValue => value.type.family === 'integer'
 const isAlphabetPolicyValue = (value: CryptoValue): value is AlphabetPolicyValue => value.type.family === 'alphabet-policy'
 const isAlphabetDirectionValue = (value: CryptoValue): value is AlphabetDirectionValue => value.type.family === 'alphabet-direction'
 const isAlphabetTextValue = (value: CryptoValue): value is AlphabetTextValue => value.type.family === 'alphabet-text'
 const isTextValue = (value: CryptoValue): value is TextValue => value.type.family === 'text'
-const isByteValue = (value: CryptoValue): value is ByteValue =>
-  value.type.family === 'bits' || value.type.family === 'bytes' || value.type.family === 'words'
 
 export type Port = {
   name: string
@@ -95,7 +91,7 @@ export type OperationManifest = {
   outputTypeParameter?: string
 }
 
-type LineageSource = { readonly port: string; readonly bit: number }
+type LineageSource = { readonly port: string, readonly bit: number }
 type LineageDeclaration = Readonly<Record<string, readonly (readonly LineageSource[])[]>>
 
 export type AuthoredInput = {
@@ -107,7 +103,7 @@ export type AuthoredInput = {
 export type AuthoredNode = {
   id: string
   operation?: string
-  repeat?: { subgraph: string; count?: unknown }
+  repeat?: { subgraph: string, count?: unknown }
   inputs?: Record<string, AuthoredInput>
   parameters?: Record<string, unknown>
   traceParameters?: Record<string, unknown>
@@ -145,7 +141,7 @@ export type TraceStage = 'input' | 'round-key' | 'key-mix' | 'substitute' | 'per
 export type TraceOperation = {
   readonly sBox?: readonly number[]
   readonly permutation?: readonly number[]
-  readonly grid?: { readonly rows: readonly (readonly (string | null)[])[]; readonly inputPositions: readonly (readonly (number | null)[])[]; readonly writeOrder: readonly number[]; readonly readOrder: readonly number[] }
+  readonly grid?: { readonly rows: readonly (readonly (string | null)[])[], readonly inputPositions: readonly (readonly (number | null)[])[], readonly writeOrder: readonly number[], readonly readOrder: readonly number[] }
 }
 
 export type TraceEvent = {
@@ -165,7 +161,7 @@ export type TraceEvent = {
 }
 
 export type SerializedTraceEvent = Omit<TraceEvent, 'value'> & {
-  readonly value?: { readonly type: CryptoValue['type']; readonly hex: string }
+  readonly value?: { readonly type: CryptoValue['type'], readonly hex: string }
 }
 
 export type ExecutionSnapshot = {
@@ -203,8 +199,8 @@ export type WorkerExecutionPayload = {
 }
 
 export type WorkerRequest =
-  | { readonly requestId: string; readonly kind: 'execute'; readonly payload: WorkerExecutionPayload }
-  | { readonly requestId: string; readonly kind: 'compare'; readonly payload: { readonly left: WorkerExecutionPayload; readonly right: WorkerExecutionPayload; readonly limits?: WorkerLimits } }
+  | { readonly requestId: string, readonly kind: 'execute', readonly payload: WorkerExecutionPayload }
+  | { readonly requestId: string, readonly kind: 'compare', readonly payload: { readonly left: WorkerExecutionPayload, readonly right: WorkerExecutionPayload, readonly limits?: WorkerLimits } }
 
 export type TraceStatus = {
   readonly truncated: boolean
@@ -249,12 +245,12 @@ export type AvalancheComparison = {
 }
 
 export type WorkerResponse =
-  | { readonly requestId: string; readonly kind: 'snapshot'; readonly snapshot: WorkerExecutionSnapshot }
-  | { readonly requestId: string; readonly kind: 'comparison'; readonly comparison: AvalancheComparison }
-  | { readonly requestId: string; readonly kind: 'diagnostic'; readonly diagnostics: readonly Diagnostic[] }
-  | { readonly requestId: string; readonly kind: 'cancelled' }
+  | { readonly requestId: string, readonly kind: 'snapshot', readonly snapshot: WorkerExecutionSnapshot }
+  | { readonly requestId: string, readonly kind: 'comparison', readonly comparison: AvalancheComparison }
+  | { readonly requestId: string, readonly kind: 'diagnostic', readonly diagnostics: readonly Diagnostic[] }
+  | { readonly requestId: string, readonly kind: 'cancelled' }
 
-type Result<T> = { ok: true; value: T } | { ok: false; diagnostics: readonly Diagnostic[] }
+type Result<T> = { ok: true, value: T } | { ok: false, diagnostics: readonly Diagnostic[] }
 
 import type { Operation as OperationDefinition } from './operation'
 import type { SourceParameters } from './core/source'
@@ -305,8 +301,8 @@ import { throwing } from './test/throwing'
 import { invalidLineage } from './test/invalidLineage'
 import type { EmptyParameters } from './core/xor'
 import { diagnostic, isBitsValue, isCryptoValue, isPortType, typeMatches, typeText, validSizedValue, cloneValue, actualType } from './operation_support'
-import { bytesForBits, bitPosition, bitAt, setBit } from './operation_support'
-import { CipherDiagnostic, validKey, modulo, multiplyModulo, cipherText } from './operation_support'
+import { bytesForBits, bitAt, setBit } from './operation_support'
+import { CipherDiagnostic } from './operation_support'
 
 type OperationParameters = {
   'core.source@1': SourceParameters
@@ -348,7 +344,7 @@ type MappedOperation = { [K in keyof OperationParameters]: Operation<K> }[keyof 
 
 type RegisteredOperation = {
   manifest: OperationManifest
-  validateAndBind: (parameters: Record<string, unknown>, node: AuthoredNode) => { diagnostics: Diagnostic[]; bind: () => BoundOperation }
+  validateAndBind: (parameters: Record<string, unknown>, node: AuthoredNode) => { diagnostics: Diagnostic[], bind: () => BoundOperation }
 }
 
 type BoundOperation = {
@@ -487,7 +483,7 @@ type RepeatIdentities = {
 
 const repeatIdentities = (graph: AuthoredGraph): RepeatIdentities => {
   const upstream = structuralNodeSignatures(graph)
-  const consumers = new Map<string, Array<{ readonly node: AuthoredNode; readonly port: string }>>()
+  const consumers = new Map<string, Array<{ readonly node: AuthoredNode, readonly port: string }>>()
   for (const node of graph.nodes) {
     for (const [port, input] of Object.entries(node.inputs ?? {})) {
       consumers.set(input.node, [...(consumers.get(input.node) ?? []), { node, port }])
@@ -970,7 +966,7 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
           : upstreamOperation?.manifest.identity === 'classical.caesar@1' || upstreamOperation?.manifest.identity === 'classical.affine@1'
             || upstreamOperation?.manifest.identity === 'classical.substitution@1' || upstreamOperation?.manifest.identity === 'classical.vigenere@1'
             ? upstream?.inputs?.text
-          : undefined
+            : undefined
       const forwardedSource = forwardedInput && nodes.get(forwardedInput.node)
       const forwardedOperation = forwardedSource && resolved.get(forwardedSource.id)
       const forwardedSourceType = forwardedSource?.parameters?.type
@@ -981,8 +977,8 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
       const upstreamType = inferredForwardedType
         ? inferredForwardedType
         : outputTypeParameter && isPortType(upstream?.parameters?.[outputTypeParameter])
-        ? upstream.parameters[outputTypeParameter]
-        : upstreamPort.type
+          ? upstream.parameters[outputTypeParameter]
+          : upstreamPort.type
       if (!typeMatches(port.type, upstreamType, bindings)) {
         diagnostics.push(diagnostic('incompatible-port-type', `Expected ${typeText(port.type)} input.`, `${node.id}.inputs.${port.name}`, node, { expected: typeText(port.type), actual: typeText(upstreamType) }))
       }
@@ -1157,133 +1153,132 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
           traceBytes += bytes
         }
         for (const id of order) {
-            const node = nodes.get(id)!
-            const operation = resolved.get(id)!
-            const parameters = { ...(node.parameters ?? {}) }
-            const inputs: Record<string, CryptoValue> = {}
-            for (const [name, ref] of Object.entries(node.inputs ?? {})) {
-              const value = values.get(ref.node)![ref.port]
-              inputs[name] = ref.bits === undefined ? value : projectBits(value as BitsValue, ref.bits[0], ref.bits[1])
-            }
-            if (node.operation === 'core.source@1') {
-              const sourceBinding = bound.get(id)!
-              const value = executionInputs[`${id}.value`] ?? sourceBinding.sourceValue
-              if (!value) return { ok: false, diagnostics: [diagnostic('missing-execution-input', 'Source needs an execution input.', `${id}.value`, node)] }
-              const declaredType = sourceBinding.sourceType
-              if (!isCryptoValue(value) || !isPortType(declaredType) || !typeMatches(declaredType, actualType(value), new Map())) {
-                // Width mismatch on an otherwise valid bits value: expose expected/actual bit
-                // sizes. Wrong family/type or malformed values keep the bare diagnostic.
-                let details: Diagnostic['details'] = {}
-                if (isCryptoValue(value) && isPortType(declaredType)
+          const node = nodes.get(id)!
+          const operation = resolved.get(id)!
+          const inputs: Record<string, CryptoValue> = {}
+          for (const [name, ref] of Object.entries(node.inputs ?? {})) {
+            const value = values.get(ref.node)![ref.port]
+            inputs[name] = ref.bits === undefined ? value : projectBits(value as BitsValue, ref.bits[0], ref.bits[1])
+          }
+          if (node.operation === 'core.source@1') {
+            const sourceBinding = bound.get(id)!
+            const value = executionInputs[`${id}.value`] ?? sourceBinding.sourceValue
+            if (!value) return { ok: false, diagnostics: [diagnostic('missing-execution-input', 'Source needs an execution input.', `${id}.value`, node)] }
+            const declaredType = sourceBinding.sourceType
+            if (!isCryptoValue(value) || !isPortType(declaredType) || !typeMatches(declaredType, actualType(value), new Map())) {
+              // Width mismatch on an otherwise valid bits value: expose expected/actual bit
+              // sizes. Wrong family/type or malformed values keep the bare diagnostic.
+              let details: Diagnostic['details'] = {}
+              if (isCryptoValue(value) && isPortType(declaredType)
                   && declaredType.family === 'bits' && value.type.family === 'bits'
                   && typeof declaredType.size === 'number'
                   && declaredType.size !== value.type.size) {
-                  details = { expectedBits: declaredType.size, actualBits: value.type.size }
-                }
-                return { ok: false, diagnostics: [diagnostic(
-                  'invalid-execution-input',
-                  'Execution input does not match source type.',
-                  `${id}.value`,
-                  node,
-                  details,
-                )] }
+                details = { expectedBits: declaredType.size, actualBits: value.type.size }
               }
-              if ('symbol' in value && !mappings.get(value.type.mapping)?.symbols.includes(value.symbol)) {
-                return { ok: false, diagnostics: [diagnostic('invalid-execution-input', 'Alphabet symbol is not in declared mapping.', `${id}.value`, node)] }
-              }
+              return { ok: false, diagnostics: [diagnostic(
+                'invalid-execution-input',
+                'Execution input does not match source type.',
+                `${id}.value`,
+                node,
+                details,
+              )] }
             }
-            let result: Record<string, CryptoValue>
-            try {
-              result = bound.get(id)!.execute(inputs, mappings, node.operation === 'core.source@1'
-                ? executionInputs[`${id}.value`] ?? bound.get(id)!.sourceValue
-                : undefined)
-            } catch (error) {
-              return { ok: false, diagnostics: [error instanceof CipherDiagnostic
-                ? diagnostic(error.code, error.message, error.code === 'cipher.invalid-transposition-rows' ? `${id}.inputs.rows` : id, node, error.details)
-                : diagnostic('operation-failed', 'Operation execution failed.', id, node)] }
+            if ('symbol' in value && !mappings.get(value.type.mapping)?.symbols.includes(value.symbol)) {
+              return { ok: false, diagnostics: [diagnostic('invalid-execution-input', 'Alphabet symbol is not in declared mapping.', `${id}.value`, node)] }
             }
-            if (node.operation === 'classical.transposition@1' && (inputs.text as TextValue).symbols.length < (inputs.rows as IntegerValue).value) {
-              warnings.push(diagnostic('cipher.transposition-short-input', 'The text length is smaller than the transposition parameter; the result is unchanged.', `${id}.inputs.text`, node, { direction: (inputs.direction as AlphabetDirectionValue).value }))
+          }
+          let result: Record<string, CryptoValue>
+          try {
+            result = bound.get(id)!.execute(inputs, mappings, node.operation === 'core.source@1'
+              ? executionInputs[`${id}.value`] ?? bound.get(id)!.sourceValue
+              : undefined)
+          } catch (error) {
+            return { ok: false, diagnostics: [error instanceof CipherDiagnostic
+              ? diagnostic(error.code, error.message, error.code === 'cipher.invalid-transposition-rows' ? `${id}.inputs.rows` : id, node, error.details)
+              : diagnostic('operation-failed', 'Operation execution failed.', id, node)] }
+          }
+          if (node.operation === 'classical.transposition@1' && (inputs.text as TextValue).symbols.length < (inputs.rows as IntegerValue).value) {
+            warnings.push(diagnostic('cipher.transposition-short-input', 'The text length is smaller than the transposition parameter; the result is unchanged.', `${id}.inputs.text`, node, { direction: (inputs.direction as AlphabetDirectionValue).value }))
+          }
+          for (const [port, value] of Object.entries(result)) {
+            if (!validSizedValue(value)) return { ok: false, diagnostics: [diagnostic('invalid-value', 'Operation returned an invalid value.', `${id}.${port}`, node)] }
+          }
+          values.set(id, result)
+          const roundStage = /^(.*)\.(\d+)\/(key-mix|substitute|permute)$/.exec(id)
+          const roundKey = /^(.*)\.(\d+)\/key$/.exec(id)
+          const cipherStage = /^cipher-(\d+)-(add-round-key|sub-bytes|shift-rows|mix-columns|inv-shift-rows|inv-sub-bytes|inv-mix-columns)$/.exec(id)
+          if (compiledGraph.schema === 2) {
+            const port = operation.manifest.outputs[0].name
+            appendTrace({
+              path: `${id}.${port}`,
+              level: 'detail',
+              primitive: node.operation,
+              parameters: structuredClone(bound.get(id)!.traceParameters),
+              ...(node.role ? { role: node.role } : {}),
+              ...(node.round === undefined ? {} : { round: node.round }),
+              ...(node.iteration === undefined ? {} : { iteration: node.iteration }),
+              ...(node.unit === undefined ? {} : { unit: node.unit }),
+              value: cloneValue(result[port]),
+            })
+          } else if (compiledGraph.traceLevel === 'detail' && node.operation === 'core.source@1' && (id === 'plaintext' || id === 'state')) {
+            appendTrace({ path: 'plaintext', level: 'detail', stage: 'input', value: cloneValue(result.value) })
+          } else if (compiledGraph.traceLevel === 'detail' && node.operation === 'core.source@1' && id === 'ciphertext') {
+            appendTrace({ path: 'ciphertext', level: 'detail', stage: 'input', value: cloneValue(result.value) })
+          } else if (compiledGraph.traceLevel === 'detail' && cipherStage) {
+            appendTrace({ path: id, level: 'detail', round: Number(cipherStage[1]), stage: cipherStage[2] as TraceStage, value: cloneValue(result.value) })
+          } else if (compiledGraph.traceLevel === 'detail' && roundKey) {
+            appendTrace({ path: `${roundKey[1]}.${roundKey[2]}/key`, level: 'detail', round: Number(roundKey[2]), stage: 'round-key', value: cloneValue(result.value) })
+          } else if (roundStage) {
+            const instance = roundStage[1]
+            const round = Number(roundStage[2])
+            const stage = roundStage[3] as 'key-mix' | 'substitute' | 'permute'
+            const value = cloneValue(result.value)
+            const traceOperation = stage === 'substitute' || stage === 'permute' ? bound.get(id)!.legacyTraceOperation : undefined
+            if (compiledGraph.traceLevel === 'detail') appendTrace({
+              path: `${instance}.${round}/${stage}`,
+              level: 'detail',
+              round,
+              stage,
+              ...(traceOperation ? { operation: traceOperation } : {}),
+              value,
+            })
+            if (stage === 'permute' && (compiledGraph.traceLevel === 'detail' || compiledGraph.traceLevel === 'round')) {
+              appendTrace({ path: `${instance}.${round}/output`, level: 'round', round, stage: 'output', value })
             }
-            for (const [port, value] of Object.entries(result)) {
-              if (!validSizedValue(value)) return { ok: false, diagnostics: [diagnostic('invalid-value', 'Operation returned an invalid value.', `${id}.${port}`, node)] }
-            }
-            values.set(id, result)
-            const roundStage = /^(.*)\.(\d+)\/(key-mix|substitute|permute)$/.exec(id)
-            const roundKey = /^(.*)\.(\d+)\/key$/.exec(id)
-            const cipherStage = /^cipher-(\d+)-(add-round-key|sub-bytes|shift-rows|mix-columns|inv-shift-rows|inv-sub-bytes|inv-mix-columns)$/.exec(id)
-            if (compiledGraph.schema === 2) {
-              const port = operation.manifest.outputs[0].name
-              appendTrace({
-                path: `${id}.${port}`,
-                level: 'detail',
-                primitive: node.operation,
-                parameters: structuredClone(bound.get(id)!.traceParameters),
-                ...(node.role ? { role: node.role } : {}),
-                ...(node.round === undefined ? {} : { round: node.round }),
-                ...(node.iteration === undefined ? {} : { iteration: node.iteration }),
-                ...(node.unit === undefined ? {} : { unit: node.unit }),
-                value: cloneValue(result[port]),
-              })
-            } else if (compiledGraph.traceLevel === 'detail' && node.operation === 'core.source@1' && (id === 'plaintext' || id === 'state')) {
-              appendTrace({ path: 'plaintext', level: 'detail', stage: 'input', value: cloneValue(result.value) })
-            } else if (compiledGraph.traceLevel === 'detail' && node.operation === 'core.source@1' && id === 'ciphertext') {
-              appendTrace({ path: 'ciphertext', level: 'detail', stage: 'input', value: cloneValue(result.value) })
-            } else if (compiledGraph.traceLevel === 'detail' && cipherStage) {
-              appendTrace({ path: id, level: 'detail', round: Number(cipherStage[1]), stage: cipherStage[2] as TraceStage, value: cloneValue(result.value) })
-            } else if (compiledGraph.traceLevel === 'detail' && roundKey) {
-              appendTrace({ path: `${roundKey[1]}.${roundKey[2]}/key`, level: 'detail', round: Number(roundKey[2]), stage: 'round-key', value: cloneValue(result.value) })
-            } else if (roundStage) {
-              const instance = roundStage[1]
-              const round = Number(roundStage[2])
-              const stage = roundStage[3] as 'key-mix' | 'substitute' | 'permute'
-              const value = cloneValue(result.value)
-              const traceOperation = stage === 'substitute' || stage === 'permute' ? bound.get(id)!.legacyTraceOperation : undefined
-              if (compiledGraph.traceLevel === 'detail') appendTrace({
-                path: `${instance}.${round}/${stage}`,
-                level: 'detail',
-                round,
-                stage,
-                ...(traceOperation ? { operation: traceOperation } : {}),
-                value,
-              })
-              if (stage === 'permute' && (compiledGraph.traceLevel === 'detail' || compiledGraph.traceLevel === 'round')) {
-                appendTrace({ path: `${instance}.${round}/output`, level: 'round', round, stage: 'output', value })
-              }
-            } else if (compiledGraph.traceLevel === 'detail' && node.operation === 'classical.transposition@1') {
-              const source = inputs.text as TextValue
-              const rows = (inputs.rows as IntegerValue).value
-              const direction = (inputs.direction as AlphabetDirectionValue).value
-              const grid = direction === 'encrypt'
-                ? Array.from({ length: rows }, (_, row) => source.symbols.filter((_, index) => index % rows === row))
-                : (() => { const width = Math.floor(source.symbols.length / rows); const remainder = source.symbols.length % rows; let offset = 0; return Array.from({ length: rows }, (_, row) => { const length = width + (row < remainder ? 1 : 0); const part = source.symbols.slice(offset, offset + length); offset += length; return part }) })()
-              const readOrder = direction === 'encrypt'
-                ? grid.flatMap((row, rowIndex) => row.map((_, index) => index * rows + rowIndex))
-                : (() => {
-                  let offset = 0
-                  const ciphertextPositions = grid.map((row) => { const positions = row.map((_) => offset++); return positions })
-                  return Array.from({ length: grid[0]?.length ?? 0 }, (_, column) => grid.flatMap((row, rowIndex) => row[column] === undefined ? [] : [ciphertextPositions[rowIndex][column]])).flat()
-                })()
-              let inputOffset = 0
-              const inputPositions = grid.map((row, rowIndex) => Array.from({ length: Math.ceil(source.symbols.length / rows) }, (_, column) =>
-                row[column] === undefined ? null : direction === 'encrypt' ? column * rows + rowIndex : inputOffset++))
-              appendTrace({ path: id, level: 'detail', stage: 'transposition', operation: { grid: { inputPositions, rows: grid.map((row) => Array.from({ length: Math.ceil(source.symbols.length / rows) }, (_, index) => row[index] ?? null)), writeOrder: source.symbols.map((_, index) => index), readOrder } }, value: cloneValue(result.text) })
-            } else if (compiledGraph.traceLevel === 'detail' && node.operation === 'aes.key-word@1' && /^word-\d+$/.test(id)) {
-              const wordIndex = Number(/^word-(\d+)$/.exec(id)![1])
-              appendTrace({ path: id, level: 'detail', round: Math.floor(wordIndex / 4), stage: 'input', word: wordIndex, value: cloneValue(result.value) })
-            } else if (compiledGraph.traceLevel === 'detail' && /^word-\d+-(rot|sub|rcon|temp)$/.test(id)) {
-              const [, wordIndex, stageToken] = /^word-(\d+)-(rot|sub|rcon|temp)$/.exec(id)!
-              const aesStage = { rot: 'rot-word', sub: 'sub-word', rcon: 'rcon', temp: 'word-xor' }[stageToken as 'rot' | 'sub' | 'rcon' | 'temp'] as TraceStage
-              appendTrace({ path: id, level: 'detail', round: Math.floor(Number(wordIndex) / 4), stage: aesStage, word: Number(wordIndex), value: cloneValue(result.value) })
-            } else if (compiledGraph.traceLevel === 'detail' && /^word-\d+$/.test(id)) {
-              const wordIndex = Number(/^word-(\d+)$/.exec(id)![1])
-              appendTrace({ path: id, level: 'detail', round: Math.floor(wordIndex / 4), stage: 'word-xor', word: wordIndex, value: cloneValue(result.value) })
-            } else if (compiledGraph.traceLevel === 'detail' && /^round-key-\d+$/.test(id)) {
-              const round = Number(/^round-key-(\d+)$/.exec(id)![1])
-              appendTrace({ path: id, level: 'detail', round, stage: 'round-key', value: cloneValue(result.value) })
-            } else if (compiledGraph.traceLevel === undefined) {
-              for (const port of Object.keys(result)) appendTrace({ path: `${id}.${port}`, stage: 'output', summary: `${id}.${port}` })
-            }
+          } else if (compiledGraph.traceLevel === 'detail' && node.operation === 'classical.transposition@1') {
+            const source = inputs.text as TextValue
+            const rows = (inputs.rows as IntegerValue).value
+            const direction = (inputs.direction as AlphabetDirectionValue).value
+            const grid = direction === 'encrypt'
+              ? Array.from({ length: rows }, (_, row) => source.symbols.filter((_, index) => index % rows === row))
+              : (() => { const width = Math.floor(source.symbols.length / rows); const remainder = source.symbols.length % rows; let offset = 0; return Array.from({ length: rows }, (_, row) => { const length = width + (row < remainder ? 1 : 0); const part = source.symbols.slice(offset, offset + length); offset += length; return part }) })()
+            const readOrder = direction === 'encrypt'
+              ? grid.flatMap((row, rowIndex) => row.map((_, index) => index * rows + rowIndex))
+              : (() => {
+                let offset = 0
+                const ciphertextPositions = grid.map((row) => { const positions = row.map(() => offset++); return positions })
+                return Array.from({ length: grid[0]?.length ?? 0 }, (_, column) => grid.flatMap((row, rowIndex) => row[column] === undefined ? [] : [ciphertextPositions[rowIndex][column]])).flat()
+              })()
+            let inputOffset = 0
+            const inputPositions = grid.map((row, rowIndex) => Array.from({ length: Math.ceil(source.symbols.length / rows) }, (_, column) =>
+              row[column] === undefined ? null : direction === 'encrypt' ? column * rows + rowIndex : inputOffset++))
+            appendTrace({ path: id, level: 'detail', stage: 'transposition', operation: { grid: { inputPositions, rows: grid.map((row) => Array.from({ length: Math.ceil(source.symbols.length / rows) }, (_, index) => row[index] ?? null)), writeOrder: source.symbols.map((_, index) => index), readOrder } }, value: cloneValue(result.text) })
+          } else if (compiledGraph.traceLevel === 'detail' && node.operation === 'aes.key-word@1' && /^word-\d+$/.test(id)) {
+            const wordIndex = Number(/^word-(\d+)$/.exec(id)![1])
+            appendTrace({ path: id, level: 'detail', round: Math.floor(wordIndex / 4), stage: 'input', word: wordIndex, value: cloneValue(result.value) })
+          } else if (compiledGraph.traceLevel === 'detail' && /^word-\d+-(rot|sub|rcon|temp)$/.test(id)) {
+            const [, wordIndex, stageToken] = /^word-(\d+)-(rot|sub|rcon|temp)$/.exec(id)!
+            const aesStage = { rot: 'rot-word', sub: 'sub-word', rcon: 'rcon', temp: 'word-xor' }[stageToken as 'rot' | 'sub' | 'rcon' | 'temp'] as TraceStage
+            appendTrace({ path: id, level: 'detail', round: Math.floor(Number(wordIndex) / 4), stage: aesStage, word: Number(wordIndex), value: cloneValue(result.value) })
+          } else if (compiledGraph.traceLevel === 'detail' && /^word-\d+$/.test(id)) {
+            const wordIndex = Number(/^word-(\d+)$/.exec(id)![1])
+            appendTrace({ path: id, level: 'detail', round: Math.floor(wordIndex / 4), stage: 'word-xor', word: wordIndex, value: cloneValue(result.value) })
+          } else if (compiledGraph.traceLevel === 'detail' && /^round-key-\d+$/.test(id)) {
+            const round = Number(/^round-key-(\d+)$/.exec(id)![1])
+            appendTrace({ path: id, level: 'detail', round, stage: 'round-key', value: cloneValue(result.value) })
+          } else if (compiledGraph.traceLevel === undefined) {
+            for (const port of Object.keys(result)) appendTrace({ path: `${id}.${port}`, stage: 'output', summary: `${id}.${port}` })
+          }
         }
         const outputs: Record<string, CryptoValue> = {}
         for (const ref of compiledGraph.outputs) outputs[`${ref.node}.${ref.port}`] = cloneValue(values.get(ref.node)![ref.port])
@@ -1436,15 +1431,15 @@ const executeWorkerPayload = (
   }
   const traceLimits: TraceCollectionLimits = budget
     ? {
-        traceEvents: Math.min(limits.traceEvents, budget.limits.traceEvents - budget.traceEvents),
-        traceBytes: Math.min(limits.traceBytes, budget.limits.traceBytes - budget.traceBytes),
-      }
+      traceEvents: Math.min(limits.traceEvents, budget.limits.traceEvents - budget.traceEvents),
+      traceBytes: Math.min(limits.traceBytes, budget.limits.traceBytes - budget.traceBytes),
+    }
     : limits
   const execution = (compiled.execute as LimitedExecutor)(payload.inputs ? { ...payload.inputs } : {}, traceLimits)
   if (!execution.ok) return execution
   const snapshot = structuredClone({
-      ...execution.value,
-      traceStatus: traceStatuses.get(execution.value) ?? { truncated: false, retained: execution.value.trace.length, dropped: 0 },
+    ...execution.value,
+    traceStatus: traceStatuses.get(execution.value) ?? { truncated: false, retained: execution.value.trace.length, dropped: 0 },
   })
   if (budget) {
     budget.traceEvents += snapshot.trace.length
@@ -1475,8 +1470,8 @@ const compareSnapshots = (
     return { ok: false, diagnostics: [diagnostic('comparison.incompatible-structure', 'Repeat identities cannot be aligned structurally.', 'trace')] }
   }
   const truncated = left.traceStatus.truncated || right.traceStatus.truncated
-  const checkpoints = (snapshot: WorkerExecutionSnapshot): Result<Map<string, { readonly value: BitsValue; readonly event: TraceEvent }>> => {
-    const values = new Map<string, { readonly value: BitsValue; readonly event: TraceEvent }>()
+  const checkpoints = (snapshot: WorkerExecutionSnapshot): Result<Map<string, { readonly value: BitsValue, readonly event: TraceEvent }>> => {
+    const values = new Map<string, { readonly value: BitsValue, readonly event: TraceEvent }>()
     const paths = relativeTracePaths.get(snapshot)
     for (const event of snapshot.trace) {
       if (!('value' in event) || !event.value) continue

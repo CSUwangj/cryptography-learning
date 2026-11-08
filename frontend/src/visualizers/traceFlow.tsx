@@ -1,5 +1,4 @@
 import type { TFunction } from 'i18next'
-import React from 'react'
 import { hex, type BitsValue, type TraceOperation, type TraceStage } from 'crypto_graph'
 import type { LearningRow } from '../ui/learning'
 import { PermutationVisual, SubstitutionVisual, XorVisual } from './OperationVisuals'

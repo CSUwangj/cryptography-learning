@@ -35,19 +35,19 @@ export default defineConfig({
   ...(process.env.PLAYWRIGHT_BASE_URL
     ? {}
     : {
-        webServer: [
-          {
-            command: `node scripts/playwright-server.mjs vite.config.mts ${localPort}`,
-            wait: { stdout: /PLAYWRIGHT_SERVER_URL=(?<playwright_test_base_url>http:\/\/127\.0\.0\.1:\d+)/ },
-            reuseExistingServer: false,
-            timeout: 120_000,
-          },
-          {
-            command: `node scripts/playwright-server.mjs vite.demos.config.mts ${localPort ? localPort + 1 : 0}`,
-            wait: { stdout: /PLAYWRIGHT_SERVER_URL=(?<playwright_demo_base_url>http:\/\/127\.0\.0\.1:\d+)/ },
-            reuseExistingServer: false,
-            timeout: 120_000,
-          },
-        ],
-      }),
+      webServer: [
+        {
+          command: `node scripts/playwright-server.mjs vite.config.mts ${localPort}`,
+          wait: { stdout: /PLAYWRIGHT_SERVER_URL=(?<playwright_test_base_url>http:\/\/127\.0\.0\.1:\d+)/ },
+          reuseExistingServer: false,
+          timeout: 120_000,
+        },
+        {
+          command: `node scripts/playwright-server.mjs vite.demos.config.mts ${localPort ? localPort + 1 : 0}`,
+          wait: { stdout: /PLAYWRIGHT_SERVER_URL=(?<playwright_demo_base_url>http:\/\/127\.0\.0\.1:\d+)/ },
+          reuseExistingServer: false,
+          timeout: 120_000,
+        },
+      ],
+    }),
 })

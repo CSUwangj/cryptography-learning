@@ -16,7 +16,7 @@ import {
 } from '../crypto_graph'
 import { validateLessonMarkdown } from './markdown'
 
-export type Result<T> = { ok: true; value: T } | { ok: false; diagnostics: readonly Diagnostic[] }
+export type Result<T> = { ok: true, value: T } | { ok: false, diagnostics: readonly Diagnostic[] }
 
 export type LessonDocuments = {
   readonly lesson: string
@@ -38,9 +38,9 @@ export type VisualizerDescriptor = {
   readonly options?: Readonly<Record<string, 'string' | 'number' | 'boolean'>>
   readonly major?: number
   readonly slots?: Readonly<Record<string, { readonly family: string }>>
-  readonly trace?: { readonly family: 'comparison' | 'execution'; readonly level: 'detail' }
+  readonly trace?: { readonly family: 'comparison' | 'execution', readonly level: 'detail' }
   readonly limits?: { readonly bits: number }
-  readonly dimensions?: { readonly minWidth: number; readonly minHeight: number }
+  readonly dimensions?: { readonly minWidth: number, readonly minHeight: number }
   readonly accessibility?: { readonly summary: string }
 }
 
@@ -51,18 +51,18 @@ export type VisualizerCatalog = {
 export type LessonValueReference =
   | { readonly input: string }
   | { readonly constant: string }
-  | { readonly step: string; readonly output: string }
+  | { readonly step: string, readonly output: string }
 
 export type LessonCheck =
   | {
     readonly kind: 'equal'
     readonly actual: LessonValueReference
     readonly expected: LessonValueReference
-    readonly feedback: { readonly match: string; readonly mismatch: string }
+    readonly feedback: { readonly match: string, readonly mismatch: string }
   }
   | {
     readonly kind: 'choice'
-    readonly options: readonly { readonly id: string; readonly label: string; readonly feedback: string }[]
+    readonly options: readonly { readonly id: string, readonly label: string, readonly feedback: string }[]
     readonly correct: string
   }
 
@@ -107,11 +107,11 @@ export type LessonPresentation =
 export type CompiledStep = {
   readonly id: string
   readonly prose?: string
-  readonly bitFlip?: readonly { readonly input: string; readonly changed: string; readonly prompt: string }[]
-  readonly inputs?: readonly { readonly input: string; readonly prompt: string; readonly type: PortType }[]
-  readonly execute?: { readonly graph: string; readonly bindings: Readonly<Record<string, LessonValueReference>> }
+  readonly bitFlip?: readonly { readonly input: string, readonly changed: string, readonly prompt: string }[]
+  readonly inputs?: readonly { readonly input: string, readonly prompt: string, readonly type: PortType }[]
+  readonly execute?: { readonly graph: string, readonly bindings: Readonly<Record<string, LessonValueReference>> }
   readonly presentation?: LessonPresentation
-  readonly overlay?: { readonly step: string; readonly anchors: readonly { readonly cipherRow: string; readonly scheduleRow: string; readonly round: number }[] }
+  readonly overlay?: { readonly step: string, readonly anchors: readonly { readonly cipherRow: string, readonly scheduleRow: string, readonly round: number }[] }
   readonly visualizer?: {
     readonly id: string
     readonly bindings?: Readonly<Record<string, unknown>>
@@ -125,11 +125,11 @@ export type CompiledStep = {
 export type CompiledLesson = {
   readonly id: string
   readonly defaultLocale: string
-  readonly inputs: Readonly<Record<string, { readonly type: PortType; readonly encoding: string; readonly default: CryptoValue }>>
+  readonly inputs: Readonly<Record<string, { readonly type: PortType, readonly encoding: string, readonly default: CryptoValue }>>
   readonly constants: Readonly<Record<string, CryptoValue>>
   readonly graphs: Readonly<Record<string, CompiledGraph>>
   readonly steps: readonly CompiledStep[]
-  readonly locales: Readonly<Record<string, { readonly title: string; readonly summary: string; readonly texts: Readonly<Record<string, string>> }>>
+  readonly locales: Readonly<Record<string, { readonly title: string, readonly summary: string, readonly texts: Readonly<Record<string, string>> }>>
   readonly notices: readonly LessonNotice[]
   readonly limits?: WorkerLimits
 }
@@ -178,7 +178,7 @@ const collectSpans = (
 
 const restrictions = (file: string, node: Node | null, counter: LineCounter, diagnostics: Diagnostic[]): void => {
   if (!node) return
-  const tagged = node as Node & { anchor?: string; tag?: string }
+  const tagged = node as Node & { anchor?: string, tag?: string }
   if (isAlias(node) || tagged.anchor || (tagged.tag !== undefined && !tagged.tag.startsWith('tag:yaml.org,2002:'))) {
     diagnostics.push(diagnostic('lesson.yaml-restriction', 'Anchors, aliases, and custom tags are not supported.', '', spanAt(file, node, counter)))
   }
@@ -436,21 +436,21 @@ const validateGraphNode = (
     const parameters = requireMap(node.parameters, `${path}.parameters`, spans, diagnostics)
     const allowed = node.operation === 'core.source@1' ? ['type', 'value', 'roundKeys']
       : node.operation === 'spn.substitute@1' ? ['sBox']
-      : node.operation === 'spn.permute@1' || node.operation === 'spn.permute-gather@1' ? ['permutation']
-      : node.operation === 'core.substitute-nibbles@1' ? ['sBox', 'start', 'count']
-      : node.operation === 'core.substitute-bytes@1' ? ['sBox', 'start', 'count']
-      : node.operation === 'core.permute-bytes@1' ? ['permutation']
-      : node.operation === 'core.rotate-word@1' || node.operation === 'core.xor-constant@1' ? ['target', ...(node.operation === 'core.rotate-word@1' ? ['amount'] : ['constant'])]
-      : node.operation === 'aes.xor-words@1' ? ['start', 'count']
-      : node.operation === 'aes.key-word@1' ? ['index']
-      : node.operation === 'aes.rcon-word@1' ? ['round']
-      : node.operation === 'core.xor@1' || node.operation === 'core.output@1'
+        : node.operation === 'spn.permute@1' || node.operation === 'spn.permute-gather@1' ? ['permutation']
+          : node.operation === 'core.substitute-nibbles@1' ? ['sBox', 'start', 'count']
+            : node.operation === 'core.substitute-bytes@1' ? ['sBox', 'start', 'count']
+              : node.operation === 'core.permute-bytes@1' ? ['permutation']
+                : node.operation === 'core.rotate-word@1' || node.operation === 'core.xor-constant@1' ? ['target', ...(node.operation === 'core.rotate-word@1' ? ['amount'] : ['constant'])]
+                  : node.operation === 'aes.xor-words@1' ? ['start', 'count']
+                    : node.operation === 'aes.key-word@1' ? ['index']
+                      : node.operation === 'aes.rcon-word@1' ? ['round']
+                        : node.operation === 'core.xor@1' || node.operation === 'core.output@1'
         || node.operation === 'classical.caesar@1' || node.operation === 'classical.affine@1'
         || node.operation === 'classical.substitution@1' || node.operation === 'classical.vigenere@1'
         || node.operation === 'classical.transposition@1'
         || node.operation === 'aes.rot-word@1' || node.operation === 'aes.sub-word@1'
         || node.operation === 'aes.word-xor@1' || node.operation === 'aes.round-key@1' ? []
-      : undefined
+                          : undefined
     if (parameters && allowed) checkFields(parameters, allowed, `${path}.parameters`, spans, diagnostics)
     if (parameters && !isV2) {
       for (const [name, value] of Object.entries(parameters)) {
@@ -472,7 +472,7 @@ type GraphInfo = {
   readonly traceLevel?: 'summary' | 'round' | 'detail'
 }
 
-type TableConstant = { readonly entryBits: number; readonly value: readonly number[] }
+type TableConstant = { readonly entryBits: number, readonly value: readonly number[] }
 
 const parameterReferences = (value: unknown, tables: Readonly<Record<string, TableConstant>>, constants: Readonly<Record<string, CryptoValue>>, path: string, spans: ReadonlyMap<string, SourceOrigin>, diagnostics: Diagnostic[], preserveTables = false): unknown => {
   const map = fields(value)
@@ -508,8 +508,8 @@ const decodeSourceValues = (
       : type.family === 'integer' ? 'integer'
         : type.family === 'alphabet-policy' ? 'policy'
           : type.family === 'alphabet-direction' ? 'direction'
-          : type.family === 'alphabet-symbol' ? 'literal'
-            : 'hex'
+            : type.family === 'alphabet-symbol' ? 'literal'
+              : 'hex'
     const value = decodeValue(parameters.value, type, encoding, `${nodePath}.parameters.value`, spans, diagnostics)
     if (value) decoded.value = value
   }
@@ -688,11 +688,11 @@ const compileGraph = (
       : []
   }))
   const outputAliases = Object.fromEntries(authoredOutputs.flatMap((reference, index) => {
-      const resolvedOutput = result.value.graph.outputs[index]
-      return isV2 && reference && resolvedOutput && typeof reference.node === 'string' && typeof reference.port === 'string'
-        ? [[`${reference.node}.${reference.port}`, `${resolvedOutput.node}.${resolvedOutput.port}`]]
-        : []
-    }))
+    const resolvedOutput = result.value.graph.outputs[index]
+    return isV2 && reference && resolvedOutput && typeof reference.node === 'string' && typeof reference.port === 'string'
+      ? [[`${reference.node}.${reference.port}`, `${resolvedOutput.node}.${resolvedOutput.port}`]]
+      : []
+  }))
   return {
     graph: { ...result.value, ...(isV2 ? { outputAliases } : {}) },
     sourceTypes,
@@ -825,7 +825,7 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
   const constantMap = requireMap(root.constants, 'constants', lesson.spans, diagnostics) ?? {}
   const graphMap = requireMap(root.graphs, 'graphs', lesson.spans, diagnostics) ?? {}
   if (!Array.isArray(root.steps) || root.steps.length === 0) diagnostics.push(diagnostic('lesson.invalid-input', 'Lesson needs at least one Step.', 'steps', lesson.spans.get('steps')))
-  const inputs: Record<string, { type: PortType; encoding: string; default: CryptoValue }> = {}
+  const inputs: Record<string, { type: PortType, encoding: string, default: CryptoValue }> = {}
   const constants: Record<string, CryptoValue> = {}
   const tables: Record<string, TableConstant> = {}
   for (const [id, raw] of Object.entries(inputMap)) {
@@ -899,7 +899,7 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
       continue
     }
     stepIds.add(step.id)
-    const compiled: { id: string; prose?: string; bitFlip?: CompiledStep['bitFlip']; inputs?: { input: string; prompt: string; type: PortType }[]; execute?: { graph: string; bindings: Record<string, LessonValueReference> }; presentation?: LessonPresentation; overlay?: CompiledStep['overlay']; visualizer?: CompiledStep['visualizer']; acceptedErrorCodes?: string[]; check?: LessonCheck } = { id: step.id }
+    const compiled: { id: string, prose?: string, bitFlip?: CompiledStep['bitFlip'], inputs?: { input: string, prompt: string, type: PortType }[], execute?: { graph: string, bindings: Record<string, LessonValueReference> }, presentation?: LessonPresentation, overlay?: CompiledStep['overlay'], visualizer?: CompiledStep['visualizer'], acceptedErrorCodes?: string[], check?: LessonCheck } = { id: step.id }
     if (typeof step.prose === 'string') {
       compiled.prose = step.prose
       textIds.add(step.prose)
@@ -924,7 +924,7 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
     }
     if (step.bit_flip !== undefined) {
       const flipPath = `${path}.bit_flip`
-      const options: { input: string; changed: string; prompt: string }[] = []
+      const options: { input: string, changed: string, prompt: string }[] = []
       if (!Array.isArray(step.bit_flip) || step.bit_flip.length === 0 || step.execute !== undefined) {
         diagnostics.push(diagnostic('lesson.invalid-input', 'Bit flipping requires source options in a non-execution Step.', flipPath, lesson.spans.get(flipPath)))
       } else for (const [optionIndex, rawOption] of step.bit_flip.entries()) {
@@ -969,7 +969,7 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
             }
             const source = 'input' in binding ? inputs[binding.input]?.type
               : 'constant' in binding ? constants[binding.constant]?.type
-              : executionSteps.get(binding.step)?.outputTypes[binding.output]
+                : executionSteps.get(binding.step)?.outputTypes[binding.output]
             if ('constant' in binding && !constants[binding.constant] && tables[binding.constant]) {
               diagnostics.push(diagnostic('lesson.invalid-constant-use', 'Table constants are only valid as operation parameters.', bindingPath, lesson.spans.get(bindingPath)))
             } else if (!source) {
@@ -1091,7 +1091,7 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
               if (tableUse) diagnostics.push(diagnostic('lesson.invalid-constant-use', 'Table constants are only valid as operation parameters.', bindingPath, lesson.spans.get(bindingPath)))
               const source = tableUse ? undefined : binding && ('input' in binding ? inputs[binding.input]?.type
                 : 'constant' in binding ? constants[binding.constant]?.type
-                : (binding.step === step.id ? execution : executionSteps.get(binding.step))?.outputTypes?.[binding.output])
+                  : (binding.step === step.id ? execution : executionSteps.get(binding.step))?.outputTypes?.[binding.output])
               if (!tableUse && (!source || !equalTypes(descriptor.inputSlots[slot], source))) diagnostics.push(diagnostic('lesson.invalid-step-reference', 'Visualizer value binding is invalid.', bindingPath, lesson.spans.get(bindingPath)))
             } else {
               const traced = trace && typeof trace.step === 'string' && typeof trace.trace === 'string'
@@ -1222,7 +1222,7 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
         }
       } else if (check?.kind === 'choice') {
         checkFields(check, ['kind', 'options', 'correct'], checkPath, lesson.spans, diagnostics)
-        const options: { id: string; label: string; feedback: string }[] = []
+        const options: { id: string, label: string, feedback: string }[] = []
         const optionIds = new Set<string>()
         if (!Array.isArray(check.options)) {
           diagnostics.push(diagnostic('lesson.invalid-input', 'Choice check options must be a sequence.', `${checkPath}.options`, lesson.spans.get(`${checkPath}.options`)))
@@ -1251,7 +1251,7 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
     if (!compiled.prose && !compiled.bitFlip && !compiled.inputs && !compiled.execute && !compiled.visualizer && !compiled.check) diagnostics.push(diagnostic('lesson.invalid-input', 'Step must contain content.', path, lesson.spans.get(path)))
     steps.push(compiled)
   }
-  const locales: Record<string, { title: string; summary: string; texts: Record<string, string> }> = {}
+  const locales: Record<string, { title: string, summary: string, texts: Record<string, string> }> = {}
   for (const [locale, parsed] of parsedLocales) {
     if (!parsed.ok) continue
     const localeRoot = requireMap(parsed.value.value, '', parsed.value.spans, diagnostics)

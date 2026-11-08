@@ -57,7 +57,7 @@ describe('Authored AES v2 calculations (#105)', () => {
     if (!original.ok) throw new Error(JSON.stringify(original.diagnostics))
     const lesson = parse(source.lesson)
     const names: Record<string, Record<string, string>> = {}
-    for (const [graphId, graph] of Object.entries(lesson.graphs) as [string, { nodes: { id: string; inputs?: Record<string, { node: string }> }[]; outputs: { node: string }[] }][]) {
+    for (const [graphId, graph] of Object.entries(lesson.graphs) as [string, { nodes: { id: string, inputs?: Record<string, { node: string }> }[], outputs: { node: string }[] }][]) {
       names[graphId] = Object.fromEntries(graph.nodes.map((node, index) => [node.id, `stage-${index}`]))
       for (const node of graph.nodes) {
         node.id = names[graphId][node.id]
@@ -70,7 +70,7 @@ describe('Authored AES v2 calculations (#105)', () => {
       step.presentation.algorithm = 'Another network'
       step.presentation.variant = 37
       step.execute.bindings = Object.fromEntries(Object.entries(step.execute.bindings).map(([target, reference]) => {
-        const binding = reference as { step?: string; output?: string }
+        const binding = reference as { step?: string, output?: string }
         const prior = original.value.steps.find((step) => step.id === binding.step)
         return [renamePath(step.execute.graph, target), prior?.execute && binding.output
           ? { ...binding, output: renamePath(prior.execute.graph, binding.output) } : reference]

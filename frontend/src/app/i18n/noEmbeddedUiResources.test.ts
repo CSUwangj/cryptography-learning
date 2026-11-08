@@ -36,8 +36,8 @@ function embeddedResources(source: string, filename = 'example.tsx'): string[] {
     const locales = node.parent.parent
     return yamlReference(node.initializer) && ts.isPropertyAssignment(locales) && name(locales.name) === 'locales'
       && ts.isObjectLiteralExpression(locales.parent) && locales.parent.properties.some((property) =>
-        ts.isPropertyAssignment(property) ? name(property.name) === 'lesson' && yamlReference(property.initializer)
-          : ts.isShorthandPropertyAssignment(property) && property.name.text === 'lesson' && yamlReference(property.name))
+      ts.isPropertyAssignment(property) ? name(property.name) === 'lesson' && yamlReference(property.initializer)
+        : ts.isShorthandPropertyAssignment(property) && property.name.text === 'lesson' && yamlReference(property.name))
   }
   const jsonReference = (node: ts.Node): boolean => {
     node = unwrap(node)

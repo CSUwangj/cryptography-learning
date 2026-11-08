@@ -1,6 +1,6 @@
-import type { AuthoredNode, BitsValue, CryptoValue, PortType, IntegerValue, AlphabetMapping, AlphabetPolicyValue, AlphabetTextValue, AlphabetDirectionValue } from '../index'
+import type { AlphabetPolicyValue, AlphabetTextValue, AlphabetDirectionValue } from '../index'
 import type { Operation } from '../operation'
-import { text, cipherText, modulo, CipherDiagnostic } from '../operation_support'
+import { cipherText, modulo, CipherDiagnostic } from '../operation_support'
 
 export type EmptyParameters = Record<never, never>
 

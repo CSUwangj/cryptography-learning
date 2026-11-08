@@ -1,4 +1,3 @@
-import React from 'react'
 import { I18nextProvider } from 'react-i18next'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'

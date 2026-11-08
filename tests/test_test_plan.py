@@ -17,6 +17,15 @@ import test_plan
 
 
 class TestPlanTest(unittest.TestCase):
+    def test_lint_config_selects_command_behavior_coverage_without_unknown_fallback(self):
+        for path in ("frontend/eslint.config.mjs", "frontend/.eslintrc"):
+            with self.subTest(path=path):
+                plan = test_plan.plan_paths([path])
+                checks = {item["id"]: item for item in plan["checks"]}
+                self.assertEqual(checks["frontend_lint"]["argv"], ["npm", "run", "lint"])
+                self.assertIn("src/lint.test.ts", checks["frontend-tests"]["argv"])
+                self.assertFalse(any("unknown" in reason for item in plan["checks"] for reason in item["reasons"]))
+
     def test_frontend_paths_select_the_read_only_lint_command(self):
         for path in (
             "frontend/src/app/home/HomePage.tsx",
@@ -123,7 +132,7 @@ class TestPlanTest(unittest.TestCase):
             "frontend/src/practice/map.test.ts", "scripts/test_plan.py",
         ])
         checks = {item["id"]: item for item in mixed["checks"]}
-        self.assertEqual(set(checks), {"frontend-tests", "frontend_typecheck", "tooling"})
+        self.assertEqual(set(checks), {"frontend-tests", "frontend_lint", "frontend_typecheck", "tooling"})
         self.assertEqual(checks["frontend-tests"]["argv"], [*command, *sorted({
             *(consumer for _, consumer in examples),
             "src/practice/map.test.ts", "src/app/i18n/noEmbeddedUiResources.test.ts",
@@ -216,7 +225,7 @@ class TestPlanTest(unittest.TestCase):
             {
                 "browser_home-layout", "browser_learning", "image_acceptance",
                 "browser_aes-cipher-demo", "browser_visualizers", "browser_parallel_regressions",
-                "frontend-tests",
+                "frontend-tests", "frontend_lint",
             },
             set(checks),
         )
@@ -286,7 +295,7 @@ class TestPlanTest(unittest.TestCase):
         ):
             with self.subTest(path=path):
                 checks = {item["id"]: item for item in test_plan.plan_paths([path])["checks"]}
-                self.assertEqual(set(checks), {"frontend-tests", "frontend_typecheck"})
+                self.assertEqual(set(checks), {"frontend-tests", "frontend_lint", "frontend_typecheck"})
                 self.assertEqual(checks["frontend-tests"]["argv"][5:], [
                     path.removeprefix("frontend/"),
                     "src/app/i18n/noEmbeddedUiResources.test.ts",
@@ -296,7 +305,7 @@ class TestPlanTest(unittest.TestCase):
         checks = {item["id"]: item for item in test_plan.plan_paths([
             "frontend/src/lesson_runtime/fixture/aes192-first-round.ts",
         ])["checks"]}
-        self.assertEqual(set(checks), {"browser_overlay", "browser_spn-cipher", "frontend-tests", "frontend_typecheck"})
+        self.assertEqual(set(checks), {"browser_overlay", "browser_spn-cipher", "frontend-tests", "frontend_lint", "frontend_typecheck"})
         for spec in ("overlay", "spn-cipher"):
             self.assertEqual(checks[f"browser_{spec}"]["argv"], [
                 "npx", "playwright", "test", "--project=chromium", f"e2e/{spec}.spec.ts",
@@ -335,7 +344,7 @@ class TestPlanTest(unittest.TestCase):
         ])
         self.assertEqual(set(checks), {
             "browser_overlay", "browser_spn-cipher", "browser_visualizers",
-            "browser_parallel_regressions", "frontend-tests", "frontend_typecheck",
+            "browser_parallel_regressions", "frontend-tests", "frontend_lint", "frontend_typecheck",
         })
 
     def test_teaching_spn_demo_selects_its_browser_and_runtime_consumers(self):
@@ -474,12 +483,12 @@ class TestPlanTest(unittest.TestCase):
         worker = test_plan.plan_paths(["frontend/e2e/v2-default-trace-browser.tsx"])
         self.assertEqual(
             {item["id"] for item in worker["checks"]},
-            {"browser_crypto-graph-worker", "frontend-tests"},
+            {"browser_crypto-graph-worker", "frontend-tests", "frontend_lint"},
         )
         terminal = test_plan.plan_paths(["frontend/e2e/fixtures/browser_terminal_fixture.py"])
         self.assertEqual(
             {item["id"] for item in terminal["checks"]},
-            {"browser_terminal", "frontend-tests"},
+            {"browser_terminal", "frontend-tests", "frontend_lint"},
         )
         unknown = test_plan.plan_paths(["frontend/e2e/new-helper.ts"])
         self.assertIn("frontend-tests", {item["id"] for item in unknown["checks"]})
@@ -487,7 +496,7 @@ class TestPlanTest(unittest.TestCase):
         aes_fixture = test_plan.plan_paths(["frontend/e2e/aes-learning-fixture.tsx"])
         self.assertEqual(
             {item["id"] for item in aes_fixture["checks"]},
-            {"browser_aes-cipher-demo", "browser_visualizers", "frontend-tests"},
+            {"browser_aes-cipher-demo", "browser_visualizers", "frontend-tests", "frontend_lint"},
         )
 
     def test_identical_visualizer_browser_commands_run_once(self):

@@ -6,17 +6,22 @@ import react from 'eslint-plugin-react'
 export default [
   {
     ignores: [
-      '**/node_modules/**',
-      '**/build/**',
-      '**/dist/**',
-      '**/test-results/**',
+      'node_modules/**',
+      'build/**',
+      'dist/**',
+      'coverage/**',
+      'test-results/**',
+      'playwright-report/**',
+      'blob-report/**',
+      'playwright/.cache/**',
       'src/transport/generated/**',
     ],
   },
   react.configs.flat.recommended,
+  react.configs.flat['jsx-runtime'],
   ...tseslint.configs['flat/recommended'],
   {
-    files: ['**/*.{js,mjs,ts,tsx}'],
+    files: ['**/*.{js,cjs,mjs,ts,cts,mts,tsx}'],
     languageOptions: {
       parser: tsParser,
       parserOptions: {

@@ -96,8 +96,8 @@ export type PrototypeData = ReturnType<typeof prototypeData>
 export const selectedLineage = (data: PrototypeData, seeds: readonly string[]): Set<string> =>
   new Set(seeds.flatMap((seed) => [...relatedBitIds(data.lineage, seed)]))
 
-export const alignedRows = (data: PrototypeData, anchor: 'key' | 'operation'): { cipher?: PrototypeRow; schedule?: PrototypeRow; anchor?: number }[] => {
-  const result: { cipher?: PrototypeRow; schedule?: PrototypeRow; anchor?: number }[] = []
+export const alignedRows = (data: PrototypeData, anchor: 'key' | 'operation'): { cipher?: PrototypeRow, schedule?: PrototypeRow, anchor?: number }[] => {
+  const result: { cipher?: PrototypeRow, schedule?: PrototypeRow, anchor?: number }[] = []
   let c = 0
   let s = 0
   for (const row of data.scheduleRows.filter((item) => item.round !== undefined)) {

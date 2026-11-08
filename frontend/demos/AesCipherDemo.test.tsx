@@ -1,6 +1,5 @@
 import { I18nextProvider } from 'react-i18next'
 import i18n from '../src/app/i18n'
-import React from 'react'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -10,7 +9,7 @@ vi.mock('../src/visualizers', async () => {
   const actual = await vi.importActual<typeof import('../src/visualizers')>('../src/visualizers')
   return {
     ...actual,
-    RenderHost: (props: { execution?: { outputs: Record<string, unknown> }; executionIdentity: string; presentation?: { direction?: string } }) => (
+    RenderHost: (props: { execution?: { outputs: Record<string, unknown> }, executionIdentity: string, presentation?: { direction?: string } }) => (
       <div data-testid="render-host" data-render-host={`${props.executionIdentity}:${props.presentation?.direction ?? ''}:${Object.keys(props.execution?.outputs ?? {}).join(',')}`}>
         {Object.keys(props.execution?.outputs ?? {}).join(',')}
       </div>

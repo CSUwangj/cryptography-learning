@@ -64,8 +64,8 @@ const hexadecimalValue = (value: ReactNode): ReactNode => typeof value === 'stri
   ? <span className="learning-hex-value">{value.match(/^0x|[\da-f]{1,2}(?=(?:[\da-f]{2})*$)/gi)!.map((byte, index) => <span className={index ? 'learning-hex-byte' : undefined} key={index}>{byte}</span>)}</span>
   : value
 
-type PassiveValueCellProps = { readonly ariaLabel?: string; readonly onSelect?: never }
-type SelectableValueCellProps = { readonly ariaLabel: string; readonly onSelect: () => void }
+type PassiveValueCellProps = { readonly ariaLabel?: string, readonly onSelect?: never }
+type SelectableValueCellProps = { readonly ariaLabel: string, readonly onSelect: () => void }
 
 export type ValueCellProps = {
   readonly children: ReactNode
@@ -80,7 +80,7 @@ export const ValueCell = ({ children, state = 'default', ...selection }: ValueCe
   </td>
 )
 
-export type FieldLabelProps = { readonly children: string; readonly htmlFor?: string }
+export type FieldLabelProps = { readonly children: string, readonly htmlFor?: string }
 
 export const FieldLabel = ({ children, htmlFor }: FieldLabelProps): ReactNode =>
   htmlFor ? <label htmlFor={htmlFor}>{children}</label> : <span>{children}</span>
@@ -122,7 +122,7 @@ export type LearningRow = {
   readonly selectableKey?: LearningRoundKey
   readonly relationships?: readonly LearningRelationship[]
   /** Draws a boundary every `size` bits; `active` marks one group. Absent means no boundaries. */
-  readonly bitGrouping?: { readonly size: number; readonly active?: number }
+  readonly bitGrouping?: { readonly size: number, readonly active?: number }
   readonly detail?: ReactNode
 }
 
@@ -151,11 +151,11 @@ export type KeyExpansionLane = {
   readonly rows: readonly KeyExpansionLaneRow[]
   readonly headers?: readonly string[]
   /** The v2 whole-schedule toggle preserves the exact bit origin. */
-  readonly sharedSelection?: { readonly toggleLabel: string; readonly clearLabel: string }
+  readonly sharedSelection?: { readonly toggleLabel: string, readonly clearLabel: string }
   readonly originalOrder?: LearningSection
 }
 
-export type LearningSelection = { readonly kind: 'bit' | 'key'; readonly id: string; readonly bitIds?: readonly string[] }
+export type LearningSelection = { readonly kind: 'bit' | 'key', readonly id: string, readonly bitIds?: readonly string[] }
 
 /**
  * A structured issue about the presentation's underlying data (e.g. a truncated trace), kept as
@@ -172,7 +172,7 @@ export type LearningDiagnostic = {
 export type LearningPresentation = {
   readonly title: string
   /** Opt-in paired unit display. Comparison view switches clear the current selection. */
-  readonly comparison?: { readonly baselineLabel: string; readonly changedLabel: string; readonly differentLabel: string }
+  readonly comparison?: { readonly baselineLabel: string, readonly changedLabel: string, readonly differentLabel: string }
   readonly instructions?: string
   /** Structured issues (stable code/path/details) about the data behind this presentation, such
    * as a truncated trace - distinct from `instructions`/`selectionStatus`, which are plain
@@ -203,7 +203,7 @@ const relationshipsFor = (presentation: LearningPresentation): readonly Learning
   ...(presentation.keyExpansionLane?.rows ?? []).flatMap((row) => row.relationships ?? []),
 ]
 
-type LaneLayoutRow = { readonly row?: LearningRow; readonly lane?: KeyExpansionLaneRow }
+type LaneLayoutRow = { readonly row?: LearningRow, readonly lane?: KeyExpansionLaneRow }
 
 const laneLayout = (rows: readonly LearningRow[], lane: readonly KeyExpansionLaneRow[]): readonly LaneLayoutRow[] => {
   const rowIds = new Set(rows.map((row) => row.id))
@@ -282,7 +282,7 @@ export type LineageDiagramProps = {
   readonly aggregate?: boolean
 }
 
-export type LineageLocation = { readonly x: number; readonly y: number; readonly group?: string }
+export type LineageLocation = { readonly x: number, readonly y: number, readonly group?: string }
 
 const lineageStroke = (state: LearningState): string => {
   if (state === 'selected' || state === 'related') return learningColors.text
@@ -304,7 +304,7 @@ export const LineageDiagram = ({ relationships, locations, width, height, relate
         : relationship.state ?? 'default',
   }))
   const paths = new Map<LearningState, string[]>()
-  const pairs = new Map<string, { readonly segment: string; readonly state: LearningState }>()
+  const pairs = new Map<string, { readonly segment: string, readonly state: LearningState }>()
   if (aggregate) for (const { relationship, state } of lines) {
     const from = locations.get(relationship.from)
     const to = locations.get(relationship.to)
@@ -372,7 +372,7 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
     : rawSelectedTarget
   const lineageContainer = useRef<HTMLDivElement>(null)
   const targets = useRef(new Map<string, HTMLElement>())
-  const [lineage, setLineage] = useState<{ readonly measure: number; readonly presentation?: LearningPresentation; readonly width: number; readonly height: number; readonly locations: ReadonlyMap<string, LineageLocation> }>({
+  const [lineage, setLineage] = useState<{ readonly measure: number, readonly presentation?: LearningPresentation, readonly width: number, readonly height: number, readonly locations: ReadonlyMap<string, LineageLocation> }>({
     measure: 0,
     width: 0,
     height: 0,
@@ -517,11 +517,11 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
     })
     return row.bitGrouping
       ? <span
-          data-active={index === row.bitGrouping.active ? 'true' : undefined}
-          data-bit-group={index}
-          key={index}
-          style={{ outline: index === row.bitGrouping.active ? `2px dashed ${learningColors.text}` : undefined, outlineOffset: 2 }}
-        >{buttons}</span>
+        data-active={index === row.bitGrouping.active ? 'true' : undefined}
+        data-bit-group={index}
+        key={index}
+        style={{ outline: index === row.bitGrouping.active ? `2px dashed ${learningColors.text}` : undefined, outlineOffset: 2 }}
+      >{buttons}</span>
       : buttons
   })
   const controlStyle: CSSProperties = { paddingBlock: relationships.length ? lineageGap : undefined, whiteSpace: 'nowrap' }
@@ -535,53 +535,53 @@ export const LearningPresentationView = ({ presentation }: { readonly presentati
     const table = <TraceTable caption={section.caption} headers={section.headers} laneHeaders={lane?.headers} joinRows={!!lane} key={key}>
       {lane
         ? (() => {
-            const layout = laneLayout(section.rows, lane.rows)
-            const first = layout.findIndex((entry) => entry.lane)
-            const last = layout.findLastIndex((entry) => entry.lane)
-            return layout.map(({ row, lane: laneRow }, index) => {
-              const inLane = index >= first && index <= last
-              // A tinted, bordered block keeps the schedule from reading as part of the cipher trace.
-              const laneStyle: CSSProperties = inLane
-                ? {
-                    ...controlStyle,
-                    backgroundColor: learningColors.lane,
-                    borderTop: index === first ? `2px solid ${learningColors.laneBorder}` : undefined,
-                    borderBottom: index === last ? `2px solid ${learningColors.laneBorder}` : undefined,
-                  }
-                : controlStyle
-              return <ComparisonRow
-                key={row?.id ?? `lane-${laneRow!.id}`}
-                label={row?.label ?? ''}
-                rowId={row?.id}
-                state={row?.state}
-              >
-                {(row ?? section.rows[0]).cells.map((cell, cellIndex) => row
-                  ? <ValueCell ariaLabel={cell.ariaLabel} key={cellIndex} state={cell.state}>{cell.value}</ValueCell>
-                  : <td key={cellIndex} />)}
-                <td style={controlStyle}>{row?.selectableKey && renderKeyChip(row.selectableKey)}</td>
-                {Array.from({ length: lane.headers ? lane.headers.length - 1 : 1 }, (_, cellIndex) => <td
-                  aria-label={laneRow?.cells?.[cellIndex]?.ariaLabel ?? (typeof laneRow?.cells?.[cellIndex]?.value === 'string' ? laneRow.cells[cellIndex].value : undefined)}
-                  data-lane-cell={inLane ? 'true' : undefined}
-                  key={cellIndex}
-                  style={{ ...laneStyle, borderInlineStart: inLane && cellIndex === 0 ? `2px solid ${learningColors.laneBorder}` : undefined, paddingInline: 8 }}
-                >{laneRow?.cells ? hexadecimalValue(laneRow.cells[cellIndex]?.value) : laneRow?.label}</td>)}
-                <td data-lane={inLane ? 'true' : undefined} data-lane-cell={inLane ? 'true' : undefined} data-lane-row={laneRow?.id} style={{ ...laneStyle, borderInlineEnd: inLane ? `2px solid ${learningColors.laneBorder}` : undefined }}>
-                  {laneRow && renderBits(laneRow, laneUnitSize)}
-                </td>
-              </ComparisonRow>
-            })
-          })()
+          const layout = laneLayout(section.rows, lane.rows)
+          const first = layout.findIndex((entry) => entry.lane)
+          const last = layout.findLastIndex((entry) => entry.lane)
+          return layout.map(({ row, lane: laneRow }, index) => {
+            const inLane = index >= first && index <= last
+            // A tinted, bordered block keeps the schedule from reading as part of the cipher trace.
+            const laneStyle: CSSProperties = inLane
+              ? {
+                ...controlStyle,
+                backgroundColor: learningColors.lane,
+                borderTop: index === first ? `2px solid ${learningColors.laneBorder}` : undefined,
+                borderBottom: index === last ? `2px solid ${learningColors.laneBorder}` : undefined,
+              }
+              : controlStyle
+            return <ComparisonRow
+              key={row?.id ?? `lane-${laneRow!.id}`}
+              label={row?.label ?? ''}
+              rowId={row?.id}
+              state={row?.state}
+            >
+              {(row ?? section.rows[0]).cells.map((cell, cellIndex) => row
+                ? <ValueCell ariaLabel={cell.ariaLabel} key={cellIndex} state={cell.state}>{cell.value}</ValueCell>
+                : <td key={cellIndex} />)}
+              <td style={controlStyle}>{row?.selectableKey && renderKeyChip(row.selectableKey)}</td>
+              {Array.from({ length: lane.headers ? lane.headers.length - 1 : 1 }, (_, cellIndex) => <td
+                aria-label={laneRow?.cells?.[cellIndex]?.ariaLabel ?? (typeof laneRow?.cells?.[cellIndex]?.value === 'string' ? laneRow.cells[cellIndex].value : undefined)}
+                data-lane-cell={inLane ? 'true' : undefined}
+                key={cellIndex}
+                style={{ ...laneStyle, borderInlineStart: inLane && cellIndex === 0 ? `2px solid ${learningColors.laneBorder}` : undefined, paddingInline: 8 }}
+              >{laneRow?.cells ? hexadecimalValue(laneRow.cells[cellIndex]?.value) : laneRow?.label}</td>)}
+              <td data-lane={inLane ? 'true' : undefined} data-lane-cell={inLane ? 'true' : undefined} data-lane-row={laneRow?.id} style={{ ...laneStyle, borderInlineEnd: inLane ? `2px solid ${learningColors.laneBorder}` : undefined }}>
+                {laneRow && renderBits(laneRow, laneUnitSize)}
+              </td>
+            </ComparisonRow>
+          })
+        })()
         : section.rows.map((row) => <ComparisonRow key={row.id} label={row.label} rowId={row.id} state={row.state}>
-            {row.cells.map((cell, index) => <ValueCell ariaLabel={cell.ariaLabel} key={index} state={cell.state}>{cell.value}</ValueCell>)}
-            {hasControls && <td style={controlStyle}>{renderBits(row)}{row.selectableKey && renderKeyChip(row.selectableKey)}</td>}
-            {hasDetails && <ValueCell>{row.detail}</ValueCell>}
-          </ComparisonRow>)}
+          {row.cells.map((cell, index) => <ValueCell ariaLabel={cell.ariaLabel} key={index} state={cell.state}>{cell.value}</ValueCell>)}
+          {hasControls && <td style={controlStyle}>{renderBits(row)}{row.selectableKey && renderKeyChip(row.selectableKey)}</td>}
+          {hasDetails && <ValueCell>{row.detail}</ValueCell>}
+        </ComparisonRow>)}
     </TraceTable>
     return lane
       ? <div aria-label={lane.caption} key={key} role="region">
-          {!lane.sharedSelection && <button onClick={() => { setOpenKeyId(undefined); select(undefined) }} type="button">{lane.closeLabel}</button>}
-          {table}
-        </div>
+        {!lane.sharedSelection && <button onClick={() => { setOpenKeyId(undefined); select(undefined) }} type="button">{lane.closeLabel}</button>}
+        {table}
+      </div>
       : table
   }), [presentation, selected, related, openKeyId, unitSize, laneUnitSize])
 

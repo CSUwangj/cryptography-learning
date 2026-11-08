@@ -60,16 +60,16 @@ export const ClassicalCipherRenderer: React.FC<{
         <span>{symbolText(position.input)} → {symbolText(position.output)}</span>
         {position.mapped
           ? <div aria-label={`${symbolText(position.input)} ${t('moves')} ${position.sourcePosition} ${position.targetPosition}`} style={{ overflow: 'hidden', boxSizing: 'content-box', height: '2rem', width: '3rem', border: `1px solid ${learningColors.border}`, borderRadius: '0.25rem', background: learningColors.selected }}>
-              <div style={{
-                display: 'flex',
-                flexDirection: 'column',
-                transform: `translateY(${-2 * (settled ? endOffset : startOffset)}rem)`,
-                transition: reducedMotion ? 'none' : 'transform 600ms ease-out',
-                textAlign: 'center',
-              }}>
-                {(direction === -1 ? path.reverse() : path).map((symbol, pathPosition) => <span key={pathPosition} style={{ height: '2rem', lineHeight: '2rem', flexShrink: 0 }} aria-current={pathPosition === endOffset ? 'true' : undefined}>{symbolText(symbol)}</span>)}
-              </div>
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              transform: `translateY(${-2 * (settled ? endOffset : startOffset)}rem)`,
+              transition: reducedMotion ? 'none' : 'transform 600ms ease-out',
+              textAlign: 'center',
+            }}>
+              {(direction === -1 ? path.reverse() : path).map((symbol, pathPosition) => <span key={pathPosition} style={{ height: '2rem', lineHeight: '2rem', flexShrink: 0 }} aria-current={pathPosition === endOffset ? 'true' : undefined}>{symbolText(symbol)}</span>)}
             </div>
+          </div>
           : <span> {t('unmapped')}</span>}
       </div>
     })}

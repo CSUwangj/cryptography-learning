@@ -1,7 +1,7 @@
 /** Local Completion Records types — not generated GraphQL shapes. */
 
 export type CompletionCell =
-  | { state: 'recorded'; completedAt: string }
+  | { state: 'recorded', completedAt: string }
   | { state: 'notRecorded' }
 
 export type CompletionRecordsMatrix = {
@@ -14,5 +14,5 @@ export type CompletionRecordsMatrix = {
 }
 
 export type MapCompletionBoardResult =
-  | { ok: true; matrix: CompletionRecordsMatrix }
+  | { ok: true, matrix: CompletionRecordsMatrix }
   | { ok: false }

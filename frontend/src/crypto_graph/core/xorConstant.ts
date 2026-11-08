@@ -1,8 +1,8 @@
-import type { AuthoredNode, BitsValue, CryptoValue, PortType, IntegerValue, AlphabetMapping, AlphabetPolicyValue, AlphabetTextValue } from '../index'
+import type { BitsValue } from '../index'
 import type { Operation } from '../operation'
-import { diagnostic, bytes, readBits, bitPosition, bits } from '../operation_support'
+import { diagnostic, readBits, bitPosition, bits } from '../operation_support'
 
-export type XorConstantParameters = { target: number; constant: number }
+export type XorConstantParameters = { target: number, constant: number }
 
 export const xorConstant: Operation<'core.xor-constant@1', XorConstantParameters> = {
   manifest: {

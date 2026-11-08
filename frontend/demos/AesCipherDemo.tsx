@@ -8,7 +8,7 @@ import { aesCipherDemoDocuments } from './aes128CipherLesson'
 type Variant = 128 | 192 | 256
 type Direction = 'encrypt' | 'decrypt'
 
-const defaults: Record<Variant, { readonly key: string; readonly plaintext: string; readonly ciphertext: string }> = {
+const defaults: Record<Variant, { readonly key: string, readonly plaintext: string, readonly ciphertext: string }> = {
   128: { key: '000102030405060708090a0b0c0d0e0f', plaintext: '00112233445566778899aabbccddeeff', ciphertext: '69c4e0d86a7b0430d8cdb78070b4c55a' },
   192: { key: '000102030405060708090a0b0c0d0e0f1011121314151617', plaintext: '00112233445566778899aabbccddeeff', ciphertext: 'dda97ca4864cdfe06eaf70a0ec0d7191' },
   256: { key: '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f', plaintext: '00112233445566778899aabbccddeeff', ciphertext: '8ea2b7ca516745bfeafc49904b496089' },
@@ -16,7 +16,7 @@ const defaults: Record<Variant, { readonly key: string; readonly plaintext: stri
 
 const keyHexLength = (variant: Variant): number => variant / 4
 
-const advance = async (session: BrowserLessonSession, direction: Direction): Promise<{ ok: true; value: LessonSessionState } | { ok: false; diagnostic?: Diagnostic }> => {
+const advance = async (session: BrowserLessonSession, direction: Direction): Promise<{ ok: true, value: LessonSessionState } | { ok: false, diagnostic?: Diagnostic }> => {
   // enter-input → expand-key → encrypt or decrypt (step index 2 or 3)
   const result = await session.next()
   if (!result.ok) return { ok: false, diagnostic: result.diagnostics[0] }
@@ -40,8 +40,8 @@ export const AesCipherDemo: React.FC = () => {
   const [key, setKey] = useState(defaults[128].key)
   const [plaintext, setPlaintext] = useState(defaults[128].plaintext)
   const [ciphertext, setCiphertext] = useState(defaults[128].ciphertext)
-  const [result, setResult] = useState<{ readonly state: LessonSessionState; readonly step: BrowserLessonSession['lesson']['steps'][number] }>()
-  const [failure, setFailure] = useState<{ readonly diagnostic?: Diagnostic; readonly input?: 'key' | 'plaintext' | 'ciphertext' }>()
+  const [result, setResult] = useState<{ readonly state: LessonSessionState, readonly step: BrowserLessonSession['lesson']['steps'][number] }>()
+  const [failure, setFailure] = useState<{ readonly diagnostic?: Diagnostic, readonly input?: 'key' | 'plaintext' | 'ciphertext' }>()
   const session = useRef<BrowserLessonSession | undefined>(undefined)
 
   const run = (current: BrowserLessonSession, dir: Direction): void => {

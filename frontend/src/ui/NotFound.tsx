@@ -1,6 +1,5 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
-import { Classes } from '@blueprintjs/core'
 
 /** Generic bilingual Not Found view shared by app routing and feature error mapping. */
 export const NotFound: React.FC = () => {

@@ -1,6 +1,6 @@
-import type { AuthoredNode, BitsValue, CryptoValue, PortType, IntegerValue, AlphabetMapping, AlphabetPolicyValue, AlphabetTextValue } from '../index'
+import type { BitsValue } from '../index'
 import type { Operation } from '../operation'
-import { bits, bytes } from '../operation_support'
+import { bits } from '../operation_support'
 import { byteSubstitutionLineage, aesInvSBox } from './helpers'
 
 export type EmptyParameters = Record<never, never>

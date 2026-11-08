@@ -1,4 +1,3 @@
-import React from 'react'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, it } from 'vitest'
 import i18n from '../src/app/i18n'

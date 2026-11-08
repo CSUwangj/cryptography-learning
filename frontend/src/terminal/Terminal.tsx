@@ -30,7 +30,7 @@ export type TerminalProps = {
   /** Render input locally for raw TCP Challenges that do not provide PTY echo. */
   localEcho?: boolean
   /** Called after a successful local fit when the caller’s protocol can apply PTY size. */
-  onPtyResize?: (dimensions: { cols: number; rows: number }) => void
+  onPtyResize?: (dimensions: { cols: number, rows: number }) => void
 }
 
 type TerminalViewProps = TerminalProps & {
@@ -39,7 +39,7 @@ type TerminalViewProps = TerminalProps & {
 }
 
 function resolveChallengeWsUrl(
-  input: { url?: string; host?: string; port?: number },
+  input: { url?: string, host?: string, port?: number },
   pageProtocol: string,
 ): string {
   if (input.url !== undefined) {
@@ -71,7 +71,7 @@ function shouldReleaseNativePaste(event: KeyboardEvent): boolean {
 function renderLocalEcho(
   data: string,
   currentInputLength: number,
-): { output: string; inputLength: number } {
+): { output: string, inputLength: number } {
   const input = data
     .replaceAll('\x1b[200~', '')
     .replaceAll('\x1b[201~', '')
@@ -166,12 +166,12 @@ export const Terminal: React.FC<TerminalViewProps> = ({
     let localEchoInputLength = 0
     const localEchoSubscription = localEcho
       ? xterm.onData((data) => {
-          const rendered = renderLocalEcho(data, localEchoInputLength)
-          localEchoInputLength = rendered.inputLength
-          if (rendered.output) {
-            xterm.write(rendered.output)
-          }
-        })
+        const rendered = renderLocalEcho(data, localEchoInputLength)
+        localEchoInputLength = rendered.inputLength
+        if (rendered.output) {
+          xterm.write(rendered.output)
+        }
+      })
       : undefined
 
     const socket = new WebSocket(wsUrl)

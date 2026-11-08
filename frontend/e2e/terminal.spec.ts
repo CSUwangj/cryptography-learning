@@ -181,8 +181,8 @@ test.describe('Terminal browser acceptance (#17)', () => {
       await page.waitForFunction(() => window.__terminalHarness?.outbound.join('').includes('control-paste'))
       await page.waitForFunction(() =>
         window.__terminalHarness?.getVisibleText().includes('control-paste'),
-        undefined,
-        { timeout: 5_000 },
+      undefined,
+      { timeout: 5_000 },
       )
       const state = await getHarness(page)
       expect(state.outbound.join('').split('control-paste').length - 1).toBe(1)

@@ -1,6 +1,5 @@
 import { I18nextProvider } from 'react-i18next'
 import i18n from '../app/i18n'
-import React from 'react'
 import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { alphabetDirection, alphabetPolicy, compile, integer, text, type AuthoredGraph } from '../crypto_graph'

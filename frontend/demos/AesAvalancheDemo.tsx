@@ -15,7 +15,7 @@ export const AesAvalancheDemo: React.FC = () => {
   const { t, i18n } = useTranslation('demos', { keyPrefix: 'aesAvalanche' })
   const [variant, setVariant] = useState<Variant>(128)
   const [scenario, setScenario] = useState<Scenario>('compare-plaintext')
-  const [result, setResult] = useState<{ readonly comparison: AvalancheComparison; readonly identity: string }>()
+  const [result, setResult] = useState<{ readonly comparison: AvalancheComparison, readonly identity: string }>()
   const [failure, setFailure] = useState<{ readonly diagnostic?: Diagnostic }>()
 
   useEffect(() => {

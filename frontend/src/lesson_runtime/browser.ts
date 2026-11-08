@@ -9,14 +9,14 @@ import {
 import { compileLesson, decodeLessonValue, equalCryptoValues, type CompiledLesson, type LessonDocuments, type LessonValueReference, type Result, type VisualizerCatalog } from './compiler'
 
 export type LessonCheckResult =
-  | { readonly kind: 'equal'; readonly matched: boolean; readonly feedback: string }
-  | { readonly kind: 'choice'; readonly selected: string; readonly correct: boolean; readonly feedback: string }
+  | { readonly kind: 'equal', readonly matched: boolean, readonly feedback: string }
+  | { readonly kind: 'choice', readonly selected: string, readonly correct: boolean, readonly feedback: string }
 
 export type LessonSessionState = {
   readonly locale: string
   readonly stepIndex: number
   readonly stepId: string
-  readonly bitFlips: Readonly<Record<string, { readonly input: string; readonly bit: number }>>
+  readonly bitFlips: Readonly<Record<string, { readonly input: string, readonly bit: number }>>
   readonly inputs: Readonly<Record<string, CryptoValue | string>>
   readonly inputDiagnostics: Readonly<Record<string, Diagnostic>>
   readonly snapshots: Readonly<Record<string, WorkerExecutionSnapshot>>
@@ -129,7 +129,7 @@ export const lessonDiagnosticCodes: ReadonlySet<string> = new Set([
 const cloneValue = (value: CryptoValue): CryptoValue => {
   if ('symbol' in value) return { type: { family: 'alphabet-symbol', mapping: value.type.mapping }, symbol: value.symbol }
   if (value.type.family === 'alphabet-text') {
-    const text = value as { type: { mapping: string }; symbols: readonly string[] }
+    const text = value as { type: { mapping: string }, symbols: readonly string[] }
     return { type: { family: 'alphabet-text', mapping: text.type.mapping }, symbols: [...text.symbols] }
   }
   if (value.type.family === 'text') return { type: { family: 'text' }, symbols: [...(value as Extract<CryptoValue, { type: { family: 'text' } }>).symbols] }
@@ -137,7 +137,7 @@ const cloneValue = (value: CryptoValue): CryptoValue => {
   if (value.type.family === 'alphabet-policy') return { type: { family: 'alphabet-policy' }, value: (value as { value: 'preserve' | 'strict' }).value }
   if (value.type.family === 'alphabet-direction') return { type: { family: 'alphabet-direction' }, value: (value as { value: 'encrypt' | 'decrypt' }).value }
   if ('words' in value) return { type: { family: 'words', size: value.type.size, wordSize: 8 }, words: value.words.slice() }
-  const bytes = value as { type: { family: 'bits' | 'bytes'; size: number }; bytes: Uint8Array }
+  const bytes = value as { type: { family: 'bits' | 'bytes', size: number }, bytes: Uint8Array }
   return bytes.type.family === 'bits'
     ? { type: { family: 'bits', size: bytes.type.size }, bytes: bytes.bytes.slice() }
     : { type: { family: 'bytes', size: bytes.type.size }, bytes: bytes.bytes.slice() }
@@ -153,7 +153,7 @@ export class BrowserLessonSession {
   private readonly acceptedDiagnostics = new Map<string, Diagnostic>()
   private readonly executionDiagnostics = new Map<string, Diagnostic>()
   private readonly worker = new CryptoGraphWorkerClient()
-  private readonly bitFlips: Record<string, { input: string; bit: number }> = {}
+  private readonly bitFlips: Record<string, { input: string, bit: number }> = {}
   private index = 0
   private request = 0
   private generation = 0
@@ -291,12 +291,12 @@ export class BrowserLessonSession {
       : 'constant' in reference
         ? this.lesson.constants[reference.constant]
         : (() => {
-            const snapshot = this.snapshots.get(reference.step)
-            const graph = this.lesson.steps.find((step) => step.id === reference.step)?.execute
-              ? this.lesson.graphs[this.lesson.steps.find((step) => step.id === reference.step)!.execute!.graph]
-              : undefined
-            return snapshot?.outputs[graph?.outputAliases?.[reference.output] ?? reference.output]
-          })()
+          const snapshot = this.snapshots.get(reference.step)
+          const graph = this.lesson.steps.find((step) => step.id === reference.step)?.execute
+            ? this.lesson.graphs[this.lesson.steps.find((step) => step.id === reference.step)!.execute!.graph]
+            : undefined
+          return snapshot?.outputs[graph?.outputAliases?.[reference.output] ?? reference.output]
+        })()
     return value && typeof value !== 'string' ? value : undefined
   }
 
@@ -424,7 +424,7 @@ export class BrowserLessonSession {
         ? this.inputs[binding.input]
         : 'constant' in binding
           ? this.lesson.constants[binding.constant]
-        : (() => {
+          : (() => {
             const snapshot = this.snapshots.get(binding.step)
             const prior = this.lesson.steps.find((step) => step.id === binding.step)?.execute
             const priorGraph = prior ? this.lesson.graphs[prior.graph] : undefined

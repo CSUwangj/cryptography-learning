@@ -171,7 +171,9 @@ def plan_paths(paths, repo=ROOT):
             add("backend_tests", "backend", ["cargo", "test", "--locked", "--", "--nocapture"], "Rust workspace or toolchain changed")
             add("backend_build", "backend", ["cargo", "build", "--locked", "--release"], "Rust workspace or toolchain changed")
         elif path.startswith("frontend/"):
-            if path in {"frontend/playwright.config.ts", "frontend/scripts/playwright-server.mjs"}:
+            if path in {"frontend/eslint.config.mjs", "frontend/.eslintrc"}:
+                frontend(["frontend/src/lint.test.ts"], reason="lint configuration changed")
+            elif path in {"frontend/playwright.config.ts", "frontend/scripts/playwright-server.mjs"}:
                 add("browser_local-run", "frontend", ["npx", "playwright", "test", "--project=chromium", "e2e/local-run.spec.ts"], "local browser server and artifact ownership changed")
             elif path in {"frontend/package.json", "frontend/package-lock.json", "frontend/.nvmrc", "frontend/vite.config.mts", "frontend/vite.demos.config.mts", "frontend/tsconfig.json", "frontend/.codegen.yml"}:
                 frontend(paths, full=True, reason="frontend toolchain or shared configuration changed")

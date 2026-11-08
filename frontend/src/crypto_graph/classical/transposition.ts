@@ -1,6 +1,6 @@
-import type { AuthoredNode, BitsValue, CryptoValue, PortType, IntegerValue, AlphabetMapping, AlphabetPolicyValue, AlphabetTextValue, AlphabetDirectionValue, TextValue } from '../index'
+import type { IntegerValue, AlphabetDirectionValue, TextValue } from '../index'
 import type { Operation } from '../operation'
-import { diagnostic, text, CipherDiagnostic } from '../operation_support'
+import { diagnostic, CipherDiagnostic } from '../operation_support'
 
 export type TranspositionParameters = { rows?: number }
 

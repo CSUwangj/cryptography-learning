@@ -61,8 +61,8 @@ type LessonRoute = { lessonId: string }
 type LoadState =
   | { status: 'loading' }
   | { status: 'not-found' }
-  | { status: 'error'; diagnostics: readonly Diagnostic[] }
-  | { status: 'ready'; state: LessonSessionState }
+  | { status: 'error', diagnostics: readonly Diagnostic[] }
+  | { status: 'ready', state: LessonSessionState }
 
 const diagnostic = (message: string): Diagnostic => ({
   code: 'lesson.load-failed',
@@ -79,8 +79,8 @@ const hexValue = (value: CryptoValue): string => {
 const valueText = (value: CryptoValue): string =>
   'symbol' in value
     ? `${value.symbol} (${value.type.family}<${value.type.mapping}>)`
-      : 'symbols' in value
-        ? `${value.symbols.join('')} (${value.type.family}${'mapping' in value.type ? `<${value.type.mapping}>` : ''})`
+    : 'symbols' in value
+      ? `${value.symbols.join('')} (${value.type.family}${'mapping' in value.type ? `<${value.type.mapping}>` : ''})`
       : 'value' in value
         ? `${value.value} (${value.type.family})`
         : `${hexValue(value)} (${value.type.family}<${(value.type as { size: number }).size}>)`
@@ -103,14 +103,14 @@ const diagnosticText = (value: Diagnostic, t: TFunction<'translations'>): string
   `${value.code}: ${lessonDiagnosticCodes.has(value.code) ? t(`learning.runtime.${value.code}`, { defaultValue: value.message }) : value.message}${value.path ? ` (${value.path})` : ''}${value.span ? ` ${t('learning.diagnosticLocation', { file: value.span.file, line: value.span.line, column: value.span.column })}` : ''}`
 
 const classicalCipherData = (
-  step: { readonly execute?: { readonly graph: string; readonly bindings: Readonly<Record<string, LessonValueReference>> }; readonly visualizer?: { readonly id: string; readonly bindings?: Readonly<Record<string, unknown>> } },
+  step: { readonly execute?: { readonly graph: string, readonly bindings: Readonly<Record<string, LessonValueReference>> }, readonly visualizer?: { readonly id: string, readonly bindings?: Readonly<Record<string, unknown>> } },
   lesson: BrowserLessonSession['lesson'],
   state: LessonSessionState,
 ) => {
   if (step.visualizer?.id !== 'classical-cipher@1' || !step.execute) return undefined
   const value = (binding: unknown): CryptoValue | undefined => {
     if (typeof binding !== 'object' || binding === null) return undefined
-    const reference = binding as { input?: unknown; step?: unknown; output?: unknown; constant?: unknown }
+    const reference = binding as { input?: unknown, step?: unknown, output?: unknown, constant?: unknown }
     const input = typeof reference.input === 'string' ? state.inputs[reference.input] : undefined
     const output = typeof reference.step === 'string' && typeof reference.output === 'string'
       ? state.snapshots[reference.step]?.outputs[reference.output]
@@ -346,21 +346,21 @@ const LessonView: React.FC = () => {
         <p>{locale.texts[input.prompt]}</p>
         {input.type.family === 'alphabet-policy' || input.type.family === 'alphabet-direction'
           ? <select value={value} onChange={(event) => setInput(event.target.value)}>
-              {input.type.family === 'alphabet-policy'
-                ? <>
-                    <option value="preserve">{t('learning.policy.preserve')}</option>
-                    <option value="strict">{t('learning.policy.strict')}</option>
-                  </>
-                : <>
-                    <option value="encrypt">{t('learning.direction.encrypt')}</option>
-                    <option value="decrypt">{t('learning.direction.decrypt')}</option>
-                  </>}
-            </select>
+            {input.type.family === 'alphabet-policy'
+              ? <>
+                <option value="preserve">{t('learning.policy.preserve')}</option>
+                <option value="strict">{t('learning.policy.strict')}</option>
+              </>
+              : <>
+                <option value="encrypt">{t('learning.direction.encrypt')}</option>
+                <option value="decrypt">{t('learning.direction.decrypt')}</option>
+              </>}
+          </select>
           : <InputGroup
-              value={value}
-              inputMode={input.type.family === 'integer' ? 'numeric' : undefined}
-              onChange={(event) => setInput(event.target.value)}
-            />}
+            value={value}
+            inputMode={input.type.family === 'integer' ? 'numeric' : undefined}
+            onChange={(event) => setInput(event.target.value)}
+          />}
         {state.inputDiagnostics[input.input] && <Callout intent="danger">{lessonDiagnosticCodes.has(state.inputDiagnostics[input.input].code)
           ? t(`learning.runtime.${state.inputDiagnostics[input.input].code}`, { defaultValue: state.inputDiagnostics[input.input].message })
           : state.inputDiagnostics[input.input].message}</Callout>}

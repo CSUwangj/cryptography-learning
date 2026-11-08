@@ -5,7 +5,7 @@ export type LessonDryRunStep = {
   readonly id: string
   readonly execution?: 'accepted-error'
   readonly diagnostics?: readonly Diagnostic[]
-  readonly check?: { readonly kind: 'equal'; readonly matched: boolean } | { readonly kind: 'choice' }
+  readonly check?: { readonly kind: 'equal', readonly matched: boolean } | { readonly kind: 'choice' }
 }
 
 export type LessonDryRun = {
@@ -21,7 +21,7 @@ export type LessonValidationReport = {
 
 const diagnostic = (code: string, message: string, path: string): Diagnostic => ({ code, message, path, details: {} })
 
-const dryRun = (lesson: CompiledLesson): { ok: true; value: LessonDryRun } | { ok: false; diagnostics: readonly Diagnostic[] } => {
+const dryRun = (lesson: CompiledLesson): { ok: true, value: LessonDryRun } | { ok: false, diagnostics: readonly Diagnostic[] } => {
   const snapshots = new Map<string, WorkerExecutionSnapshot>()
   const steps: LessonDryRunStep[] = []
   const snapshotValue = (stepId: string, output: string): CryptoValue | undefined => {

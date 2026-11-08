@@ -10,9 +10,9 @@ export type ExecutionTraceRendererProps = {
   readonly execution: WorkerExecutionSnapshot
   readonly executionIdentity: string
   readonly primitiveLabels?: Readonly<Record<string, string>>
-  readonly spn?: { readonly graph: CompiledGraph; readonly presentation: Extract<LessonPresentation, { kind: 'spn-cipher' }> }
+  readonly spn?: { readonly graph: CompiledGraph, readonly presentation: Extract<LessonPresentation, { kind: 'spn-cipher' }> }
   readonly overlay?: {
-    readonly anchors: readonly { readonly cipherRow: string; readonly scheduleRow: string; readonly round: number }[]
+    readonly anchors: readonly { readonly cipherRow: string, readonly scheduleRow: string, readonly round: number }[]
     readonly execution: WorkerExecutionSnapshot
     readonly graph: CompiledGraph
     readonly presentation?: LessonPresentation

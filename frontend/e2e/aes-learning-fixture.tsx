@@ -1,4 +1,3 @@
-import React from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { flushSync } from 'react-dom'
 import { LearningPresentationView, type LearningPresentation } from '../src/ui/learning'
@@ -75,7 +74,7 @@ export const aesOverlayFixturePresentation: LearningPresentation = {
   },
 }
 
-export const mountAesFixture = (presentation: LearningPresentation): { readonly element: HTMLElement; readonly unmount: () => void } => {
+export const mountAesFixture = (presentation: LearningPresentation): { readonly element: HTMLElement, readonly unmount: () => void } => {
   const element = document.createElement('div')
   document.body.append(element)
   const root: Root = createRoot(element)

@@ -1,8 +1,8 @@
-import type { AuthoredNode, BitsValue, CryptoValue, PortType, IntegerValue, AlphabetMapping, AlphabetPolicyValue, AlphabetTextValue } from '../index'
+import type { BitsValue } from '../index'
 import type { Operation } from '../operation'
 import { validPermutation, diagnostic, rangeParameter, bytesForBits, readBits, writeBits, bits } from '../operation_support'
 
-export type SubstituteNibblesParameters = { sBox: readonly number[]; start?: number; count?: number }
+export type SubstituteNibblesParameters = { sBox: readonly number[], start?: number, count?: number }
 
 export const substituteNibbles: Operation<'core.substitute-nibbles@1', SubstituteNibblesParameters> = {
   manifest: {

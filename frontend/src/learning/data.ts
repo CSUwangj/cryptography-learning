@@ -9,8 +9,8 @@ import type { LearningCategory, LessonDocuments } from './domain'
 
 const mapCategory = (category: {
   id: string
-  name: readonly { lang: string; text: string }[]
-  lessons: readonly { id: string; title: string | null }[]
+  name: readonly { lang: string, text: string }[]
+  lessons: readonly { id: string, title: string | null }[]
 }): LearningCategory => ({
   id: category.id,
   names: category.name.map((name) => ({ language: name.lang, text: name.text })),

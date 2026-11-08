@@ -1,11 +1,11 @@
 import React from 'react'
 
-type XorTerm = { readonly left: string; readonly right: string; readonly output: string }
+type XorTerm = { readonly left: string, readonly right: string, readonly output: string }
 
-export const XorVisual: React.FC<{ readonly label: string; readonly terms: readonly XorTerm[] }> = ({ label, terms }) =>
+export const XorVisual: React.FC<{ readonly label: string, readonly terms: readonly XorTerm[] }> = ({ label, terms }) =>
   <><p>{label}</p><ul>{terms.map((term) => <li key={`${term.left}-${term.right}-${term.output}`}>{`${term.left} ⊕ ${term.right} = ${term.output}`}</li>)}</ul></>
 
-type SubstitutionLane = { readonly input: string; readonly output: string }
+type SubstitutionLane = { readonly input: string, readonly output: string }
 
 export const SubstitutionVisual: React.FC<{
   readonly lanes: readonly SubstitutionLane[]

@@ -187,7 +187,7 @@ export const Shell: React.FC<PropsWithChildren> = ({ children }) => {
     <Header>
       <NavMenu className={dark ? Classes.DARK : undefined}>
         <PrimaryNavigation align={Alignment.LEFT}>
-            <Unselectable data-home-navigation>
+          <Unselectable data-home-navigation>
             <NavbarHeading><CompactAction data-icon-only minimal large icon={applicationIcons.navigation.home} text={t('nav.home')} aria-label={t('nav.homeAction')} title={t('nav.homeAction')} onClick={() => history.push('/')}/></NavbarHeading>
           </Unselectable>
           <NavbarDivider />

@@ -149,7 +149,7 @@ const CharacterTransform: React.FC<{
 }
 
 export const HorizontalClassicalCipherPrototype: React.FC = () => {
-  const { t, i18n } = useTranslation('demos', { keyPrefix: 'classicalCipher' })
+  const { t } = useTranslation('demos', { keyPrefix: 'classicalCipher' })
   const [algorithm, setAlgorithm] = useState<AlgorithmType>('caesar')
   const [plaintext, setPlaintext] = useState('HELLO WORLD')
   const [caesarShift, setCaesarShift] = useState(3)
@@ -161,10 +161,10 @@ export const HorizontalClassicalCipherPrototype: React.FC = () => {
 
   const characters: CipherCharacter[] = (() => {
     switch (algorithm) {
-      case 'caesar': return caesarEncrypt(plaintext, caesarShift)
-      case 'vigenere': return vigenereEncrypt(plaintext, vigenereKey)
-      case 'affine': return affineEncrypt(plaintext, affineA, affineB)
-      case 'substitution': return substitutionEncrypt(plaintext)
+    case 'caesar': return caesarEncrypt(plaintext, caesarShift)
+    case 'vigenere': return vigenereEncrypt(plaintext, vigenereKey)
+    case 'affine': return affineEncrypt(plaintext, affineA, affineB)
+    case 'substitution': return substitutionEncrypt(plaintext)
     }
   })()
 

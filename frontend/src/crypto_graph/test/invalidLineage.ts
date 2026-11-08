@@ -1,4 +1,3 @@
-import type { AuthoredNode, BitsValue, CryptoValue, PortType, IntegerValue, AlphabetMapping, AlphabetPolicyValue, AlphabetTextValue } from '../index'
 import type { Operation } from '../operation'
 import { cloneValue } from '../operation_support'
 

@@ -25,7 +25,7 @@ export type RenderHostProps = {
   readonly overlay?: ExecutionTraceRendererProps['overlay']
   readonly comparison?: AvalancheComparison
   readonly execution?: WorkerExecutionSnapshot
-  readonly dimensions: { readonly width: number; readonly height: number }
+  readonly dimensions: { readonly width: number, readonly height: number }
   readonly reducedMotion: boolean
   readonly executionIdentity: string
   readonly classicalCipher?: {
@@ -63,8 +63,8 @@ const Fallback: React.FC<Pick<RenderHostProps, 'comparison' | 'execution'>> = ({
       <thead><tr><th>{t('path')}</th><th>{t('baseline')}</th><th>{t('changed')}</th><th>{t('mask')}</th></tr></thead>
       <tbody>{comparison.checkpoints.map((checkpoint) => checkpoint.complete
         ? <tr key={checkpoint.path}>
-            <th>{checkpoint.path}</th><td>{safeHex(checkpoint.left)}</td><td>{safeHex(checkpoint.right)}</td><td>{safeHex(checkpoint.mask)}</td>
-          </tr>
+          <th>{checkpoint.path}</th><td>{safeHex(checkpoint.left)}</td><td>{safeHex(checkpoint.right)}</td><td>{safeHex(checkpoint.mask)}</td>
+        </tr>
         : <tr key={checkpoint.path}><th>{checkpoint.path}</th><td colSpan={3}>{t('gap')}</td></tr>)}</tbody>
     </table>
   </section>
@@ -100,53 +100,53 @@ export const RenderHost: React.FC<RenderHostProps> = (props) => {
     ...(props.overlay.presentation.labels && props.lessonTexts ? { labels: Object.fromEntries(Object.entries(props.overlay.presentation.labels).map(([identity, textId]) => [identity, props.lessonTexts![textId] ?? textId])) } : {}),
   } }, [props.overlay?.anchors, props.overlay?.execution, props.overlay?.graph, props.overlay?.presentation, props.lessonTexts])
   return <IsolatedRenderer comparison={props.comparison} execution={props.execution} key={props.executionIdentity}>
-      {presentation?.kind === 'block-cipher' && props.execution
-        ? <BlockCipherRenderer
-            execution={props.execution}
-            executionIdentity={props.executionIdentity}
-            presentation={presentation}
-            keyScheduleExecution={keyScheduleExecution}
-          />
-        : presentation?.kind === 'key-expansion' && props.execution
-          ? <KeyExpansionRenderer
-              execution={props.execution}
-              executionIdentity={props.executionIdentity}
-              presentation={presentation}
-            />
+    {presentation?.kind === 'block-cipher' && props.execution
+      ? <BlockCipherRenderer
+        execution={props.execution}
+        executionIdentity={props.executionIdentity}
+        presentation={presentation}
+        keyScheduleExecution={keyScheduleExecution}
+      />
+      : presentation?.kind === 'key-expansion' && props.execution
+        ? <KeyExpansionRenderer
+          execution={props.execution}
+          executionIdentity={props.executionIdentity}
+          presentation={presentation}
+        />
         : presentation?.kind === 'spn-cipher' && (presentation.mode === 'key-expansion' || presentation.rowOrder) && props.execution && props.compiledGraph
           ? <ExecutionTraceRenderer
-              execution={props.execution}
-              executionIdentity={props.executionIdentity}
-              primitiveLabels={presentation.labels}
-              spn={spn}
-              overlay={overlay}
-            />
-        : !props.invocation && props.execution
-        ? <ExecutionTraceRenderer
             execution={props.execution}
             executionIdentity={props.executionIdentity}
-            primitiveLabels={presentation?.labels}
+            primitiveLabels={presentation.labels}
+            spn={spn}
+            overlay={overlay}
           />
-        : props.invocation?.id === 'avalanche@1' && props.comparison
-        ? <AvalancheRenderer
-            comparison={props.comparison}
-            executionIdentity={props.executionIdentity}
-          />
-        : props.invocation?.id === 'teaching-spn@1' && props.execution
-          ? <TeachingSpnRenderer
+          : !props.invocation && props.execution
+            ? <ExecutionTraceRenderer
               execution={props.execution}
               executionIdentity={props.executionIdentity}
+              primitiveLabels={presentation?.labels}
             />
-          : props.invocation?.id === 'classical-cipher@1' && props.classicalCipher
-            ? <ClassicalCipherRenderer
-                {...props.classicalCipher}
-                positions={classicalCipherPositions(
-                  props.classicalCipher.input,
-                  props.classicalCipher.output,
-                  props.classicalCipher.mapping,
-                )}
-                reducedMotion={props.reducedMotion}
+            : props.invocation?.id === 'avalanche@1' && props.comparison
+              ? <AvalancheRenderer
+                comparison={props.comparison}
+                executionIdentity={props.executionIdentity}
               />
-            : <Fallback comparison={props.comparison} execution={props.execution} />}
+              : props.invocation?.id === 'teaching-spn@1' && props.execution
+                ? <TeachingSpnRenderer
+                  execution={props.execution}
+                  executionIdentity={props.executionIdentity}
+                />
+                : props.invocation?.id === 'classical-cipher@1' && props.classicalCipher
+                  ? <ClassicalCipherRenderer
+                    {...props.classicalCipher}
+                    positions={classicalCipherPositions(
+                      props.classicalCipher.input,
+                      props.classicalCipher.output,
+                      props.classicalCipher.mapping,
+                    )}
+                    reducedMotion={props.reducedMotion}
+                  />
+                  : <Fallback comparison={props.comparison} execution={props.execution} />}
   </IsolatedRenderer>
 }

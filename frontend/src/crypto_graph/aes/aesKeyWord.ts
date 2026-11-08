@@ -1,6 +1,6 @@
-import type { AuthoredNode, BitsValue, CryptoValue, PortType, IntegerValue, AlphabetMapping, AlphabetPolicyValue, AlphabetTextValue } from '../index'
+import type { BitsValue } from '../index'
 import type { Operation } from '../operation'
-import { diagnostic, bytes, bits, CipherDiagnostic } from '../operation_support'
+import { diagnostic, bits, CipherDiagnostic } from '../operation_support'
 
 export type AesKeyWordParameters = { index: number }
 

@@ -1,4 +1,4 @@
-import type { AuthoredNode, BitsValue, CryptoValue, PortType, IntegerValue, AlphabetMapping, AlphabetPolicyValue, AlphabetTextValue } from '../index'
+import type { BitsValue } from '../index'
 import type { Operation } from '../operation'
 import { diagnostic, bytesForBits, bitAt, setBit, bits } from '../operation_support'
 

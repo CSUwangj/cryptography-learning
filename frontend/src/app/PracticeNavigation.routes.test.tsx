@@ -1,4 +1,3 @@
-import React from 'react'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryHistory } from 'history'
@@ -92,7 +91,7 @@ describe('Practice Navigation routes (#57)', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {
-        const body = JSON.parse(String(init?.body)) as { operationName?: string; query?: string }
+        const body = JSON.parse(String(init?.body)) as { operationName?: string, query?: string }
         const response = body.operationName === 'Practices' ? catalogResponse : labResponse
         return Promise.resolve(
           new Response(JSON.stringify(response), {

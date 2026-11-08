@@ -1,5 +1,5 @@
 // Throwaway #95 P0-A5/A6: one real-Shell candidate on /learning, with adjustable spacing.
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ApolloClient, ApolloLink, InMemoryCache } from '@apollo/client'
 import { ApolloProvider } from '@apollo/client/react'
 import { H2, H3, OverlaysProvider } from '@blueprintjs/core'
@@ -24,7 +24,7 @@ const categories = [
 const Frame = styled.div`
   height: 100%;
 `
-const Content = styled.main<{ $desktop: number; $narrow: number; $measure: number }>`
+const Content = styled.main<{ $desktop: number, $narrow: number, $measure: number }>`
   box-sizing: border-box;
   min-width: 0;
   padding: 24px ${({ $desktop }) => $desktop}px 96px;
@@ -100,33 +100,33 @@ function LearningPreview() {
   }
   return <Frame data-prototype="learning-shell">
     <Content $desktop={desktop} $narrow={narrow} $measure={measure}>
-        {lesson ? <>
-          <nav className="breadcrumb prose" aria-label={breadcrumb}><Link to={path('/learning')}>{t('nav.learning')}</Link>{' > '}{category && t(`learningShell.categoryNames.${category.id}`, { ns: 'demos' })}{' > '}<span aria-current="page">{t(`learningShell.lessonTitles.${lesson.id}`, { ns: 'demos' })}</span></nav>
-          <div className="prose"><H2>{t(`learningShell.lessonTitles.${lesson.id}`, { ns: 'demos' })}</H2><Markdown source={t('learningShell.prose', { ns: 'demos' })} /></div>
-          {category?.id === 'block-ciphers' && <>
-            <LearningPresentationView key={lesson.id} presentation={presentation} />
-            <div className="prose"><Markdown source={t('learningShell.after', { ns: 'demos' })} /></div>
-          </>}
-        </> : isLearning ? <div className="prose">
-          <H2>{t('learning.title')}</H2>
-          {categories.map((item) => <section key={item.id}><H3>{t(`learningShell.categoryNames.${item.id}`, { ns: 'demos' })}</H3><ul>
-            {item.lessons.map((entry) => <li key={entry.id}><Link to={path(`/learning/${entry.id}`)}>{t(`learningShell.lessonTitles.${entry.id}`, { ns: 'demos' })}</Link></li>)}
-          </ul></section>)}
-        </div> : <div className="prose">
-          <H2>{t(location.pathname === '/' ? 'nav.home' : location.pathname === '/feedback' ? 'nav.feedback' : location.pathname === '/completion' ? 'nav.completion' : 'nav.practice')}</H2>
-          <Link to={path('/learning')}>{t('learningShell.catalog', { ns: 'demos' })}</Link>
-        </div>}
+      {lesson ? <>
+        <nav className="breadcrumb prose" aria-label={breadcrumb}><Link to={path('/learning')}>{t('nav.learning')}</Link>{' > '}{category && t(`learningShell.categoryNames.${category.id}`, { ns: 'demos' })}{' > '}<span aria-current="page">{t(`learningShell.lessonTitles.${lesson.id}`, { ns: 'demos' })}</span></nav>
+        <div className="prose"><H2>{t(`learningShell.lessonTitles.${lesson.id}`, { ns: 'demos' })}</H2><Markdown source={t('learningShell.prose', { ns: 'demos' })} /></div>
+        {category?.id === 'block-ciphers' && <>
+          <LearningPresentationView key={lesson.id} presentation={presentation} />
+          <div className="prose"><Markdown source={t('learningShell.after', { ns: 'demos' })} /></div>
+        </>}
+      </> : isLearning ? <div className="prose">
+        <H2>{t('learning.title')}</H2>
+        {categories.map((item) => <section key={item.id}><H3>{t(`learningShell.categoryNames.${item.id}`, { ns: 'demos' })}</H3><ul>
+          {item.lessons.map((entry) => <li key={entry.id}><Link to={path(`/learning/${entry.id}`)}>{t(`learningShell.lessonTitles.${entry.id}`, { ns: 'demos' })}</Link></li>)}
+        </ul></section>)}
+      </div> : <div className="prose">
+        <H2>{t(location.pathname === '/' ? 'nav.home' : location.pathname === '/feedback' ? 'nav.feedback' : location.pathname === '/completion' ? 'nav.completion' : 'nav.practice')}</H2>
+        <Link to={path('/learning')}>{t('learningShell.catalog', { ns: 'demos' })}</Link>
+      </div>}
     </Content>
     <SpacingControls>
-        <summary>{t('learningShell.spacing', { ns: 'demos' })}: {desktop}/{narrow}px · {measure}rem</summary>
-        {[
-          { label: t('learningShell.desktop', { ns: 'demos' }), value: desktop, set: setDesktop, min: 0, max: 64 },
-          { label: t('learningShell.narrow', { ns: 'demos' }), value: narrow, set: setNarrow, min: 0, max: 32 },
-          { label: t('learningShell.measure', { ns: 'demos' }), value: measure, set: setMeasure, min: 24, max: 80 },
-        ].map(({ label, value, set, min, max }) =>
-          <label key={label}>{label}<input type="number" min={min} max={max} value={value} onChange={(event) => {
-            if (event.target.value && event.target.validity.valid) set(event.target.valueAsNumber)
-          }} /></label>)}
+      <summary>{t('learningShell.spacing', { ns: 'demos' })}: {desktop}/{narrow}px · {measure}rem</summary>
+      {[
+        { label: t('learningShell.desktop', { ns: 'demos' }), value: desktop, set: setDesktop, min: 0, max: 64 },
+        { label: t('learningShell.narrow', { ns: 'demos' }), value: narrow, set: setNarrow, min: 0, max: 32 },
+        { label: t('learningShell.measure', { ns: 'demos' }), value: measure, set: setMeasure, min: 24, max: 80 },
+      ].map(({ label, value, set, min, max }) =>
+        <label key={label}>{label}<input type="number" min={min} max={max} value={value} onChange={(event) => {
+          if (event.target.value && event.target.validity.valid) set(event.target.valueAsNumber)
+        }} /></label>)}
     </SpacingControls>
   </Frame>
 }
@@ -145,13 +145,13 @@ export function LearningShellPrototype() {
         })),
       })) },
       practice: { __typename: 'Practice', labCategories: [{
-      __typename: 'LabCategory', id: 'classical', name: ['en-US', 'zh-CN'].map((lang) => ({
-        __typename: 'Translation', lang, text: productionI18n.getFixedT(lang, 'demos')('learningShell.practiceCategory'),
-      })),
-      labs: [{ __typename: 'Lab', id: 'caesar', wsEndpoints: [], tcpEndpoints: [], resources: ['en-US', 'zh-CN'].map((lang) => ({
-        __typename: 'ResourceWithTranslation', lang, name: productionI18n.getFixedT(lang, 'demos')('learningShell.practiceTitle'),
-      })) }],
-    }] } } })),
+        __typename: 'LabCategory', id: 'classical', name: ['en-US', 'zh-CN'].map((lang) => ({
+          __typename: 'Translation', lang, text: productionI18n.getFixedT(lang, 'demos')('learningShell.practiceCategory'),
+        })),
+        labs: [{ __typename: 'Lab', id: 'caesar', wsEndpoints: [], tcpEndpoints: [], resources: ['en-US', 'zh-CN'].map((lang) => ({
+          __typename: 'ResourceWithTranslation', lang, name: productionI18n.getFixedT(lang, 'demos')('learningShell.practiceTitle'),
+        })) }],
+      }] } } })),
   }))
   return <I18nextProvider i18n={productionI18n}><BrowserRouter><OverlaysProvider><ApolloProvider client={client}>
     <Shell><LearningPreview /></Shell>

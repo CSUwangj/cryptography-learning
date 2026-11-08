@@ -8,7 +8,7 @@ import {
   PracticeMenuCategory,
 } from './domain'
 
-const mapEndpoint = (endpoint: { host: string; port: number }): ChallengeEndpoint => ({
+const mapEndpoint = (endpoint: { host: string, port: number }): ChallengeEndpoint => ({
   host: endpoint.host,
   port: endpoint.port,
 })

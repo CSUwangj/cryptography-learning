@@ -55,7 +55,7 @@ Detailed verification and execution handoff rules live in
 is defined by [ticket-loop](.agents/skills/ticket-loop/SKILL.md). The planner in
 `scripts/test_plan.py` owns path-to-check coverage.
 
-Use `npm run lint` cautiously: the configured script includes `--fix` and modifies files.
+Use `npm run lint` for a read-only check. Run `npm run lint:fix` only when repairs are intended.
 
 Before phase execution, delegation, or diff review, read the handoff guide. Its
 review report format does not apply to grilling or specification sessions.

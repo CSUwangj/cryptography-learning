@@ -37,8 +37,8 @@ const {
     onKey: ReturnType<typeof vi.fn>
     onResize: ReturnType<typeof vi.fn>
   }> = []
-  const fitAddons: Array<{ fit: ReturnType<typeof vi.fn>; dispose: ReturnType<typeof vi.fn> }> = []
-  const attachAddons: Array<{ socket: unknown; dispose: ReturnType<typeof vi.fn> }> = []
+  const fitAddons: Array<{ fit: ReturnType<typeof vi.fn>, dispose: ReturnType<typeof vi.fn> }> = []
+  const attachAddons: Array<{ socket: unknown, dispose: ReturnType<typeof vi.fn> }> = []
 
   class MockTerminal {
     options = { disableStdin: false }
@@ -362,7 +362,7 @@ describe('Terminal module (#17)', () => {
     })
 
     const retry = await screen.findByRole('button', { name: /retry/i })
-    const exit = screen.getByRole('button', { name: /exit/i })
+    screen.getByRole('button', { name: /exit/i })
     expect(terminalInstances[0].onKey).not.toHaveBeenCalled()
 
     await user.click(retry)

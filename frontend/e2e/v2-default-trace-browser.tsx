@@ -1,4 +1,3 @@
-import React from 'react'
 import { flushSync } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import { bits, type WorkerRequest, type WorkerResponse, hex } from '../src/crypto_graph'
@@ -86,7 +85,7 @@ export const warmDefaultTraceBrowserWorker = async (): Promise<void> => {
   }
 }
 
-export const runDefaultTraceBrowserProbe = async (locale: 'en-US' | 'zh-CN'): Promise<{ output: string; trace: readonly string[]; text: string }> => {
+export const runDefaultTraceBrowserProbe = async (locale: 'en-US' | 'zh-CN'): Promise<{ output: string, trace: readonly string[], text: string }> => {
   await i18n.changeLanguage(locale)
   const created = createBrowserLessonSession(documents, locale, i18n.getFixedT(locale, 'translations'))
   if (!created.ok) throw new Error(created.diagnostics[0]?.message)
@@ -112,7 +111,7 @@ export const runDefaultTraceBrowserProbe = async (locale: 'en-US' | 'zh-CN'): Pr
   return probe
 }
 
-export const runNamedTableBrowserProbe = async (locale: 'en-US' | 'zh-CN'): Promise<{ output: string; trace: readonly string[]; table: unknown; text: string }> => {
+export const runNamedTableBrowserProbe = async (locale: 'en-US' | 'zh-CN'): Promise<{ output: string, trace: readonly string[], table: unknown, text: string }> => {
   await i18n.changeLanguage(locale)
   const created = createBrowserLessonSession(tableDocuments, locale, i18n.getFixedT(locale, 'translations'))
   if (!created.ok) throw new Error(created.diagnostics[0]?.message)

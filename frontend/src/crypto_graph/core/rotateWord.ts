@@ -1,8 +1,8 @@
-import type { AuthoredNode, BitsValue, CryptoValue, PortType, IntegerValue, AlphabetMapping, AlphabetPolicyValue, AlphabetTextValue } from '../index'
+import type { BitsValue } from '../index'
 import type { Operation } from '../operation'
-import { diagnostic, bytes, writeBits, readBits, bits } from '../operation_support'
+import { diagnostic, writeBits, readBits, bits } from '../operation_support'
 
-export type RotateWordParameters = { target: number; amount: number }
+export type RotateWordParameters = { target: number, amount: number }
 
 export const rotateWord: Operation<'core.rotate-word@1', RotateWordParameters> = {
   manifest: {

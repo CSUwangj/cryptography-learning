@@ -76,7 +76,7 @@ export const Aes192OverlayPrototype: React.FC = () => {
   const variant = variants.find((item) => item.key === query.get('variant')) ?? variants[0]
   const [bitMode, setBitMode] = useState(false)
   const [openKey, setOpenKey] = useState<number>()
-  const [selection, setSelection] = useState<{ row: string; start: number; width: number }>()
+  const [selection, setSelection] = useState<{ row: string, start: number, width: number }>()
   const data = useMemo(() => prototypeData(visualizerT, direction), [visualizerT, direction])
   const seeds = useMemo(() => selection ? range(selection.width, selection.start).map((bit) => `${selection.row}#${bit}`) : [], [selection])
   const related = useMemo(() => selectedLineage(data, seeds), [data, seeds])
@@ -84,7 +84,7 @@ export const Aes192OverlayPrototype: React.FC = () => {
   const cover = variant.surface === 'cover' && openKey !== undefined
   const canvas = useRef<HTMLDivElement>(null)
   const targets = useRef(new Map<string, HTMLButtonElement>())
-  const [geometry, setGeometry] = useState({ width: 0, height: 0, locations: new Map<string, { x: number; y: number }>() })
+  const [geometry, setGeometry] = useState({ width: 0, height: 0, locations: new Map<string, { x: number, y: number }>() })
   const update = (name: string, value: string) => {
     const next = new URLSearchParams(window.location.search)
     next.set(name, value)
@@ -108,7 +108,7 @@ export const Aes192OverlayPrototype: React.FC = () => {
     const measure = () => {
       if (!canvas.current) return
       const origin = canvas.current.getBoundingClientRect()
-      const locations = new Map<string, { x: number; y: number }>()
+      const locations = new Map<string, { x: number, y: number }>()
       targets.current.forEach((target, id) => {
         const box = target.getBoundingClientRect()
         locations.set(id, { x: box.left - origin.left + box.width / 2, y: box.top - origin.top + box.height / 2 })

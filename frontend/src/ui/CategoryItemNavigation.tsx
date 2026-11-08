@@ -3,8 +3,8 @@ import { Breadcrumb, Button, H4, PopoverNext, PopupKind, Spinner } from '@bluepr
 import type { IconName } from '@blueprintjs/core'
 import styled from '@emotion/styled'
 
-export type CategoryItem = { readonly id: string; readonly name: string }
-export type CategoryItemCategory = { readonly id: string; readonly name: string; readonly items: readonly CategoryItem[] }
+export type CategoryItem = { readonly id: string, readonly name: string }
+export type CategoryItemCategory = { readonly id: string, readonly name: string, readonly items: readonly CategoryItem[] }
 
 export type CategoryItemNavigationProps = {
   className?: string
@@ -22,7 +22,7 @@ export type CategoryItemNavigationProps = {
   triggerIcon: IconName
   loading: boolean
   error: boolean
-  action?: { readonly icon: IconName; readonly label: string; readonly onClick: () => void }
+  action?: { readonly icon: IconName, readonly label: string, readonly onClick: () => void }
   onOpenChange?: (open: boolean) => void
   onItemSelect: (categoryId: string, itemId: string) => void
 }

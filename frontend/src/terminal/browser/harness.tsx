@@ -9,9 +9,9 @@ declare global {
       getVisibleText: () => string
     outbound: string[]
     inbound: string[]
-      resizeEvents: Array<{ cols: number; rows: number }>
+      resizeEvents: Array<{ cols: number, rows: number }>
       switchEndpoint: (nextUrl: string) => void
-      socketCounts: { opened: number; closed: number }
+      socketCounts: { opened: number, closed: number }
     }
     __terminalHarnessRoot?: Root
   }
@@ -26,7 +26,7 @@ if (!url) {
 
 const outbound: string[] = []
 const inbound: string[] = []
-const resizeEvents: Array<{ cols: number; rows: number }> = []
+const resizeEvents: Array<{ cols: number, rows: number }> = []
 const socketCounts = { opened: 0, closed: 0 }
 const OriginalWebSocket = window.WebSocket
 

@@ -12,7 +12,7 @@ export type AvalancheRendererProps = {
   readonly executionIdentity: string
 }
 
-const stageName = (checkpoint: { readonly path: string; readonly stage?: string; readonly round?: number }, t: TFunction<'visualizers'>): string => {
+const stageName = (checkpoint: { readonly path: string, readonly stage?: string, readonly round?: number }, t: TFunction<'visualizers'>): string => {
   if (checkpoint.stage === 'key-mix') return t('avalanche.keyMix')
   if (checkpoint.stage === 'substitute') return t('avalanche.substitution')
   if (checkpoint.stage === 'permute') return t('avalanche.permutation')
@@ -35,12 +35,12 @@ export const avalanchePresentation = (comparison: AvalancheComparison, t: TFunct
   const warned = (checkpoint: AvalancheCheckpoint): boolean => checkpoint.complete && checkpoint.stage === 'round-key' && checkpoint.changedBits > 0
   const summary: readonly LearningRow[] = comparison.checkpoints.map((checkpoint) => checkpoint.complete
     ? {
-        id: checkpoint.path,
-        label: stageName(checkpoint, t),
-        state: warned(checkpoint) ? 'warning' : undefined,
-        cells: [hex(checkpoint.left), hex(checkpoint.right), checkpoint.changedBits, checkpoint.ratio].map((value) => ({ value })),
-        detail: warned(checkpoint) ? t('avalanche.warning') : undefined,
-      }
+      id: checkpoint.path,
+      label: stageName(checkpoint, t),
+      state: warned(checkpoint) ? 'warning' : undefined,
+      cells: [hex(checkpoint.left), hex(checkpoint.right), checkpoint.changedBits, checkpoint.ratio].map((value) => ({ value })),
+      detail: warned(checkpoint) ? t('avalanche.warning') : undefined,
+    }
     : { id: checkpoint.path, label: stageName(checkpoint, t), cells: [{ value: t('avalanche.gap') }] })
   const retained: readonly LearningRow[] = (['baseline', 'changed'] as const).flatMap((run) => comparison.executions[run].trace.flatMap((event) =>
     'value' in event && event.value && 'bytes' in event.value ? [{ id: `${run}-${event.path}`, label: t(`avalanche.${run}`), cells: [{ value: event.path }, { value: hex(event.value) }] }] : []))
@@ -67,11 +67,11 @@ export const avalanchePresentation = (comparison: AvalancheComparison, t: TFunct
       },
       ...(comparison.truncated
         ? [{
-            kind: 'raw' as const,
-            caption: t('avalanche.incomplete'),
-            headers: [t('avalanche.run'), t('avalanche.stage'), t('avalanche.raw')],
-            rows: [...retained, { id: 'gap', label: t('avalanche.gap'), state: 'incomplete' as const, cells: [{ value: '—' }, { value: '—' }] }],
-          }]
+          kind: 'raw' as const,
+          caption: t('avalanche.incomplete'),
+          headers: [t('avalanche.run'), t('avalanche.stage'), t('avalanche.raw')],
+          rows: [...retained, { id: 'gap', label: t('avalanche.gap'), state: 'incomplete' as const, cells: [{ value: '—' }, { value: '—' }] }],
+        }]
         : []),
     ],
   }

@@ -1,4 +1,3 @@
-import React from 'react'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, it } from 'vitest'
 import { ApolloClient, ApolloLink, InMemoryCache } from '@apollo/client'

@@ -83,7 +83,7 @@ const isUint8Array = (value: unknown): value is Uint8Array => Object.prototype.t
 
 export const isCryptoValue = (value: unknown): value is CryptoValue => {
   if (typeof value !== 'object' || value === null || !('type' in value)) return false
-  const candidate = value as { type: unknown; bytes?: unknown; words?: unknown; symbol?: unknown; symbols?: unknown; value?: unknown }
+  const candidate = value as { type: unknown, bytes?: unknown, words?: unknown, symbol?: unknown, symbols?: unknown, value?: unknown }
   if (!isPortType(candidate.type)) return false
   if (candidate.type.family === 'alphabet-symbol') return typeof candidate.symbol === 'string'
   if (candidate.type.family === 'alphabet-text') return Array.isArray(candidate.symbols) && candidate.symbols.every((symbol) => typeof symbol === 'string' && [...symbol].length === 1)
@@ -198,7 +198,7 @@ export const writeBits = (bytes: Uint8Array, size: number, start: number, value:
   for (let index = 0; index < width; index += 1) if ((value & (1 << (width - index - 1))) !== 0) setBit(bytes, size, start + index)
 }
 
-export const rangeParameter = (parameters: Readonly<Record<string, unknown>>, size: number, node: AuthoredNode): Result<{ start: number; count: number }> => {
+export const rangeParameter = (parameters: Readonly<Record<string, unknown>>, size: number, node: AuthoredNode): Result<{ start: number, count: number }> => {
   const start = parameters.start === undefined ? 0 : parameters.start
   const count = parameters.count === undefined ? size - (typeof start === 'number' ? start : 0) : parameters.count
   if (!Number.isSafeInteger(start) || !Number.isSafeInteger(count) || (start as number) < 0 || (count as number) < 0 || (start as number) + (count as number) > size) {

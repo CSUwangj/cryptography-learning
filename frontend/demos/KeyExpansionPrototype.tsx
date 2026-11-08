@@ -25,7 +25,7 @@ const documentsFor = (masterKey: string) => {
 const traceRows = (execution: WorkerExecutionSnapshot) => execution.trace.flatMap((event) =>
   'value' in event && event.value?.type.family === 'bits' && 'bytes' in event.value ? [{ stage: event.stage, round: event.round }] : [])
 
-type Layout = { readonly left: number; readonly top: number; readonly width: number; readonly height: number; readonly header: number; readonly rows: readonly { readonly top: number; readonly height: number }[] }
+type Layout = { readonly left: number, readonly top: number, readonly width: number, readonly height: number, readonly header: number, readonly rows: readonly { readonly top: number, readonly height: number }[] }
 
 const cell = 16
 const labelWidth = 190

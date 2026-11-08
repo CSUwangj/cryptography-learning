@@ -71,7 +71,7 @@ const expectRenderedElementUnclipped = async (locator: Locator, viewportWidth: n
   })).toBe(true)
 }
 
-const expectNoRectangleOverlap = (boxes: Array<{ x: number; y: number; width: number; height: number }>) => {
+const expectNoRectangleOverlap = (boxes: Array<{ x: number, y: number, width: number, height: number }>) => {
   for (let left = 0; left < boxes.length; left += 1) {
     for (let right = left + 1; right < boxes.length; right += 1) {
       const first = boxes[left]
@@ -172,7 +172,7 @@ test.describe('Home layout (#59)', () => {
         expect(element.x + element.width).toBeLessThanOrEqual(viewport.width)
         expect(element.clipped).toBe(false)
       }
-      const visibleHomeElementBoxes = visibleHomeGeometry.map(({ clipped: _clipped, ...box }) => box)
+      const visibleHomeElementBoxes = visibleHomeGeometry.map(({ x, y, width, height }) => ({ x, y, width, height }))
       expectNoRectangleOverlap(visibleHomeElementBoxes)
       const combinedGeometry = await home.evaluate((root) => {
         const elements = Array.from(root.querySelectorAll('h1, h3, h5, button, a')).filter((element) => {

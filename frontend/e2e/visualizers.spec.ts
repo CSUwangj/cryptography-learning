@@ -3,7 +3,6 @@ import { fileURLToPath } from 'node:url'
 import { expect, test, type Locator, type Page, type TestInfo } from '@playwright/test'
 import { parse, stringify } from 'yaml'
 import { aesKeyExpansionDemoDocuments } from '../demos/aesKeyExpansionLesson'
-import { aesOverlayFixturePresentation } from './aes-learning-fixture'
 
 const lesson = `version: 1
 id: avalanche
@@ -87,7 +86,7 @@ const expectTraceValue = async (page: import('@playwright/test').Page, title: st
 
 const mockLessonDocuments = async (
   page: Page,
-  documentFor: (language: keyof typeof locales) => { lesson: string; locale: string | null },
+  documentFor: (language: keyof typeof locales) => { lesson: string, locale: string | null },
 ) => {
   await page.route('**/query', async (route) => {
     const request = route.request().postDataJSON()

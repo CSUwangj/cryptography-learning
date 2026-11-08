@@ -63,23 +63,23 @@ const createFixtureClient = (): ApolloClient => new ApolloClient({
     const language: Locale = operation.variables?.language === 'zh-CN' ? 'zh-CN' : 'en-US'
     const t = productionI18n.getFixedT(language, 'demos')
     switch (operation.operationName) {
-      case 'LearningCatalog':
-        return of({ data: { learning: learningCatalog(t) } })
-      case 'LessonDocuments':
-        return of({ data: { lessonDocuments: { lesson, locale: lessonLocales[language] } } })
-      case 'Practices':
-        return of({ data: { practice: practiceCatalog(t) } })
-      case 'Lab':
-        return of({ data: { lab: {
-          __typename: 'LabInstance',
-          lang: language,
-          name: t('uiOptimization.labTitle'),
-          content: t('uiOptimization.labContent'),
-          wsEndpoints: [],
-          tcpEndpoints: [{ __typename: 'Endpoint', host: 'lab.example.invalid', port: 19000 }],
-        } } })
-      default:
-        return of({ data: {} })
+    case 'LearningCatalog':
+      return of({ data: { learning: learningCatalog(t) } })
+    case 'LessonDocuments':
+      return of({ data: { lessonDocuments: { lesson, locale: lessonLocales[language] } } })
+    case 'Practices':
+      return of({ data: { practice: practiceCatalog(t) } })
+    case 'Lab':
+      return of({ data: { lab: {
+        __typename: 'LabInstance',
+        lang: language,
+        name: t('uiOptimization.labTitle'),
+        content: t('uiOptimization.labContent'),
+        wsEndpoints: [],
+        tcpEndpoints: [{ __typename: 'Endpoint', host: 'lab.example.invalid', port: 19000 }],
+      } } })
+    default:
+      return of({ data: {} })
     }
   }),
 })
@@ -99,7 +99,7 @@ const catalogItem = (surface: Surface, t: TFunction<'demos'>) => surface === 'le
 
 // Only the navigation presentation and outer spacing are replaced in this prototype.
 // The two-column category/entry interaction follows the existing navigation panels.
-const NavigationMenu: React.FC<{ surface: Surface; pathname: string; go: (path: string) => void; fullPath?: boolean; iconOnly?: boolean }> = ({ surface, pathname, go, fullPath, iconOnly }) => {
+const NavigationMenu: React.FC<{ surface: Surface, pathname: string, go: (path: string) => void, fullPath?: boolean, iconOnly?: boolean }> = ({ surface, pathname, go, fullPath, iconOnly }) => {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [selected, setSelected] = useState(false)
@@ -134,7 +134,7 @@ const NavigationMenu: React.FC<{ surface: Surface; pathname: string; go: (path: 
   </div>
 }
 
-const PageBreadcrumb: React.FC<{ surface: Surface; pathname: string; go: (path: string) => void }> = ({ surface, pathname, go }) => {
+const PageBreadcrumb: React.FC<{ surface: Surface, pathname: string, go: (path: string) => void }> = ({ surface, pathname, go }) => {
   const { t } = useTranslation()
   const location = useLocation()
   const { t: demoT } = useTranslation('demos')

@@ -1,8 +1,8 @@
 import type { AuthoredNode, CryptoValue, Diagnostic, OperationManifest, PortType, AlphabetMapping } from './index'
 
-type LineageSource = { readonly port: string; readonly bit: number }
+type LineageSource = { readonly port: string, readonly bit: number }
 export type LineageDeclaration = Readonly<Record<string, readonly (readonly LineageSource[])[]>>
-export type Result<T> = { ok: true; value: T } | { ok: false; diagnostics: readonly Diagnostic[] }
+export type Result<T> = { ok: true, value: T } | { ok: false, diagnostics: readonly Diagnostic[] }
 
 export type Operation<K extends string, P> = {
   manifest: OperationManifest & { identity: K }

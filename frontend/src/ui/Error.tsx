@@ -15,14 +15,14 @@ export type ErrorContext = Record<string, string>
 export const useError = (errContext?: ErrorContext) => {
   const [ error, setError ] = useState<ErrorType>(undefined)
   const clearError = useCallback(() => setError(undefined), [])
-  const checkError = function <T extends (...args: any[]) => Promise<void> | void>(callback: T): T {
-    return (async (...args: any[]) => {
+  const checkError = function <Args extends unknown[]>(callback: (...args: Args) => Promise<void> | void) {
+    return async (...args: Args) => {
       try {
         await callback(...args)
       } catch (e: unknown) {
         setError(e as ErrorType)
       }
-    }) as any
+    }
   }
   return [error && <ShowError errContext={errContext} error={error}></ShowError>, { setError, clearError, checkError }] as const
 }

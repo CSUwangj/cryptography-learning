@@ -569,7 +569,7 @@ class ReviewHandoffTest(unittest.TestCase):
         self.cli("run", self.packet, env=env)
         data = self.data()
         self.assertEqual(set(data["checks"]), {
-            "frontend_install", "frontend-tests", "frontend_build", "frontend_typecheck",
+            "frontend_install", "frontend-tests", "frontend_build", "frontend_typecheck", "frontend_lint",
         })
         self.assertTrue(marker.is_file())
         for name, attempts in data["checks"].items():

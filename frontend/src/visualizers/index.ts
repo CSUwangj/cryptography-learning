@@ -4,13 +4,13 @@ export type VisualizerDescriptor = {
   readonly id: string
   readonly major: number
   readonly slots: Readonly<Record<string, { readonly family: string }>>
-  readonly trace: { readonly family: 'comparison' | 'execution'; readonly level: 'detail' }
+  readonly trace: { readonly family: 'comparison' | 'execution', readonly level: 'detail' }
   readonly inputSlots: Readonly<Record<string, PortType>>
   readonly traceLevels: readonly ('detail')[]
   readonly tracePaths: readonly string[]
   readonly options: Readonly<Record<string, 'boolean' | 'number' | 'string'>>
   readonly limits: { readonly bits: number }
-  readonly dimensions: { readonly minWidth: number; readonly minHeight: number }
+  readonly dimensions: { readonly minWidth: number, readonly minHeight: number }
   readonly accessibility: { readonly summary: string }
 }
 

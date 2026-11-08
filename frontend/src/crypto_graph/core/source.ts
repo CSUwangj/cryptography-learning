@@ -1,8 +1,8 @@
-import type { AuthoredNode, BitsValue, CryptoValue, PortType, IntegerValue, AlphabetMapping, AlphabetPolicyValue, AlphabetTextValue } from '../index'
+import type { CryptoValue, PortType } from '../index'
 import type { Operation } from '../operation'
 import { isPortType, diagnostic, isCryptoValue, validSizedValue, typeMatches, actualType, cloneValue } from '../operation_support'
 
-export type SourceParameters = { type: PortType; value?: CryptoValue; roundKeys?: readonly CryptoValue[] }
+export type SourceParameters = { type: PortType, value?: CryptoValue, roundKeys?: readonly CryptoValue[] }
 
 export const source: Operation<'core.source@1', SourceParameters> = {
   manifest: {

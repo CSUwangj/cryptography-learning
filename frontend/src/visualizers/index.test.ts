@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
-import { aesCipherGraph, aesInverseCipherGraph, aesKeyExpansionGraph, alphabetPolicy, alphabetText, bits, executeWorkerRequest, hex, integer, teachingSpnGraph, type AlphabetTextValue, type TraceEvent, type TraceCheckpoint, type WorkerExecutionSnapshot } from '../crypto_graph'
+import { aesCipherGraph, aesInverseCipherGraph, aesKeyExpansionGraph, alphabetPolicy, alphabetText, bits, executeWorkerRequest, hex, integer, teachingSpnGraph, type AlphabetTextValue, type WorkerExecutionSnapshot } from '../crypto_graph'
 import { teachingSpnDemoDocuments } from '../../demos/teachingSpnLesson'
 import { aesKeyExpansionDemoDocuments } from '../../demos/aesKeyExpansionLesson'
 import { aesCipherDemoDocuments } from '../../demos/aes128CipherLesson'
@@ -43,28 +43,6 @@ const firstLegacyScheduleBatch = (): WorkerExecutionSnapshot => {
   })
   if (response.kind !== 'snapshot') throw new Error(JSON.stringify(response))
   return response.snapshot
-}
-
-/** Runs one direction's AES demo Lesson through the Browser Lesson runtime: one execution, no other Step. */
-const runCipherDemo = async (variant: 128 | 192 | 256, direction: 'encrypt' | 'decrypt') => {
-  const previousWorker = globalThis.Worker
-  globalThis.Worker = WorkerStub as unknown as typeof Worker
-  try {
-    const session = createBrowserLessonSession(aesCipherDemoDocuments(variant), 'en-US', i18n.getFixedT('en-US', 'translations'), visualizerCatalog)
-    if (!session.ok) throw new Error(session.diagnostics[0]?.message)
-    // Advance to enter-input, then to the target direction step
-    await session.value.next()
-    const targetIndex = direction === 'encrypt' ? 1 : 2
-    while (session.value.state().stepIndex < targetIndex) {
-      await session.value.next()
-    }
-    const state = session.value.state()
-    const presentation = session.value.lesson.steps.find((step) => step.id === direction)?.presentation
-    session.value.dispose()
-    return { snapshot: state.snapshots[direction], presentation }
-  } finally {
-    globalThis.Worker = previousWorker
-  }
 }
 
 describe('Shared trace visuals', () => {

@@ -102,7 +102,7 @@ test('renders independently specified AES-width rows with scrollable, aligned li
     await selected.focus()
     await page.keyboard.press('Enter')
     await expect(selected).toHaveAttribute('aria-pressed', 'true')
-    const assertStates = async (expected: Record<string, { readonly selected?: readonly number[]; readonly related?: readonly number[] }>) => {
+    const assertStates = async (expected: Record<string, { readonly selected?: readonly number[], readonly related?: readonly number[] }>) => {
       for (const row of rows) {
         const states = Array.from({ length: width }, () => 'default')
         for (const bit of expected[row]?.related ?? []) states[bit] = 'related'

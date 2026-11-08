@@ -18,19 +18,19 @@ export const SpnV2Demo: React.FC = () => {
     link: new ApolloLink((operation) => {
       const language = operation.variables.language === 'zh-CN' ? 'zh-CN' : 'en-US'
       switch (operation.operationName) {
-        case 'LearningCatalog':
-          return of({ data: { learning: { lessonCategories: [{
-            id: 'demos',
-            name: ['en-US', 'zh-CN'].map((lang) => ({ lang, text: i18n.t('nav.learning', { lng: lang }) })),
-            lessons: [{ id: 'teaching-spn-v2', title: parse(teachingSpnV2DemoDocuments.locales[language]).title }],
-          }] } } })
-        case 'LessonDocuments':
-          return of({ data: { lessonDocuments: {
-            lesson: teachingSpnV2DemoDocuments.lesson,
-            locale: teachingSpnV2DemoDocuments.locales[language],
-          } } })
-        default:
-          return of({ data: { practice: { labCategories: [] } } })
+      case 'LearningCatalog':
+        return of({ data: { learning: { lessonCategories: [{
+          id: 'demos',
+          name: ['en-US', 'zh-CN'].map((lang) => ({ lang, text: i18n.t('nav.learning', { lng: lang }) })),
+          lessons: [{ id: 'teaching-spn-v2', title: parse(teachingSpnV2DemoDocuments.locales[language]).title }],
+        }] } } })
+      case 'LessonDocuments':
+        return of({ data: { lessonDocuments: {
+          lesson: teachingSpnV2DemoDocuments.lesson,
+          locale: teachingSpnV2DemoDocuments.locales[language],
+        } } })
+      default:
+        return of({ data: { practice: { labCategories: [] } } })
       }
     }),
   }))

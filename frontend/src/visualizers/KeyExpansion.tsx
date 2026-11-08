@@ -31,7 +31,7 @@ type StateRow = {
   readonly wordIndex?: number
   readonly value: BitsValue
   readonly relationships: readonly LearningRelationship[]
-  readonly bitGrouping?: { readonly size: number; readonly active: number }
+  readonly bitGrouping?: { readonly size: number, readonly active: number }
 }
 
 /**
@@ -43,7 +43,7 @@ type StateRow = {
  * Nk comes from the traced input words, not from presentation metadata, so a small teaching
  * schedule renders at its own state width.
  */
-const scheduleRows = (execution: WorkerExecutionSnapshot): { readonly rows: readonly StateRow[]; readonly wordRows: ReadonlyMap<number, string> } => {
+const scheduleRows = (execution: WorkerExecutionSnapshot): { readonly rows: readonly StateRow[], readonly wordRows: ReadonlyMap<number, string> } => {
   const events = new Map(execution.trace.filter(isBitsEvent).map((event) => [event.path, event]))
   const word = (index: number, suffix = '') => events.get(`word-${index}${suffix}`)
 
@@ -59,7 +59,7 @@ const scheduleRows = (execution: WorkerExecutionSnapshot): { readonly rows: read
   const slotWords: number[] = []
   const producers = new Map<number, readonly string[]>()
   const bitIds = (rowId: string, slot: number) => range(32, slot * 32).map((bit) => `${rowId}#${bit}`)
-  const state = (override?: { readonly slot: number; readonly bytes: Uint8Array }): BitsValue => {
+  const state = (override?: { readonly slot: number, readonly bytes: Uint8Array }): BitsValue => {
     const bytes = new Uint8Array(nk * 4)
     slots.forEach((slot, index) => bytes.set(override?.slot === index ? override.bytes : slot, index * 4))
     return bits(width, bytes)
@@ -77,7 +77,7 @@ const scheduleRows = (execution: WorkerExecutionSnapshot): { readonly rows: read
   })
   rows.push({ id: 'input', stage: 'input', value: state(), relationships: [] })
 
-  let pending: { readonly index: number; readonly event: TraceEvent & { readonly value: BitsValue }; readonly sources: readonly (readonly string[])[] }[] = []
+  let pending: { readonly index: number, readonly event: TraceEvent & { readonly value: BitsValue }, readonly sources: readonly (readonly string[])[] }[] = []
   const flush = (): void => {
     if (!pending.length) return
     const id = rowId(`xor-${pending[0].event.round}`, pending[0].index)
@@ -106,7 +106,7 @@ const scheduleRows = (execution: WorkerExecutionSnapshot): { readonly rows: read
         event: TraceEvent & { readonly value: BitsValue },
         sourceBits: (bit: number) => readonly number[],
         affected: readonly number[],
-        bitGrouping: { readonly size: number; readonly active: number },
+        bitGrouping: { readonly size: number, readonly active: number },
       ) => {
         const id = rowId(`${stage}-${event.round}`, index)
         const before = temp!
