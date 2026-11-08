@@ -1,6 +1,6 @@
 ---
 name: ticket-loop
-description: Execute or resume one approved ticket through requirements review, TDD, pre-review, independent formal review and fixes, ending with staged changes and verifiable evidence.
+description: Execute or resume one approved ticket through requirements review, implementation/TDD, applicable pre-review, independent formal review and fixes, ending with staged changes and verifiable evidence.
 ---
 
 # Ticket loop
@@ -27,7 +27,7 @@ do not silently substitute another version or install new tooling.
 | Role | Instructions |
 | --- | --- |
 | Coordinator | This skill; run `code-review` for each code-review stage |
-| Implementer | `implement`; `tdd` for behavior changes and non-trivial logic |
+| Implementer | `implement`; `tdd` for executable behavior changes and non-trivial logic |
 | Pre-review and formal review | `code-review`, with independent Standards and Spec contexts |
 | All roles | Repository [caveman](../caveman/SKILL.md) at **lite**; plugin `ponytail:ponytail` at **full** |
 
@@ -53,12 +53,53 @@ These are the maintainer-approved overrides within this loop:
 Pass these overrides with the skill paths to each delegated role; do not rely
 on a child or external runner inheriting the coordinator's context.
 
-Behavior-changing tickets use requirements review, implementation/TDD, pre-review,
-then formal review. Requirements review is separate from both code-review stages
+Behavior-changing tickets normally use requirements review, implementation/TDD,
+pre-review, then formal review. Only tickets admitted to the
+[bounded trial](#bounded-three-ticket-review-trial) omit the separate pre-review
+stage. Requirements review is separate from the applicable code-review stages
 and does not replace them.
 Pure documentation, comments or formatting use relevant checks and formal review,
 without pre-review or artificial red tests. Classify by effects: configuration,
-data and executable examples that change behavior take the behavior-changing path.
+workflow policy, data and executable examples that change behavior take the
+behavior-changing path.
+
+## Bounded three-ticket review trial
+
+[#139](https://github.com/CSUwangj/cryptography-learning/issues/139) authorizes a
+temporary exception for three explicitly identified small, clearly scoped local
+behavior-change tickets after #136, #137, #138 and delivery of these rules are
+complete. Before a ticket uses the exception, record its ID on #139 and its
+qualification and exception use in the owning ticket. Ordinary implementation
+authorization and repository constraints still apply.
+
+Exclude GraphQL or Lesson schema changes, compatibility changes, security
+boundaries, evidence tooling, verification-policy changes and changes to the
+trial's own gates. #139 itself uses the ordinary full path, including requirements
+review and independent two-axis pre-review and formal review. Its policy prose
+uses meaningful source-backed walkthroughs, never an artificial red test.
+
+Eligible tickets omit only the separate two-axis pre-review stage. Preserve
+requirements review, meaningful behavior tests, independent formal Standards and
+Spec reviews, unresolved-finding handling, required checks, snapshot evidence and
+completion gates. Formal reviewers establish expected behavior from approved
+sources before reading implementation conclusions.
+
+Record new contract ambiguity or expanded impact and return affected work to the
+ordinary full process. Resolve requirement decisions under the existing authority
+rules and retain findings, evidence and the ticket's used trial slot. Fallback
+does not permit an automatic replacement or fourth trial ticket. The trial cannot
+amend its own gates or weaken failed checks.
+
+Use existing records for each real outcome, including review rounds, confirmed
+findings first discovered in formal review, repair rounds and available execution,
+time and cost evidence. Compare relevant ordinary-flow records and state ticket
+complexity and environment differences. Unknown measurements remain unknown;
+fewer reviews do not prove unchanged quality.
+
+After the three real outcomes, stop the exception pending the maintainer's
+recorded continue, adjust or withdraw decision. There is no automatic permanent
+rollout. Rule delivery alone is partial; keep #139 open until all three results
+and that decision are recorded. Do not launch unrelated tickets to fill the sample.
 
 ## Select models before delegation
 
@@ -172,8 +213,8 @@ Do not ask for another approval just because preparation has finished.
 Give the implementer the checkout, base, issue, note and its selected skill paths.
 Before development checks, and as each new file category is introduced, follow
 the handoff guide's [development preview](../../../docs/agents/review-handoff.md#preview-checks-during-development).
-For behavior changes, use one source-backed failing behavior test followed by
-the smallest implementation per cycle. A launch, import or environment failure
+For executable behavior changes, use one source-backed failing behavior test
+followed by the smallest implementation per cycle. A launch, import or environment failure
 is not a red behavior test. An already-passing case is existing coverage; record
 it honestly and target a missing behavior rather than fabricating a failure.
 Use existing test tools and agreed public interfaces, without speculative test
@@ -195,8 +236,8 @@ confirms delivery is finished, the packet exists and `verify` passes before any
 review. Return missing files, unstaged fixes or stale evidence as delivery
 problems, not code findings.
 
-After pre-review repairs, prepare the candidate for formal review under those
-same snapshot and check-evidence rules.
+Before formal review, prepare the candidate under those same snapshot and
+check-evidence rules.
 
 ## Diagnose uncertain check failures
 
@@ -206,10 +247,12 @@ and [verification scope and stopping](../../../docs/agents/review-handoff.md#ver
 
 ## Review and converge
 
-The coordinator runs `code-review` in two stages for behavior changes: pre-review,
-then formal review when no confirmed blockers remain. The escalation path
-below may end pre-review early for escalation diagnosis. For each initial stage,
-launch separate Standards and Spec agents directly with that stage's configuration;
+By default, the coordinator runs `code-review` in two stages for behavior changes:
+pre-review, then formal review when no confirmed blockers remain. The
+[bounded trial](#bounded-three-ticket-review-trial) omits only pre-review. The
+escalation path below may end pre-review early for escalation diagnosis. For each
+applicable initial stage, launch separate Standards and Spec agents directly with
+that stage's configuration;
 no extra review-coordinator agent or recursive review loop. Run the axes in
 parallel when slots permit, otherwise sequentially in independent contexts.
 Keep implementation stopped throughout review. On repair rounds, resume the
