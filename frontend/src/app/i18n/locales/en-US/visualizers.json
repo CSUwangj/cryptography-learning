@@ -22,6 +22,10 @@
     "incomplete": "Trace is incomplete. Retained raw values remain visible; lineage stops at missing stages.",
     "gap": "Trace gap"
   },
+  "comparison": {
+    "title": "Execution comparison",
+    "mask": "XOR mask"
+  },
   "avalanche": {
     "title": "Continuous avalanche comparison",
     "instructions": "Select one bit to inspect its structural lineage. Underlined cells differ; connected lines show dependency, not individual causation.",

@@ -381,7 +381,7 @@ const LessonView: React.FC = () => {
         executionIdentity={state.executionIdentities[step.id] ?? step.id}
         invocation={step.visualizer}
         presentation={step.presentation}
-        compiledGraph={step.execute ? current.lesson.graphs[step.execute.graph] : undefined}
+        compiledGraph={step.visualizer?.compare ? current.lesson.graphs[step.visualizer.compare.graph] : step.execute ? current.lesson.graphs[step.execute.graph] : undefined}
         overlay={step.overlay && scheduleStep?.execute && scheduleExecution ? {
           anchors: step.overlay.anchors,
           execution: scheduleExecution,

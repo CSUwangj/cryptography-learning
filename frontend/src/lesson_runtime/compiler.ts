@@ -1015,8 +1015,10 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
         } else if (kind === 'key-expansion' && algorithm === 'AES' && validVariant && direction === undefined) {
           compiled.presentation = { kind, algorithm, variant, ...(labels ? { labels: labels as Record<string, string> } : {}) }
         } else if (isV2 && kind === 'spn-cipher') {
+          const comparisonGraph = fields(fields(step.visualizer)?.compare)?.graph
+          const graphId = typeof comparisonGraph === 'string' ? comparisonGraph : compiled.execute?.graph
           const rows = presentation.mode !== 'key-expansion' ? spnCipherRows(
-            compiled.execute ? graphInfo[compiled.execute.graph]?.graph : undefined, `${path}.presentation`, lesson.spans.get(`${path}.presentation`),
+            graphId ? graphInfo[graphId]?.graph : undefined, `${path}.presentation`, lesson.spans.get(`${path}.presentation`),
           ) : undefined
           if (rows && !rows.ok) diagnostics.push(...rows.diagnostics)
           compiled.presentation = {
@@ -1067,9 +1069,10 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
       const visualizer = requireMap(step.visualizer, `${path}.visualizer`, lesson.spans, diagnostics)
       if (visualizer) {
         checkFields(visualizer, ['id', 'bindings', 'compare', 'options'], `${path}.visualizer`, lesson.spans, diagnostics)
-        const v2VisualizerCode = isV2 && (visualizer.id === 'teaching-spn@1' || visualizer.id === 'avalanche@1' || visualizer.id === 'classical-cipher@1')
-        const unsupportedV2Visualizer = isV2 && (visualizer.id === 'avalanche@1' || visualizer.id === 'classical-cipher@1')
-        if (isV2 && visualizer.compare !== undefined) diagnostics.push(diagnostic('lesson.v2-unsupported', 'Comparison steps are not supported by version: 2.', `${path}.visualizer.compare`, lesson.spans.get(`${path}.visualizer.compare`)))
+        const genericV2Comparison = isV2 && visualizer.id === 'avalanche@1' && fields(visualizer.compare)?.kind === 'generic'
+        const v2VisualizerCode = isV2 && (visualizer.id === 'teaching-spn@1' || visualizer.id === 'avalanche@1' && !genericV2Comparison || visualizer.id === 'classical-cipher@1')
+        const unsupportedV2Visualizer = isV2 && (visualizer.id === 'avalanche@1' && !genericV2Comparison || visualizer.id === 'classical-cipher@1')
+        if (isV2 && visualizer.compare !== undefined && !genericV2Comparison) diagnostics.push(diagnostic('lesson.v2-unsupported', 'Only generic comparison is supported by version: 2.', `${path}.visualizer.compare`, lesson.spans.get(`${path}.visualizer.compare`)))
         if (v2VisualizerCode) diagnostics.push(diagnostic(
           visualizer.id === 'teaching-spn@1' ? 'lesson.v1-feature-in-v2' : 'lesson.v2-unsupported',
           visualizer.id === 'teaching-spn@1' ? 'This visualizer is only supported by version: 1.' : 'This visualizer is not supported by version: 2.',
@@ -1159,7 +1162,7 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
                 || (compare.kind === 'avalanche' && (changedInputs.length !== 1 || changedInputs[0] !== 'plaintext'))) {
                 diagnostics.push(diagnostic('lesson.invalid-input', 'Avalanche comparisons must vary only the plaintext binding.', comparePath, lesson.spans.get(comparePath)))
               }
-              if (!graph || graph.traceLevel !== 'detail' || compare.traceLevel !== 'detail'
+              if (!graph || (!isV2 && graph.traceLevel !== 'detail') || compare.traceLevel !== 'detail'
                 || descriptor.trace?.family !== 'comparison' || descriptor.trace.level !== 'detail') {
                 diagnostics.push(diagnostic('lesson.invalid-step-reference', 'Visualizer comparison trace is invalid.', comparePath, lesson.spans.get(comparePath)))
               } else {

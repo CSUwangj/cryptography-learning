@@ -2182,11 +2182,11 @@ describe('AES-192/256 encryption and decryption (#85)', () => {
     }
   })
 
-  it('rejects v2 graphs at the worker comparison boundary', () => {
+  it('compares complete v2 checkpoints over their full 16-bit width (#141)', () => {
     const graph: AuthoredGraph = {
       schema: 2,
       nodes: [
-        { id: 'left', operation: 'core.source@1', parameters: { type: { family: 'bits', size: 8 } } },
+        { id: 'left', operation: 'core.source@1', parameters: { type: { family: 'bits', size: 16 } } },
       ],
       outputs: [{ node: 'left', port: 'value' }],
     }
@@ -2194,11 +2194,166 @@ describe('AES-192/256 encryption and decryption (#85)', () => {
       requestId: 'v2-comparison',
       kind: 'compare',
       payload: {
-        left: { graph, inputs: { 'left.value': bits(8, new Uint8Array([0])) } },
-        right: { graph, inputs: { 'left.value': bits(8, new Uint8Array([1])) } },
+        left: { graph, inputs: { 'left.value': bits(16, Uint8Array.of(0x0f, 0x0f)) } },
+        right: { graph, inputs: { 'left.value': bits(16, Uint8Array.of(0x00, 0xff)) } },
       },
     })
-    expect(response).toMatchObject({ kind: 'diagnostic', diagnostics: [{ code: 'comparison.v2-unsupported', path: 'graph.schema' }] })
+    expect(response.kind).toBe('comparison')
+    if (response.kind !== 'comparison') return
+    expect(response.comparison.checkpoints).toMatchObject([{ path: 'left.value', complete: true, changedBits: 8, ratio: 0.5 }])
+    const checkpoint = response.comparison.checkpoints[0]
+    if (!checkpoint.complete) throw new Error('Expected a complete checkpoint')
+    expect([hex(checkpoint.left), hex(checkpoint.right), hex(checkpoint.mask)]).toEqual(['0x0f0f', '0x00ff', '0x0ff0'])
+  })
+
+  it('pairs distinct v2 branches independently of declaration order (#141)', () => {
+    const graph: AuthoredGraph = {
+      schema: 2,
+      nodes: [
+        { id: 'a', operation: 'core.source@1', parameters: { type: { family: 'bits', size: 8 } } },
+        { id: 'aOut', operation: 'core.output@1', inputs: { value: { node: 'a', port: 'value' } } },
+        { id: 'b', operation: 'core.source@1', parameters: { type: { family: 'bits', size: 16 } } },
+        { id: 'bOut', operation: 'core.substitute-nibbles@1', parameters: { sBox: [14, 4, 13, 1, 2, 15, 11, 8, 3, 10, 6, 12, 5, 9, 0, 7] }, inputs: { value: { node: 'b', port: 'value' } } },
+      ],
+      outputs: [{ node: 'aOut', port: 'value' }, { node: 'bOut', port: 'value' }],
+    }
+    const baseline = { 'a.value': bits(8, Uint8Array.of(0x00)), 'b.value': bits(16, Uint8Array.of(0x0f, 0x0f)) }
+    const changed = { 'a.value': bits(8, Uint8Array.of(0x80)), 'b.value': bits(16, Uint8Array.of(0x00, 0xff)) }
+    const reordered = { ...graph, nodes: [graph.nodes[2], graph.nodes[3], graph.nodes[0], graph.nodes[1]] }
+    for (const right of [graph, reordered]) {
+      const response = executeWorkerRequest({ requestId: 'distinct-v2-branches', kind: 'compare', payload: {
+        left: { graph, inputs: baseline },
+        right: { graph: right, inputs: changed },
+      } })
+      expect(response.kind).toBe('comparison')
+      if (response.kind !== 'comparison') throw new Error('Expected order-independent v2 comparison')
+      expect(response.comparison.checkpoints.map((pair) => {
+        if (!pair.complete) throw new Error('Expected complete paired checkpoints')
+        return [pair.path, hex(pair.left), hex(pair.right), hex(pair.mask), pair.changedBits, pair.ratio]
+      })).toEqual([
+        ['a.value', '0x00', '0x80', '0x80', 1, 0.125],
+        ['aOut.value', '0x00', '0x80', '0x80', 1, 0.125],
+        ['b.value', '0x0f0f', '0x00ff', '0x0ff0', 8, 0.5],
+        ['bOut.value', '0xe7e7', '0xee77', '0x0990', 4, 0.25],
+      ])
+    }
+    const incompatible = { ...reordered, nodes: reordered.nodes.map((node) => node.id === 'bOut'
+      ? { ...node, parameters: { sBox: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] } }
+      : node) }
+    expect(executeWorkerRequest({ requestId: 'distinct-v2-incompatible', kind: 'compare', payload: {
+      left: { graph, inputs: baseline },
+      right: { graph: incompatible, inputs: changed },
+    } })).toMatchObject({ kind: 'diagnostic', diagnostics: [{ code: 'comparison.incompatible-structure' }] })
+  })
+
+  it.each(['direct', 'repeat-binding', 'repeat-input', 'repeat-previous'] as const)('rejects different v2 projection wiring at %s (#141)', (location) => {
+    const graph = (start: number): AuthoredGraph => {
+      const input = { node: 'data', port: 'value', bits: [start, 8] as const }
+      const data = { id: 'data', operation: 'core.source@1', parameters: { type: { family: 'bits' as const, size: 16 } } }
+      if (location === 'direct') return {
+        schema: 2,
+        nodes: [data, { id: 'result', operation: 'core.output@1', inputs: { value: input } }],
+        outputs: [{ node: 'result', port: 'value' }],
+      }
+      const projectedBinding = location === 'repeat-binding'
+      return {
+        schema: 2,
+        nodes: [data, { id: 'result', repeat: { subgraph: 'project', count: 1 }, inputs: {
+          value: projectedBinding ? input : { node: 'data', port: 'value' },
+        } }],
+        outputs: [{ node: 'result', port: 'value' }],
+        subgraphs: { project: {
+          inputs: [{ name: 'value', type: { family: 'bits', size: projectedBinding ? 8 : 16 } }],
+          outputs: [{ name: 'value', type: { family: 'bits', size: 8 } }],
+          nodes: [{ id: 'value', operation: 'core.output@1', inputs: { value: {
+            node: location === 'repeat-previous' ? '@previous' : '@input', port: 'value',
+            ...(!projectedBinding ? { bits: input.bits } : {}),
+          } } }],
+        } },
+      }
+    }
+    const inputs = { 'data.value': bits(16, Uint8Array.of(0xf0, 0x00)) }
+    const output = location === 'direct' ? 'result.value' : 'result.1/value.value'
+    for (const [start, expected] of [[0, '0xf0'], [8, '0x00']] as const) {
+      const execution = executeWorkerRequest({ requestId: 'projection-value', kind: 'execute', payload: { graph: graph(start), inputs } })
+      expect(execution.kind).toBe('snapshot')
+      if (execution.kind !== 'snapshot') throw new Error('Expected a real projected execution')
+      expect(hex(execution.snapshot.outputs[output] as ReturnType<typeof bits>)).toBe(expected)
+    }
+    const control = executeWorkerRequest({ requestId: 'same-projection', kind: 'compare', payload: {
+      left: { graph: graph(0), inputs }, right: { graph: graph(0), inputs },
+    } })
+    expect(control.kind).toBe('comparison')
+    if (control.kind !== 'comparison') throw new Error('Expected identical projections to compare')
+    expect(control.comparison.checkpoints.find(({ path }) => path === output)).toMatchObject({ complete: true, changedBits: 0, ratio: 0 })
+    expect(executeWorkerRequest({ requestId: 'different-projection', kind: 'compare', payload: {
+      left: { graph: graph(0), inputs }, right: { graph: graph(8), inputs },
+    } })).toMatchObject({ kind: 'diagnostic', diagnostics: [{ code: 'comparison.incompatible-structure' }] })
+  })
+
+  it('retains declared v2 repeat checkpoint identities for compiled lineage (#141)', () => {
+    const graph: AuthoredGraph = {
+      schema: 2,
+      nodes: [
+        { id: 'data', operation: 'core.source@1', parameters: { type: { family: 'bits', size: 8 } } },
+        { id: 'copies', repeat: { subgraph: 'copy', count: 2 }, inputs: { value: { node: 'data', port: 'value' } } },
+      ],
+      outputs: [{ node: 'copies', port: 'copied' }],
+      subgraphs: { copy: {
+        inputs: [{ name: 'value', type: { family: 'bits', size: 8 } }],
+        outputs: [{ name: 'copied', type: { family: 'bits', size: 8 } }],
+        nodes: [{ id: 'copied', operation: 'core.output@1', inputs: { value: { node: '@input', port: 'value' } } }],
+      } },
+    }
+    const response = executeWorkerRequest({ requestId: 'v2-repeat-pairs', kind: 'compare', payload: {
+      left: { graph, inputs: { 'data.value': bits(8, Uint8Array.of(0)) } },
+      right: { graph, inputs: { 'data.value': bits(8, Uint8Array.of(0x80)) } },
+    } })
+    expect(response.kind).toBe('comparison')
+    if (response.kind !== 'comparison') throw new Error('Expected a real v2 comparison')
+    expect(response.comparison.checkpoints.map(({ path }) => path)).toEqual(['data.value', 'copies.1/copied.value', 'copies.2/copied.value'])
+    expect(response.comparison.checkpoints.every((checkpoint) => checkpoint.complete && checkpoint.changedBits === 1)).toBe(true)
+  })
+
+  it('pairs v2 identities independently of source order and retains later complete checkpoints beside gaps (#141)', () => {
+    const graph: AuthoredGraph = {
+      schema: 2,
+      nodes: [
+        { id: 'data', operation: 'core.source@1', parameters: { type: { family: 'bits', size: 16 } } },
+        { id: 'key', operation: 'core.source@1', parameters: { type: { family: 'bits', size: 16 } } },
+        { id: 'mix', operation: 'core.xor@1', inputs: { left: { node: 'data', port: 'value' }, right: { node: 'key', port: 'value' } } },
+      ],
+      outputs: [{ node: 'mix', port: 'value' }],
+    }
+    const data = bits(16, Uint8Array.of(0x0f, 0x0f))
+    const baseline = { 'data.value': data, 'key.value': bits(16, Uint8Array.of(0, 0)) }
+    const changed = { 'data.value': bits(16, Uint8Array.of(0, 0xff)), 'key.value': bits(16, Uint8Array.of(0x80, 0)) }
+    for (const truncated of [false, true]) {
+      const response = executeWorkerRequest({ requestId: 'semantic-pairs', kind: 'compare', payload: {
+        left: { graph, inputs: baseline },
+        right: { graph: { ...graph, nodes: [graph.nodes[1], graph.nodes[0], graph.nodes[2]] }, inputs: changed, ...(truncated ? { limits: { traceEvents: 1 } } : {}) },
+      } })
+      expect(response.kind).toBe('comparison')
+      if (response.kind !== 'comparison') throw new Error('Expected paired execution')
+      const checkpoints = response.comparison.checkpoints
+      expect(checkpoints.map(({ path }) => path)).toEqual(['data.value', 'key.value', 'mix.value'])
+      expect(checkpoints[1]).toMatchObject({ complete: true, changedBits: 1, ratio: 0.0625 })
+      if (truncated) {
+        expect(checkpoints[0]).toMatchObject({ complete: false, left: expect.objectContaining({ type: { family: 'bits', size: 16 } }) })
+        expect(checkpoints[0]).not.toHaveProperty('right')
+        expect(checkpoints[0]).not.toHaveProperty('mask')
+        expect(checkpoints[0]).not.toHaveProperty('changedBits')
+        expect(checkpoints[0]).not.toHaveProperty('ratio')
+      } else {
+        expect(checkpoints[2]).toMatchObject({ complete: true, changedBits: 9, ratio: 0.5625 })
+      }
+      data.bytes[0] = 0x55
+      const raw = response.comparison.executions.baseline.trace[0] as TraceEvent
+      expect(hex(raw.value as ReturnType<typeof bits>)).toBe('0x0f0f')
+      if (checkpoints[1].complete) checkpoints[1].left.bytes[0] = 0xff
+      expect(hex((response.comparison.executions.baseline.trace[1] as TraceEvent).value as ReturnType<typeof bits>)).toBe('0x0000')
+      data.bytes[0] = 0x0f
+    }
   })
 
   it('allows multiple single-port v2 output operations and preserves v1 output exports', () => {

@@ -212,11 +212,9 @@ export type WorkerExecutionSnapshot = ExecutionSnapshot & {
   readonly traceStatus: TraceStatus
 }
 
-type CompleteAvalancheCheckpoint = {
-  readonly path: string
-  readonly round?: number
-  readonly stage?: TraceStage
-  readonly operation?: TraceOperation
+type ComparisonCheckpointIdentity = Pick<TraceEvent, 'path' | 'round' | 'stage' | 'operation' | 'primitive' | 'role' | 'iteration' | 'unit'>
+
+type CompleteAvalancheCheckpoint = ComparisonCheckpointIdentity & {
   readonly complete: true
   readonly left: BitsValue
   readonly right: BitsValue
@@ -225,11 +223,10 @@ type CompleteAvalancheCheckpoint = {
   readonly ratio: number
 }
 
-type AvalancheGap = {
-  readonly path: string
-  readonly round?: number
-  readonly stage?: TraceStage
+type AvalancheGap = ComparisonCheckpointIdentity & {
   readonly complete: false
+  readonly left?: BitsValue
+  readonly right?: BitsValue
 }
 
 export type AvalancheCheckpoint = CompleteAvalancheCheckpoint | AvalancheGap
@@ -456,7 +453,10 @@ const structuralNodeSignatures = (graph: AuthoredGraph): ReadonlyMap<string, str
       parameters: structuralParameter(node.parameters),
       inputs: Object.entries(node.inputs ?? {})
         .sort(([left], [right]) => left.localeCompare(right))
-        .map(([name, input]) => ({ name, port: input.port, source: intern(nodeSignature(input.node)) })),
+        .map(([name, input]) => ({
+          name, port: input.port, source: intern(nodeSignature(input.node)),
+          ...(graph.schema === 2 ? { bits: input.bits } : {}),
+        })),
     })
     visiting.delete(id)
     signatures.set(id, signature)
@@ -467,7 +467,10 @@ const structuralNodeSignatures = (graph: AuthoredGraph): ReadonlyMap<string, str
 }
 
 const structuralSignature = (graph: AuthoredGraph): string => {
-  const signatures = structuralNodeSignatures(graph)
+  // Stable declared v2 IDs make interning independent of branch encounter order.
+  const signatures = structuralNodeSignatures(graph.schema === 2
+    ? { ...graph, nodes: [...graph.nodes].sort((left, right) => left.id.localeCompare(right.id)) }
+    : graph)
   const nodeSignature = (id: string): string => signatures.get(id) ?? `unresolved:${id}`
   const output = (value: AuthoredInput) => ({ port: value.port, source: nodeSignature(value.node) })
   return JSON.stringify({
@@ -1446,9 +1449,11 @@ const executeWorkerPayload = (
     budget.traceBytes += snapshot.trace.reduce((total, event) => total + traceEventBytes(event), 0)
   }
   structureSignatures.set(snapshot, structuralSignature(compiled.graph))
-  const repeats = repeatIdentities(payload.graph)
-  relativeTracePaths.set(snapshot, new Map(snapshot.trace.map((event) => [event.path, relativeTracePath(event.path, repeats)])))
-  ambiguousRepeatIdentities.set(snapshot, repeats.ambiguous)
+  if (compiled.graph.schema !== 2) {
+    const repeats = repeatIdentities(payload.graph)
+    relativeTracePaths.set(snapshot, new Map(snapshot.trace.map((event) => [event.path, relativeTracePath(event.path, repeats)])))
+    ambiguousRepeatIdentities.set(snapshot, repeats.ambiguous)
+  }
   return { ok: true, value: snapshot }
 }
 
@@ -1495,15 +1500,17 @@ const compareSnapshots = (
     return { ok: false, diagnostics: [diagnostic('comparison.incompatible-structure', 'Trace checkpoint paths do not match.', 'trace')] }
   }
   const differences: AvalancheCheckpoint[] = []
+  const identity = ({ path, round, stage, operation, primitive, role, iteration, unit }: TraceEvent): ComparisonCheckpointIdentity =>
+    ({ path, round, stage, operation, primitive, role, iteration, unit })
   for (const [path, left] of leftCheckpoints.value) {
     const right = rightCheckpoints.value.get(path)
     if (!right) {
       if (truncated) {
         differences.push({
+          ...identity(left.event),
           path,
-          ...(left.event.round === undefined ? {} : { round: left.event.round }),
-          ...(left.event.stage === undefined ? {} : { stage: left.event.stage }),
           complete: false,
+          left: cloneValue(left.value) as BitsValue,
         })
         continue
       }
@@ -1517,10 +1524,8 @@ const compareSnapshots = (
     const mask = bits(leftValue.type.size, leftValue.bytes.map((byte, index) => byte ^ rightValue.bytes[index]))
     const changedBits = [...mask.bytes].reduce((count, byte) => count + bitCount(byte), 0)
     differences.push({
+      ...identity(left.event),
       path,
-      ...(left.event.round === undefined ? {} : { round: left.event.round }),
-      ...(left.event.stage === undefined ? {} : { stage: left.event.stage }),
-      ...(left.event.operation === undefined ? {} : { operation: left.event.operation }),
       complete: true,
       left: cloneValue(leftValue) as BitsValue,
       right: cloneValue(rightValue) as BitsValue,
@@ -1532,10 +1537,10 @@ const compareSnapshots = (
   if (truncated) for (const [path, right] of rightCheckpoints.value) {
     if (leftCheckpoints.value.has(path)) continue
     differences.push({
+      ...identity(right.event),
       path,
-      ...(right.event.round === undefined ? {} : { round: right.event.round }),
-      ...(right.event.stage === undefined ? {} : { stage: right.event.stage }),
       complete: false,
+      right: cloneValue(right.value) as BitsValue,
     })
   }
   return {
@@ -1562,14 +1567,13 @@ export const executeWorkerRequest = (request: WorkerRequest, compiledGraphs?: Ma
     }
     if (request.kind === 'compare') {
       const { left, right } = request.payload
-      if (left.graph.schema === 2 || right.graph.schema === 2) {
-        return { requestId, kind: 'diagnostic', diagnostics: [diagnostic('comparison.v2-unsupported', 'Comparison is not supported for version: 2 graphs.', 'graph.schema')] }
-      }
       const leftLimits = resolveWorkerLimits(left.limits)
       if (!leftLimits.ok) return { requestId, kind: 'diagnostic', diagnostics: leftLimits.diagnostics }
       const rightLimits = resolveWorkerLimits(right.limits)
       if (!rightLimits.ok) return { requestId, kind: 'diagnostic', diagnostics: rightLimits.diagnostics }
-      if (left.graph.traceLevel === undefined || left.graph.traceLevel !== right.graph.traceLevel) {
+      const leftLevel = left.graph.schema === 2 ? 'detail' : left.graph.traceLevel
+      const rightLevel = right.graph.schema === 2 ? 'detail' : right.graph.traceLevel
+      if (left.graph.schema !== right.graph.schema || leftLevel === undefined || leftLevel !== rightLevel) {
         return { requestId, kind: 'diagnostic', diagnostics: [diagnostic('comparison.incompatible-trace-level', 'Comparison requires identical selected trace levels.', 'traceLevel')] }
       }
       const budget: WorkerBudget = { limits: limits.value, nodes: 0, inputBytes: 0, traceEvents: 0, traceBytes: 0 }
@@ -1577,7 +1581,7 @@ export const executeWorkerRequest = (request: WorkerRequest, compiledGraphs?: Ma
       if (!leftExecution.ok) return { requestId, kind: 'diagnostic', diagnostics: leftExecution.diagnostics }
       const rightExecution = executeWorkerPayload(right, lowerWorkerLimits(limits.value, rightLimits.value), budget)
       if (!rightExecution.ok) return { requestId, kind: 'diagnostic', diagnostics: rightExecution.diagnostics }
-      const comparison = compareSnapshots(leftExecution.value, rightExecution.value, left.graph.traceLevel)
+      const comparison = compareSnapshots(leftExecution.value, rightExecution.value, leftLevel)
       return comparison.ok
         ? { requestId, kind: 'comparison', comparison: structuredClone(comparison.value) }
         : { requestId, kind: 'diagnostic', diagnostics: comparison.diagnostics }

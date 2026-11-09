@@ -100,53 +100,62 @@ export const RenderHost: React.FC<RenderHostProps> = (props) => {
     ...(props.overlay.presentation.labels && props.lessonTexts ? { labels: Object.fromEntries(Object.entries(props.overlay.presentation.labels).map(([identity, textId]) => [identity, props.lessonTexts![textId] ?? textId])) } : {}),
   } }, [props.overlay?.anchors, props.overlay?.execution, props.overlay?.graph, props.overlay?.presentation, props.lessonTexts])
   return <IsolatedRenderer comparison={props.comparison} execution={props.execution} key={props.executionIdentity}>
-    {presentation?.kind === 'block-cipher' && props.execution
-      ? <BlockCipherRenderer
-        execution={props.execution}
+    {props.comparison && props.compiledGraph?.graph.schema === 2
+      ? <ExecutionTraceRenderer
+        execution={props.comparison.executions.baseline}
+        comparison={props.comparison}
+        graph={props.compiledGraph}
         executionIdentity={props.executionIdentity}
-        presentation={presentation}
-        keyScheduleExecution={keyScheduleExecution}
+        primitiveLabels={presentation?.labels}
+        spn={spn}
       />
-      : presentation?.kind === 'key-expansion' && props.execution
-        ? <KeyExpansionRenderer
+      : presentation?.kind === 'block-cipher' && props.execution
+        ? <BlockCipherRenderer
           execution={props.execution}
           executionIdentity={props.executionIdentity}
           presentation={presentation}
+          keyScheduleExecution={keyScheduleExecution}
         />
-        : presentation?.kind === 'spn-cipher' && (presentation.mode === 'key-expansion' || presentation.rowOrder) && props.execution && props.compiledGraph
-          ? <ExecutionTraceRenderer
+        : presentation?.kind === 'key-expansion' && props.execution
+          ? <KeyExpansionRenderer
             execution={props.execution}
             executionIdentity={props.executionIdentity}
-            primitiveLabels={presentation.labels}
-            spn={spn}
-            overlay={overlay}
+            presentation={presentation}
           />
-          : !props.invocation && props.execution
+          : presentation?.kind === 'spn-cipher' && (presentation.mode === 'key-expansion' || presentation.rowOrder) && props.execution && props.compiledGraph
             ? <ExecutionTraceRenderer
               execution={props.execution}
               executionIdentity={props.executionIdentity}
-              primitiveLabels={presentation?.labels}
+              primitiveLabels={presentation.labels}
+              spn={spn}
+              overlay={overlay}
             />
-            : props.invocation?.id === 'avalanche@1' && props.comparison
-              ? <AvalancheRenderer
-                comparison={props.comparison}
+            : !props.invocation && props.execution
+              ? <ExecutionTraceRenderer
+                execution={props.execution}
                 executionIdentity={props.executionIdentity}
+                primitiveLabels={presentation?.labels}
               />
-              : props.invocation?.id === 'teaching-spn@1' && props.execution
-                ? <TeachingSpnRenderer
-                  execution={props.execution}
+              : props.invocation?.id === 'avalanche@1' && props.comparison
+                ? <AvalancheRenderer
+                  comparison={props.comparison}
                   executionIdentity={props.executionIdentity}
                 />
-                : props.invocation?.id === 'classical-cipher@1' && props.classicalCipher
-                  ? <ClassicalCipherRenderer
-                    {...props.classicalCipher}
-                    positions={classicalCipherPositions(
-                      props.classicalCipher.input,
-                      props.classicalCipher.output,
-                      props.classicalCipher.mapping,
-                    )}
-                    reducedMotion={props.reducedMotion}
+                : props.invocation?.id === 'teaching-spn@1' && props.execution
+                  ? <TeachingSpnRenderer
+                    execution={props.execution}
+                    executionIdentity={props.executionIdentity}
                   />
-                  : <Fallback comparison={props.comparison} execution={props.execution} />}
+                  : props.invocation?.id === 'classical-cipher@1' && props.classicalCipher
+                    ? <ClassicalCipherRenderer
+                      {...props.classicalCipher}
+                      positions={classicalCipherPositions(
+                        props.classicalCipher.input,
+                        props.classicalCipher.output,
+                        props.classicalCipher.mapping,
+                      )}
+                      reducedMotion={props.reducedMotion}
+                    />
+                    : <Fallback comparison={props.comparison} execution={props.execution} />}
   </IsolatedRenderer>
 }

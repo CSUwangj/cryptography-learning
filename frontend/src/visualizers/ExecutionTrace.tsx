@@ -1,7 +1,7 @@
 import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import React, { useMemo } from 'react'
-import { hex, type CompiledGraph, type BitsValue, type CryptoValue, type TraceCheckpoint, type TraceEvent, type WorkerExecutionSnapshot } from 'crypto_graph'
+import { hex, type AvalancheComparison, type CompiledGraph, type BitsValue, type CryptoValue, type TraceCheckpoint, type TraceEvent, type WorkerExecutionSnapshot } from 'crypto_graph'
 import type { LessonPresentation } from '../lesson_runtime'
 import { learningColors, LearningPresentationView, type LearningDiagnostic, type LearningPresentation, type LearningRow } from '../ui/learning'
 import { PermutationVisual } from './OperationVisuals'
@@ -9,6 +9,8 @@ import { PermutationVisual } from './OperationVisuals'
 export type ExecutionTraceRendererProps = {
   readonly execution: WorkerExecutionSnapshot
   readonly executionIdentity: string
+  readonly comparison?: AvalancheComparison
+  readonly graph?: CompiledGraph
   readonly primitiveLabels?: Readonly<Record<string, string>>
   readonly spn?: { readonly graph: CompiledGraph, readonly presentation: Extract<LessonPresentation, { kind: 'spn-cipher' }> }
   readonly overlay?: {
@@ -149,17 +151,23 @@ const scheduleBlocks = (graph: CompiledGraph) => {
   return { keys, blocks, remaining }
 }
 
-const spnPresentation = (execution: WorkerExecutionSnapshot, t: TFunction<'visualizers'>, executionIdentity: string, spn: NonNullable<ExecutionTraceRendererProps['spn']>, primitiveLabels?: Readonly<Record<string, string>>): LearningPresentation => {
+const spnPresentation = (execution: WorkerExecutionSnapshot, t: TFunction<'visualizers'>, executionIdentity: string, spn: NonNullable<ExecutionTraceRendererProps['spn']>, primitiveLabels?: Readonly<Record<string, string>>, comparison?: AvalancheComparison): LearningPresentation => {
   const base = executionTracePresentation(execution, t, executionIdentity, primitiveLabels)
   const { graph, presentation } = spn
   const schedule = presentation.mode === 'key-expansion'
-  const events = execution.trace.filter((event): event is TraceEvent & { value: BitsValue } =>
-    'value' in event && event.value?.type.family === 'bits' && 'bytes' in event.value)
+  const pairs = new Map(comparison?.checkpoints.map((checkpoint) => [checkpoint.path, checkpoint]))
+  const events = comparison
+    ? comparison.checkpoints.flatMap((checkpoint) => {
+      const value = checkpoint.left ?? checkpoint.right
+      return value ? [{ ...checkpoint, level: comparison.traceLevel, value }] : []
+    })
+    : execution.trace.filter((event): event is TraceEvent & { value: BitsValue } =>
+      'value' in event && event.value?.type.family === 'bits' && 'bytes' in event.value)
   const blocks = schedule ? scheduleBlocks(graph) : undefined
   const order = new Map((blocks ? [...blocks.blocks.flat(), ...blocks.remaining] : presentation.rowOrder ?? []).map((path, index) => [path, index]))
   // Emit each round key after its dependencies; cipher rows retain their compiled order.
   events.sort((left, right) => order.get(left.path)! - order.get(right.path)!)
-  const retained = new Set(events.map((event) => event.path))
+  const retained = new Set(events.filter((event) => !comparison || pairs.get(event.path)?.complete).map((event) => event.path))
   const relationships = (graph.lineage ?? []).filter((edge) => retained.has(edge.source) && retained.has(edge.target))
     .map((edge) => ({ from: `${edge.source}#${edge.sourceBit}`, to: `${edge.target}#${edge.targetBit}` }))
   const title = schedule
@@ -168,6 +176,11 @@ const spnPresentation = (execution: WorkerExecutionSnapshot, t: TFunction<'visua
   return {
     ...base,
     title,
+    ...(comparison?.truncated ? { diagnostics: [
+      ...(base.diagnostics ?? []).filter((item) => item.code !== 'trace.incomplete'),
+      { code: 'trace.incomplete', message: t('avalanche.incomplete'), path: 'trace' },
+    ] } : {}),
+    ...(comparison ? { comparison: { baselineLabel: t('avalanche.baseline'), changedLabel: t('avalanche.changed'), differentLabel: t('teachingSpn.different') } } : {}),
     executionIdentity: `${executionIdentity}:${presentation.direction ?? presentation.mode ?? 'spn'}`,
     instructions: t('schedule.instructions'),
     unitSelection: {
@@ -180,22 +193,33 @@ const spnPresentation = (execution: WorkerExecutionSnapshot, t: TFunction<'visua
     selectionStatus: (selected) => selected ? `${t('keyExpansion.selected')}: ${selected.ariaLabel}` : t('keyExpansion.none'),
     sections: [{
       kind: 'trace', caption: schedule ? t('keyExpansion.flow') : t('teachingSpn.flow'),
-      headers: [t('keyExpansion.stage'), t('keyExpansion.round'), t('keyExpansion.value'), t('keyExpansion.bits')],
+      headers: [t('keyExpansion.stage'), t('keyExpansion.round'), comparison ? `${t('avalanche.baseline')} | ${t('avalanche.changed')}` : t('keyExpansion.value'), t('keyExpansion.bits')],
       rows: events.map((event, index) => {
         const label = event.role === 'round-key' ? `${t('keyExpansion.roundKey')} ${event.round}` : stageLabel(event, t, execution.outputs, primitiveLabels)
+        const pair = pairs.get(event.path)
         return {
           id: event.path, label,
-          cells: [{ value: event.round ?? event.iteration ?? '—' }, { value: hex(event.value) }],
-          selectableBits: Array.from({ length: event.value.type.size }, (_, bit) => {
+          ...(pair && !pair.complete ? { state: 'incomplete' as const } : {}),
+          cells: [{ value: event.round ?? event.iteration ?? '—' }, { value: pair ? `${valueText(pair.left)} | ${valueText(pair.right)}${pair.complete ? '' : `; ${t('avalanche.gap')}`}` : hex(event.value) }],
+          selectableBits: pair && !pair.complete ? undefined : Array.from({ length: event.value.type.size }, (_, bit) => {
             const packed = event.value.bytes.length * 8 - event.value.type.size + bit
             const value = (event.value.bytes[Math.floor(packed / 8)] >> (7 - packed % 8)) & 1
-            return { id: `${event.path}#${bit}`, bit, value, ariaLabel: `${label} (${event.path}), ${t('keyExpansion.bit')} ${bit}: ${value}` }
+            const changed = pair?.complete ? (pair.right.bytes[Math.floor(packed / 8)] >> (7 - packed % 8)) & 1 : undefined
+            return { id: `${event.path}#${bit}`, bit, value, ...(changed === undefined ? {} : { comparisonValue: changed ? '1' as const : '0' as const }), ariaLabel: `${label} (${event.path}), ${t('keyExpansion.bit')} ${bit}: ${value}` }
           }),
           ...(event.unit ? { bitGrouping: { size: event.unit } } : {}),
           ...(index === 0 ? { relationships } : {}),
         }
       }),
-    }],
+    }, ...(comparison ? [{
+      kind: 'comparison' as const, caption: t('avalanche.summary'),
+      headers: [t('avalanche.stage'), t('avalanche.baseline'), t('avalanche.changed'), t('comparison.mask'), t('avalanche.changedBits'), t('avalanche.ratio')],
+      rows: comparison.checkpoints.map((pair) => ({
+        id: pair.path, label: pair.path,
+        ...(!pair.complete ? { state: 'incomplete' as const } : {}),
+        cells: [valueText(pair.left), valueText(pair.right), ...(pair.complete ? [hex(pair.mask), pair.changedBits, pair.ratio] : [t('avalanche.gap'), '—', '—'])].map((value) => ({ value })),
+      })),
+    }] : [])],
   }
 }
 
@@ -240,11 +264,13 @@ const overlayPresentation = (base: LearningPresentation, overlay: NonNullable<Ex
   }
 }
 
-export const ExecutionTraceRenderer: React.FC<ExecutionTraceRendererProps> = ({ execution, executionIdentity, primitiveLabels, spn, overlay }) => {
+export const ExecutionTraceRenderer: React.FC<ExecutionTraceRendererProps> = ({ execution, executionIdentity, primitiveLabels, spn, overlay, comparison, graph }) => {
   const { t } = useTranslation('visualizers')
   const presentation = useMemo(() => {
-    const base = spn ? spnPresentation(execution, t, executionIdentity, spn, primitiveLabels) : executionTracePresentation(execution, t, executionIdentity, primitiveLabels)
+    const structure = spn ?? (comparison && graph ? { graph, presentation: { kind: 'spn-cipher' as const } } : undefined)
+    const base = structure ? spnPresentation(execution, t, executionIdentity, structure, primitiveLabels, comparison) : executionTracePresentation(execution, t, executionIdentity, primitiveLabels)
+    if (comparison) return { ...base, title: t('comparison.title') }
     return overlay && spn ? overlayPresentation(base, overlay, spn, t) : base
-  }, [execution, t, executionIdentity, primitiveLabels, spn, overlay])
+  }, [execution, t, executionIdentity, primitiveLabels, spn, overlay, comparison, graph])
   return <LearningPresentationView presentation={presentation} />
 }
