@@ -35,6 +35,11 @@ environment. Unknown-path warnings retain the planner's conservative fallback
 checks. Correct an unsuitable mapping in `scripts/test_plan.py` and preview again
 before execution; do not drop paths or override coverage to shorten the plan.
 
+Follow the planner's order: selected installation prerequisites come first, then
+the existing deterministic frontend gates before browser acceptance. The frontend
+test selection already includes the localization guard. Keep that coverage and
+its frozen command; do not replace it with a shorter check or copy a prior pass.
+
 The preview is read-only: it runs no checks and creates no acceptance evidence.
 Its provisional scope includes net differences between HEAD and the working tree
 plus non-ignored untracked paths. Staged changes canceled in the working tree can
@@ -163,6 +168,21 @@ outside the checkout and hand them off with the unresolved publication action.
 
 ## Run local checks across worktrees
 
+Before development begins, run this no-op from the repository root in the actual
+implementation child, or explicitly assign heavyweight/browser validation to
+the coordinator in the external execution note:
+
+```sh
+python3 scripts/local_check.py -- python3 -c pass
+```
+
+This exercises the existing heavyweight lock and subprocess entry. Preserve its
+result and log path with the validation owner. It does not prove that browser
+dependencies or browser launch permissions are available. If it fails, record
+the unavailable capability and assign the affected checks to the coordinator
+before development; use the normal permission flow and retain the failure.
+Assignment does not grant permission, bypass the lock or supply passing evidence.
+
 Use `scripts/local_check.py -- COMMAND [ARG ...]` for development checks. Run it
 from the command's working directory so Fish+nvm finds the pinned Node version:
 
@@ -233,6 +253,19 @@ Give the next agent these facts, with links rather than copied conversation:
 4. Checks not run, unavailable capabilities, and evidence limitations.
 5. Outstanding finding IDs and their disposition: fixed, disputed, or non-blocking.
 6. Unstaged/untracked files and whether they are required, generated, or unrelated.
+7. The exact external checkpoint path and current packet path, or an explicit
+   statement that no packet exists yet. Keep the checkpoint current before yielding
+   or transferring work. Include the active and pending stages, final result/report
+   paths, validation owner, and owned process IDs/session handles with their commands,
+   status and log paths. Record no owned processes or unknown ownership explicitly.
+
+Use the external execution note as that checkpoint and keep private execution
+configuration there. Resume from it and its current packet before reconstructing
+history. After a notes/history backend failure, recover from the checkpoint and
+linked local files instead of repeating unavailable operations. Retry the backend
+only after evidence that it is available again.
+Carry process ownership into recovery; confirm completion or clean up only known
+owned leftovers under the local-check rules before retrying interrupted work.
 
 Stage only intended changes. Preserve unrelated work and identify it explicitly.
 Evidence must describe the exact review snapshot; unstaged fixes cannot prove a

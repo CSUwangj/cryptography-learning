@@ -590,11 +590,11 @@ class ReviewHandoffTest(unittest.TestCase):
             "latest_status": "not-run", "attempts": 0, "elapsed_seconds": None, "wait_seconds": None,
             "previous_failed": 0, "previous_unavailable": 0,
         })
-        self.cli("run", self.packet, env=self.fake_fish(fail_first=True), expected=1)
+        self.cli("run", self.packet, "--label", "frontend-tests", env=self.fake_fish(fail_first=True), expected=1)
         self.cli("run", self.packet, "--label", "frontend-tests",
                  env=self.fake_fish(interrupt=signal.SIGKILL), expected=-9)
         earlier = self.data()["checks"]["frontend-tests"]
-        self.cli("run", self.packet, "--label", "frontend-tests", env=self.fake_fish())
+        self.cli("run", self.packet, env=self.fake_fish())
         data = self.data()
         attempts = data["checks"]["frontend-tests"]
         self.assertEqual(attempts[:-1], earlier)
@@ -693,7 +693,7 @@ class ReviewHandoffTest(unittest.TestCase):
     def test_abruptly_killed_runner_records_unavailable_without_completion(self):
         self.stage_frontend_test()
         self.create()
-        self.cli("run", self.packet, env=self.fake_fish(interrupt=signal.SIGKILL), expected=-9)
+        self.cli("run", self.packet, "--label", "frontend-tests", env=self.fake_fish(interrupt=signal.SIGKILL), expected=-9)
         attempt = self.data()["checks"]["frontend-tests"][0]
         self.assertEqual(attempt["status"], "unavailable")
         self.assertIsNone(attempt["exit_code"])
@@ -707,7 +707,7 @@ class ReviewHandoffTest(unittest.TestCase):
         self.stage_frontend_test()
         self.create()
         target = self.repo / "frontend/src/crypto_graph/index.test.ts"
-        self.cli("run", self.packet, env=self.fake_fish(mutate=target), expected=1)
+        self.cli("run", self.packet, "--label", "frontend-tests", env=self.fake_fish(mutate=target), expected=1)
         attempt = self.data()["checks"]["frontend-tests"][0]
         self.assertEqual(attempt["status"], "unavailable")
         self.assertEqual(attempt["exit_code"], 0)

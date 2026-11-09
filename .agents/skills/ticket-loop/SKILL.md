@@ -159,11 +159,16 @@ Other model/route changes need a new selection; the escalation mapping above doe
 
 ## Coordinate with existing tools
 
-Prefer completion notifications when the host supports them. For external CLI
-work, use existing process waits in 30–60 second windows, bounded by the host's
-limits. Avoid repeated one-second polls and unchanged log reads. Keep full logs
-on disk; read new status or relevant excerpts for a failure, requested update or
-completed handoff. Preserve meaningful progress updates without replaying logs.
+Carry the exact external checkpoint path in each dispatch and resume prompt.
+For transfer, resumed work or an unavailable notes/history backend, follow the
+handoff guide's [checkpoint and recovery instructions](../../../docs/agents/review-handoff.md#transfer-the-work).
+
+Include final result/report paths in dispatches. Prefer completion notifications
+and read those files when the role finishes. For external CLI work, use existing
+process waits in 30–60 second windows, bounded by the host's limits. Keep full
+logs on disk; read targeted new excerpts for a changed status, failure or requested
+update instead of reparsing the full running log. During ongoing work, give a
+meaningful progress update at least every 60 seconds without replaying logs.
 Reuse the selected implementation/review contexts for ordinary repair and
 recheck rounds.
 Use existing tools and `review_handoff.py`; do not add a general runner, scheduler
@@ -211,6 +216,11 @@ Do not ask for another approval just because preparation has finished.
 ## Implement and capture
 
 Give the implementer the checkout, base, issue, note and its selected skill paths.
+Before development begins, establish local-check capability in the actual
+implementation child or explicitly assign validation to the coordinator, following
+the handoff guide's [capability check](../../../docs/agents/review-handoff.md#run-local-checks-across-worktrees).
+Record the result and owner in the external execution note. A separate route
+probe or coordinator permission does not establish the child's capability.
 Before development checks, and as each new file category is introduced, follow
 the handoff guide's [development preview](../../../docs/agents/review-handoff.md#preview-checks-during-development).
 For executable behavior changes, use one source-backed failing behavior test

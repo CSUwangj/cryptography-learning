@@ -330,10 +330,16 @@ def plan_paths(paths, repo=ROOT):
         })
     for item in checks.values():
         item["heavyweight"] = local_check.is_heavy(item["argv"], repo / item["cwd"])
+    early_checks = {
+        identifier: index for index, identifier in enumerate((
+            "frontend_install", "tooling", "frontend_lint", "frontend_codegen",
+            "frontend_typecheck", "frontend-tests",
+        ))
+    }
     plan = {
         "kind": "checks" if checks else "docs-only",
         "paths": paths,
-        "checks": sorted(checks.values(), key=lambda item: (item["id"] != "frontend_install", item["id"])),
+        "checks": sorted(checks.values(), key=lambda item: (early_checks.get(item["id"], len(early_checks)), item["id"])),
         "omissions": omissions,
     }
     return plan

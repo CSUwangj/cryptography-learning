@@ -17,6 +17,38 @@ import test_plan
 
 
 class TestPlanTest(unittest.TestCase):
+    def test_existing_frontend_guards_run_before_browser_acceptance(self):
+        cases = (
+            (["frontend/src/lesson_runtime/fixture/aes192-first-round.ts"], [
+                "frontend_lint", "frontend_typecheck", "frontend-tests",
+                "browser_overlay", "browser_spn-cipher",
+            ], ["src/app/i18n/noEmbeddedUiResources.test.ts"]),
+            (["frontend/demos/SpnV2Demo.tsx"], [
+                "frontend_lint", "frontend_typecheck", "frontend-tests", "browser_teaching-spn-v2-demo",
+            ], ["src/app/i18n/noEmbeddedUiResources.test.ts", "src/lesson_runtime/index.test.ts", "src/visualizers/spnCipher.test.tsx"]),
+            (["frontend/e2e/local-run.spec.ts"], [
+                "frontend_lint", "frontend-tests", "browser_local-run",
+            ], ["src/app/i18n/noEmbeddedUiResources.test.ts"]),
+            (["frontend/package-lock.json", "frontend/e2e/local-run.spec.ts"], [
+                "frontend_install", "frontend_lint", "frontend_typecheck", "frontend-tests",
+                "browser_local-run", "frontend_build",
+            ], []),
+        )
+        for paths, expected_order, tests in cases:
+            with self.subTest(paths=paths):
+                plan = test_plan.plan_paths(paths)
+                self.assertEqual([item["id"] for item in plan["checks"]], expected_order)
+                checks = {item["id"]: item for item in plan["checks"]}
+                self.assertEqual(checks["frontend-tests"]["argv"], [
+                    "npm", "test", "--", "--maxWorkers=1", "--passWithNoTests=false", *tests,
+                ])
+                self.assertEqual(checks["frontend-tests"]["cwd"], "frontend")
+                self.assertEqual(checks["frontend_lint"]["argv"], ["npm", "run", "lint"])
+                if "frontend_install" in checks:
+                    self.assertEqual(checks["frontend_install"]["argv"], ["npm", "ci"])
+                if "frontend_typecheck" in checks:
+                    self.assertEqual(checks["frontend_typecheck"]["argv"], ["npm", "run", "typecheck"])
+
     def test_lint_config_selects_command_behavior_coverage_without_unknown_fallback(self):
         for path in ("frontend/eslint.config.mjs", "frontend/.eslintrc"):
             with self.subTest(path=path):

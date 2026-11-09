@@ -31,6 +31,7 @@ jobs:
           from pathlib import Path
 
           plan = json.loads(Path(sys.argv[1]).read_text())
+          image_browser = any(check["id"] in {"image_acceptance", "completion_acceptance"} for check in plan["checks"])
           groups = {}
           for check in plan["checks"]:
               identifier = check["id"]
@@ -41,7 +42,7 @@ jobs:
               elif identifier.startswith(("backend", "relay")) or identifier == "claims":
                   group = "backend"
               else:
-                  group = "frontend"
+                  group = "image" if image_browser else "frontend"
               entry = groups.setdefault(group, {"group": group, "checks": [], "browser": False, "has_install": False})
               entry["checks"].append(identifier)
               entry["browser"] |= identifier in {"image_acceptance", "completion_acceptance", "demo_browser"} or "browser" in identifier
@@ -85,7 +86,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Run frontend install check once
-        if: ${{ matrix.group == 'frontend' && matrix.has_install }}
+        if: ${{ matrix.has_install }}
         env:
           PLAN: ${{ needs.plan.outputs.encoded }}
         run: python3 scripts/test_plan.py run --plan "$PLAN" --id frontend_install

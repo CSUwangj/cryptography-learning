@@ -1,16 +1,79 @@
 """Static contract checks for shared push planning and nightly coverage."""
 
 from pathlib import Path
+import base64
+import json
 import os
 import re
 import subprocess
+import sys
 import tempfile
+import textwrap
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+import test_plan
 
 
 class TestWorkflowTest(unittest.TestCase):
+    def test_push_groups_finish_frontend_guards_before_image_browser_acceptance(self):
+        workflow = (ROOT / ".github/workflows/build.yml").read_text()
+        grouping = textwrap.dedent(workflow.split("<<'PY'\n", 1)[1].split("\n          PY", 1)[0])
+        cases = (
+            ["frontend/e2e/learning.spec.ts"],
+            ["frontend/e2e/learning.spec.ts", "frontend/package-lock.json", "frontend/.codegen.yml",
+             "backend/apps/web-server/src/serve.rs", "scripts/test_plan.py", "Dockerfile"],
+            ["frontend/e2e/completion-records.spec.ts"],
+            ["frontend/src/crypto_graph/index.test.ts", "Dockerfile"],
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            plan_path = Path(directory) / "plan.json"
+            for paths in cases:
+                with self.subTest(paths=paths):
+                    plan = test_plan.plan_paths(paths)
+                    plan_path.write_text(json.dumps(plan))
+                    result = subprocess.run([sys.executable, "-", str(plan_path)], input=grouping,
+                                            text=True, capture_output=True, check=False)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    outputs = dict(line.split("=", 1) for line in result.stdout.splitlines())
+                    self.assertEqual(base64.b64decode(outputs["encoded"]), plan_path.read_bytes())
+                    groups = {entry["group"]: entry for entry in json.loads(outputs["groups"])["include"]}
+                    planned_ids = [item["id"] for item in plan["checks"]]
+                    grouped_ids = [identifier for entry in groups.values() for identifier in entry["checks"]]
+                    self.assertCountEqual(grouped_ids, planned_ids)
+                    self.assertEqual(len(grouped_ids), len(set(grouped_ids)))
+                    image = groups["image"]
+                    image_browsers = set(planned_ids) & {"image_acceptance", "completion_acceptance"}
+                    if image_browsers:
+                        self.assertNotIn("frontend", groups)
+                        self.assertTrue(image["browser"])
+                        for browser in image_browsers:
+                            for guard in ("frontend_lint", "frontend-tests"):
+                                self.assertLess(image["checks"].index(guard), image["checks"].index(browser))
+                        self.assertEqual(image["checks"], [identifier for identifier in planned_ids
+                                                         if identifier not in {"tooling", "backend"}])
+                        units = next(item["argv"] for item in plan["checks"] if item["id"] == "frontend-tests")
+                        if "frontend_install" in planned_ids:
+                            self.assertEqual(units, ["npm", "test", "--", "--maxWorkers=1", "--passWithNoTests=false"])
+                        else:
+                            self.assertIn("src/app/i18n/noEmbeddedUiResources.test.ts", units)
+                    else:
+                        self.assertIn("frontend", groups)
+                        self.assertEqual(image["checks"], ["image_smoke"])
+                        self.assertFalse(image["browser"])
+                    self.assertEqual(image["has_install"], "frontend_install" in planned_ids)
+                    if image["has_install"]:
+                        self.assertEqual(image["checks"][0], "frontend_install")
+                        self.assertLess(image["checks"].index("frontend_codegen"), image["checks"].index("frontend_typecheck"))
+                    if "tooling" in planned_ids:
+                        self.assertEqual(groups["tooling"]["checks"], ["tooling"])
+                    if "backend" in planned_ids:
+                        self.assertEqual(groups["backend"]["checks"], ["backend"])
+        install_step = workflow.split("      - name: Run frontend install check once\n", 1)[1].split("      - name:", 1)[0]
+        self.assertIn("if: ${{ matrix.has_install }}", install_step)
+        self.assertIn('scripts/test_plan.py run --plan "$PLAN" --id frontend_install', install_step)
+
     def test_nightly_frontend_runs_the_shared_lint_command(self):
         workflow = (ROOT / ".github/workflows/nightly.yml").read_text()
         frontend = workflow.split("  frontend:\n", 1)[1].split("  vite-acceptance:\n", 1)[0]
