@@ -32,6 +32,7 @@ const diagnostic = (code: string, message: string, path: string): Diagnostic => 
 export const lessonDiagnosticCodes: ReadonlySet<string> = new Set([
   'lesson.execution-cancelled',
   'lesson.invalid-input',
+  'lesson.invalid-avalanche',
   'lesson.invalid-step-reference',
   'lesson.comparison-input-unavailable',
   'lesson.missing-step-result',
@@ -154,6 +155,7 @@ export class BrowserLessonSession {
   private readonly executionDiagnostics = new Map<string, Diagnostic>()
   private readonly worker = new CryptoGraphWorkerClient()
   private readonly bitFlips: Record<string, { input: string, bit: number }> = {}
+  private readonly invalidBitFlipInputs = new Set<string>()
   private index = 0
   private request = 0
   private generation = 0
@@ -233,15 +235,26 @@ export class BrowserLessonSession {
   }
 
   setBitFlip(stepId: string, input: string, bit: number): Result<void> {
-    const option = this.lesson.steps.find((step) => step.id === stepId)?.bitFlip?.find((item) => item.input === input)
+    const step = this.lesson.steps.find((step) => step.id === stepId)
+    const option = step?.bitFlip?.find((item) => item.input === input)
     const type = this.lesson.inputs[input]?.type
     if (!option || type?.family !== 'bits' || typeof type.size !== 'number' || !Number.isSafeInteger(bit) || bit < 0 || bit >= type.size
       || typeof this.inputs[input] === 'string') {
+      if (Object.values(this.lesson.graphs).some(({ graph }) => graph.schema === 2)) {
+        this.generation += 1
+        this.worker.cancel()
+        this.invalidateSnapshots(input)
+        for (const item of step?.bitFlip ?? []) {
+          this.invalidBitFlipInputs.add(item.changed)
+          this.invalidateSnapshots(item.changed)
+        }
+      }
       return { ok: false, diagnostics: [diagnostic('lesson.invalid-input', this.t('learning.runtime.bitFlipSelection', { lng: 'en-US' }), `steps.${stepId}.bit_flip`)] }
     }
     this.generation += 1
     this.worker.cancel()
     this.bitFlips[stepId] = { input, bit }
+    for (const item of step?.bitFlip ?? []) this.invalidBitFlipInputs.delete(item.changed)
     this.refreshBitFlips()
     return { ok: true, value: undefined }
   }
@@ -286,6 +299,7 @@ export class BrowserLessonSession {
   }
 
   private referenceValue(reference: LessonValueReference): CryptoValue | undefined {
+    if ('input' in reference && this.invalidBitFlipInputs.has(reference.input)) return undefined
     const value = 'input' in reference
       ? this.inputs[reference.input]
       : 'constant' in reference
@@ -316,6 +330,18 @@ export class BrowserLessonSession {
       }
       baseline[`${source}.value`] = cloneValue(left)
       changed[`${source}.value`] = cloneValue(right)
+    }
+    if (compare.kind === 'avalanche' && graph.graph.schema === 2) {
+      const differences = Object.keys(baseline).filter((source) => !equalCryptoValues(baseline[source], changed[source]))
+      const source = differences[0]
+      const left = baseline[source]
+      const right = changed[source]
+      const changedBits = left && right && 'bytes' in left && 'bytes' in right
+        ? [...left.bytes].reduce((count, byte, index) => count + (byte ^ right.bytes[index]).toString(2).replaceAll('0', '').length, 0)
+        : 0
+      if (differences.length !== 1 || !compare.sources?.includes(source.slice(0, -'.value'.length)) || changedBits !== 1) {
+        return { ok: false, diagnostics: [diagnostic('lesson.invalid-avalanche', this.t('learning.runtime.lesson.invalid-avalanche', { lng: 'en-US' }), `steps.${stepId}.visualizer.compare`)] }
+      }
     }
     const requestId = `${stepId}-${++this.request}`
     const generation = this.generation
@@ -420,17 +446,8 @@ export class BrowserLessonSession {
     const graph = this.lesson.graphs[step.execute.graph]
     const inputs: Record<string, CryptoValue> = {}
     for (const [targetPort, binding] of Object.entries(step.execute.bindings)) {
-      const value = 'input' in binding
-        ? this.inputs[binding.input]
-        : 'constant' in binding
-          ? this.lesson.constants[binding.constant]
-          : (() => {
-            const snapshot = this.snapshots.get(binding.step)
-            const prior = this.lesson.steps.find((step) => step.id === binding.step)?.execute
-            const priorGraph = prior ? this.lesson.graphs[prior.graph] : undefined
-            return snapshot?.outputs[priorGraph?.outputAliases?.[binding.output] ?? binding.output]
-          })()
-      if (!value || typeof value === 'string') {
+      const value = this.referenceValue(binding)
+      if (!value) {
         const inputDiagnostic = 'input' in binding ? this.inputDiagnostics[binding.input] : undefined
         this.executionDiagnostics.set(step.id, inputDiagnostic ??
           diagnostic('lesson.missing-step-result', this.t('learning.runtime.lesson.missing-step-result', { lng: 'en-US' }), `steps.${step.id}`))

@@ -11,7 +11,7 @@ import { ExecutionTraceRenderer, type ExecutionTraceRendererProps } from './Exec
 
 export type RenderHostProps = {
   /** Absent for descriptor-free Steps, whose execution renders as a generic trace. */
-  readonly invocation?: { readonly id: string }
+  readonly invocation?: { readonly id: string, readonly compare?: { readonly kind: 'avalanche' | 'generic', readonly sources?: readonly string[] } }
   /** Explicit presentation metadata; never inferred from key length or graph identity. */
   readonly presentation?: LessonPresentation
   /** Main-thread compilation; never transported in execution snapshots. */
@@ -104,6 +104,7 @@ export const RenderHost: React.FC<RenderHostProps> = (props) => {
       ? <ExecutionTraceRenderer
         execution={props.comparison.executions.baseline}
         comparison={props.comparison}
+        avalancheSources={props.invocation?.compare?.kind === 'avalanche' ? props.invocation.compare.sources : undefined}
         graph={props.compiledGraph}
         executionIdentity={props.executionIdentity}
         primitiveLabels={presentation?.labels}

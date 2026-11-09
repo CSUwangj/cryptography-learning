@@ -194,9 +194,12 @@ const LessonView: React.FC = () => {
   useEffect(() => {
     let disposed = false
     setLoad((previous) => {
-      const presentation = previous.status === 'ready' && activeLesson.current === lessonId
-        ? session.current?.lesson.steps[previous.state.stepIndex].presentation : undefined
-      return presentation?.kind === 'spn-cipher' ? previous : { status: 'loading' }
+      const step = previous.status === 'ready' && activeLesson.current === lessonId
+        ? session.current?.lesson.steps[previous.state.stepIndex] : undefined
+      const comparison = step?.visualizer?.compare
+      const retainComparison = previous.status === 'ready' && step && comparison
+        && previous.state.comparisons[step.id] && session.current?.lesson.graphs[comparison.graph]?.graph.schema === 2
+      return step?.presentation?.kind === 'spn-cipher' || retainComparison ? previous : { status: 'loading' }
     })
     const apply = async (documents: RuntimeLessonDocuments) => {
       if (activeLesson.current === lessonId && session.current) {

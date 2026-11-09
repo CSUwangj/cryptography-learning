@@ -259,7 +259,7 @@ const initialSelectionFor = (presentation: LearningPresentation): LearningSelect
   presentation.initialKeySelection
     ? { kind: 'key', id: presentation.initialKeySelection }
     : presentation.initialSelection
-      ? { kind: 'bit', id: presentation.initialSelection }
+      ? { kind: 'bit', id: presentation.initialSelection, ...(presentation.unitSelection ? { bitIds: [presentation.initialSelection] } : {}) }
       : undefined
 
 const bitState = (bit: LearningBit, selected: LearningSelection | undefined, related: ReadonlySet<string>): LearningState =>

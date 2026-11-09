@@ -10,6 +10,7 @@ export type ExecutionTraceRendererProps = {
   readonly execution: WorkerExecutionSnapshot
   readonly executionIdentity: string
   readonly comparison?: AvalancheComparison
+  readonly avalancheSources?: readonly string[]
   readonly graph?: CompiledGraph
   readonly primitiveLabels?: Readonly<Record<string, string>>
   readonly spn?: { readonly graph: CompiledGraph, readonly presentation: Extract<LessonPresentation, { kind: 'spn-cipher' }> }
@@ -151,11 +152,17 @@ const scheduleBlocks = (graph: CompiledGraph) => {
   return { keys, blocks, remaining }
 }
 
-const spnPresentation = (execution: WorkerExecutionSnapshot, t: TFunction<'visualizers'>, executionIdentity: string, spn: NonNullable<ExecutionTraceRendererProps['spn']>, primitiveLabels?: Readonly<Record<string, string>>, comparison?: AvalancheComparison): LearningPresentation => {
+const spnPresentation = (execution: WorkerExecutionSnapshot, t: TFunction<'visualizers'>, executionIdentity: string, spn: NonNullable<ExecutionTraceRendererProps['spn']>, primitiveLabels?: Readonly<Record<string, string>>, comparison?: AvalancheComparison, avalancheSources?: readonly string[]): LearningPresentation => {
   const base = executionTracePresentation(execution, t, executionIdentity, primitiveLabels)
   const { graph, presentation } = spn
   const schedule = presentation.mode === 'key-expansion'
   const pairs = new Map(comparison?.checkpoints.map((checkpoint) => [checkpoint.path, checkpoint]))
+  const source = comparison?.checkpoints.find((checkpoint) => avalancheSources?.some((source) => checkpoint.path === `${source}.value`)
+    && checkpoint.complete && checkpoint.changedBits === 1)
+  const sourceBit = source?.complete ? Array.from({ length: source.mask.type.size }, (_, bit) => bit).find((bit) => {
+    const packed = source.mask.bytes.length * 8 - source.mask.type.size + bit
+    return (source.mask.bytes[Math.floor(packed / 8)] & 1 << (7 - packed % 8)) !== 0
+  }) : undefined
   const events = comparison
     ? comparison.checkpoints.flatMap((checkpoint) => {
       const value = checkpoint.left ?? checkpoint.right
@@ -182,6 +189,7 @@ const spnPresentation = (execution: WorkerExecutionSnapshot, t: TFunction<'visua
     ] } : {}),
     ...(comparison ? { comparison: { baselineLabel: t('avalanche.baseline'), changedLabel: t('avalanche.changed'), differentLabel: t('teachingSpn.different') } } : {}),
     executionIdentity: `${executionIdentity}:${presentation.direction ?? presentation.mode ?? 'spn'}`,
+    initialSelection: source && sourceBit !== undefined ? `${source.path}#${sourceBit}` : undefined,
     instructions: t('schedule.instructions'),
     unitSelection: {
       label: t('schedule.unit'),
@@ -264,13 +272,13 @@ const overlayPresentation = (base: LearningPresentation, overlay: NonNullable<Ex
   }
 }
 
-export const ExecutionTraceRenderer: React.FC<ExecutionTraceRendererProps> = ({ execution, executionIdentity, primitiveLabels, spn, overlay, comparison, graph }) => {
+export const ExecutionTraceRenderer: React.FC<ExecutionTraceRendererProps> = ({ execution, executionIdentity, primitiveLabels, spn, overlay, comparison, avalancheSources, graph }) => {
   const { t } = useTranslation('visualizers')
   const presentation = useMemo(() => {
     const structure = spn ?? (comparison && graph ? { graph, presentation: { kind: 'spn-cipher' as const } } : undefined)
-    const base = structure ? spnPresentation(execution, t, executionIdentity, structure, primitiveLabels, comparison) : executionTracePresentation(execution, t, executionIdentity, primitiveLabels)
+    const base = structure ? spnPresentation(execution, t, executionIdentity, structure, primitiveLabels, comparison, avalancheSources) : executionTracePresentation(execution, t, executionIdentity, primitiveLabels)
     if (comparison) return { ...base, title: t('comparison.title') }
     return overlay && spn ? overlayPresentation(base, overlay, spn, t) : base
-  }, [execution, t, executionIdentity, primitiveLabels, spn, overlay, comparison, graph])
+  }, [execution, t, executionIdentity, primitiveLabels, spn, overlay, comparison, avalancheSources, graph])
   return <LearningPresentationView presentation={presentation} />
 }

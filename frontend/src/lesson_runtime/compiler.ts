@@ -73,6 +73,7 @@ export type LessonComparisonBinding = {
 
 export type LessonComparison = {
   readonly kind: 'avalanche' | 'generic'
+  readonly sources?: readonly string[]
   readonly graph: string
   readonly bindings: Readonly<Record<string, LessonComparisonBinding>>
   readonly traceLevel: 'detail'
@@ -1069,10 +1070,10 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
       const visualizer = requireMap(step.visualizer, `${path}.visualizer`, lesson.spans, diagnostics)
       if (visualizer) {
         checkFields(visualizer, ['id', 'bindings', 'compare', 'options'], `${path}.visualizer`, lesson.spans, diagnostics)
-        const genericV2Comparison = isV2 && visualizer.id === 'avalanche@1' && fields(visualizer.compare)?.kind === 'generic'
-        const v2VisualizerCode = isV2 && (visualizer.id === 'teaching-spn@1' || visualizer.id === 'avalanche@1' && !genericV2Comparison || visualizer.id === 'classical-cipher@1')
-        const unsupportedV2Visualizer = isV2 && (visualizer.id === 'avalanche@1' && !genericV2Comparison || visualizer.id === 'classical-cipher@1')
-        if (isV2 && visualizer.compare !== undefined && !genericV2Comparison) diagnostics.push(diagnostic('lesson.v2-unsupported', 'Only generic comparison is supported by version: 2.', `${path}.visualizer.compare`, lesson.spans.get(`${path}.visualizer.compare`)))
+        const v2Comparison = isV2 && visualizer.id === 'avalanche@1' && ['generic', 'avalanche'].includes(fields(visualizer.compare)?.kind as string)
+        const v2VisualizerCode = isV2 && (visualizer.id === 'teaching-spn@1' || visualizer.id === 'avalanche@1' && !v2Comparison || visualizer.id === 'classical-cipher@1')
+        const unsupportedV2Visualizer = isV2 && (visualizer.id === 'avalanche@1' && !v2Comparison || visualizer.id === 'classical-cipher@1')
+        if (isV2 && visualizer.compare !== undefined && !v2Comparison) diagnostics.push(diagnostic('lesson.v2-unsupported', 'Only generic and data avalanche comparisons are supported by version: 2.', `${path}.visualizer.compare`, lesson.spans.get(`${path}.visualizer.compare`)))
         if (v2VisualizerCode) diagnostics.push(diagnostic(
           visualizer.id === 'teaching-spn@1' ? 'lesson.v1-feature-in-v2' : 'lesson.v2-unsupported',
           visualizer.id === 'teaching-spn@1' ? 'This visualizer is only supported by version: 1.' : 'This visualizer is not supported by version: 2.',
@@ -1132,7 +1133,7 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
             const comparePath = `${path}.visualizer.compare`
             const compare = requireMap(visualizer.compare, comparePath, lesson.spans, diagnostics)
             if (compare) {
-              checkFields(compare, ['kind', 'graph', 'bindings', 'traceLevel'], comparePath, lesson.spans, diagnostics)
+              checkFields(compare, ['kind', 'graph', 'bindings', 'traceLevel', ...(isV2 && compare.kind === 'avalanche' ? ['sources'] : [])], comparePath, lesson.spans, diagnostics)
               const graph = typeof compare.graph === 'string' ? graphInfo[compare.graph] : undefined
               const compareBindings = requireMap(compare.bindings, `${comparePath}.bindings`, lesson.spans, diagnostics) ?? {}
               const resolvedBindings: Record<string, LessonComparisonBinding> = {}
@@ -1159,8 +1160,13 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
                 if (!resolvedBindings[input]) diagnostics.push(diagnostic('lesson.invalid-step-reference', 'Every comparison graph source needs a binding.', `${comparePath}.bindings`, lesson.spans.get(`${comparePath}.bindings`)))
               }
               if ((compare.kind !== 'avalanche' && compare.kind !== 'generic')
-                || (compare.kind === 'avalanche' && (changedInputs.length !== 1 || changedInputs[0] !== 'plaintext'))) {
+                || (!isV2 && compare.kind === 'avalanche' && (changedInputs.length !== 1 || changedInputs[0] !== 'plaintext'))) {
                 diagnostics.push(diagnostic('lesson.invalid-input', 'Avalanche comparisons must vary only the plaintext binding.', comparePath, lesson.spans.get(comparePath)))
+              }
+              if (isV2 && compare.kind === 'avalanche' && (!Array.isArray(compare.sources) || compare.sources.length === 0
+                || new Set(compare.sources).size !== compare.sources.length
+                || compare.sources.some((source) => typeof source !== 'string' || graph?.sourceTypes[source]?.family !== 'bits'))) {
+                diagnostics.push(diagnostic('lesson.invalid-input', 'Data avalanche requires declared bit-valued graph sources.', `${comparePath}.sources`, lesson.spans.get(`${comparePath}.sources`)))
               }
               if (!graph || (!isV2 && graph.traceLevel !== 'detail') || compare.traceLevel !== 'detail'
                 || descriptor.trace?.family !== 'comparison' || descriptor.trace.level !== 'detail') {
@@ -1170,6 +1176,7 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
                   id: visualizer.id as string,
                   compare: {
                     kind: compare.kind as LessonComparison['kind'],
+                    ...(isV2 && compare.kind === 'avalanche' ? { sources: compare.sources as string[] } : {}),
                     graph: compare.graph as string,
                     bindings: resolvedBindings,
                     traceLevel: 'detail',

@@ -4,8 +4,10 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import { parse, stringify } from 'yaml'
-import { executeWorkerRequest, hex, type BitsValue, type TraceEvent, type WorkerExecutionSnapshot } from '../crypto_graph'
+import { executeWorkerRequest, hex, type BitsValue, type TraceEvent, type WorkerExecutionSnapshot, type WorkerRequest } from '../crypto_graph'
 import { compileLesson, createBrowserLessonSession, type LessonDocuments } from './index'
+import { visualizerCatalog } from '../visualizers'
+import { dataAvalancheLesson } from './fixture/aes-avalanche-v2'
 
 const fixtureDirectory = join(dirname(fileURLToPath(import.meta.url)), 'fixture')
 const documents = (variant: 128 | 192 | 256): LessonDocuments => ({
@@ -213,5 +215,74 @@ describe('Authored AES v2 calculations (#105)', () => {
       expect(hex(eventAt(schedule, path).value as BitsValue)).toBe(before)
     }
     expect(cipher.trace.every((event) => 'value' in event && event.value?.type.family === 'bits' && event.value.type.size === 128)).toBe(true)
+  })
+})
+
+describe('Real AES v2 data avalanche (#142)', () => {
+  // NIST baseline vectors; changed-block values and masks independently checked with OpenSSL ECB, no padding.
+  const vectors = [
+    { variant: 128, direction: 'encrypt', baseline: '0x69c4e0d86a7b0430d8cdb78070b4c55a', changed: '0xc4b6cc20a1961062ee8104adb441b569', mask: '0xad722cf8cbed1452364cb32dc4f57033', changedBits: 65, ratio: 0.5078125 },
+    { variant: 192, direction: 'encrypt', baseline: '0xdda97ca4864cdfe06eaf70a0ec0d7191', changed: '0xa0c23353f200c8da736eaf24ffc7500b', mask: '0x7d6b4ff7744c173a1dc1df8413ca219a', changedBits: 67, ratio: 0.5234375 },
+    { variant: 256, direction: 'encrypt', baseline: '0x8ea2b7ca516745bfeafc49904b496089', changed: '0x1541c6a47d2ffe781a4a79241da399ee', mask: '0x9be3716e2c48bbc7f0b630b456eaf967', changedBits: 70, ratio: 0.546875 },
+    { variant: 128, direction: 'decrypt', baseline: '0x00112233445566778899aabbccddeeff', changed: '0xdc24b4f719a7eee61f56b4da7c0729fc', mask: '0xdc3596c45df2889197cf1e61b0dac703', changedBits: 64, ratio: 0.5 },
+    { variant: 192, direction: 'decrypt', baseline: '0x00112233445566778899aabbccddeeff', changed: '0x3e582aef75e914919765dc9ef973add8', mask: '0x3e4908dc31bc72e61ffc762535ae4327', changedBits: 66, ratio: 0.515625 },
+    { variant: 256, direction: 'decrypt', baseline: '0x00112233445566778899aabbccddeeff', changed: '0x70baccfe9583ab4105e4f0f4f6f95691', mask: '0x70abeecdd1d6cd368d7d5a4f3a24b86e', changedBits: 71, ratio: 0.5546875 },
+  ] as const
+
+  it.each(vectors)('executes AES-$variant $direction with equal independent keys and full-width measurements', async (vector) => {
+    const pairedRequests: Extract<WorkerRequest, { kind: 'compare' }>[] = []
+    class ObservedWorker extends WorkerStub {
+      override postMessage(request: WorkerRequest): void {
+        if (request.kind === 'compare') pairedRequests.push(request)
+        super.postMessage(request)
+      }
+    }
+    vi.stubGlobal('Worker', ObservedWorker)
+    const created = createBrowserLessonSession(dataAvalancheLesson(documents(vector.variant), vector.variant, vector.direction), 'en-US', i18n.getFixedT('en-US', 'translations'), visualizerCatalog)
+    if (!created.ok) throw new Error(JSON.stringify(created.diagnostics))
+    const session = created.value
+    try {
+      expect((await session.enter()).ok).toBe(true)
+      expect((await session.next()).ok).toBe(true)
+      expect(session.state().comparisons).toEqual({})
+      const entered = await session.next()
+      if (!entered.ok) throw new Error(JSON.stringify(entered.diagnostics))
+      const comparison = entered.value.comparisons.compare
+      expect(comparison.truncated).toBe(false)
+      const step = session.lesson.steps[2]
+      const compare = step.visualizer!.compare!
+      const graph = session.lesson.graphs[compare.graph]
+      const output = graph.graph.outputs[0]
+      const outputPath = `${output.node}.${output.port}`
+      expect(outputHex(comparison.executions.baseline, outputPath)).toBe(vector.baseline)
+      expect(outputHex(comparison.executions.changed, outputPath)).toBe(vector.changed)
+      const final = comparison.checkpoints.find(({ path }) => path === outputPath)
+      if (!final?.complete) throw new Error('Expected complete final checkpoint')
+      expect([hex(final.mask), final.changedBits, final.ratio, final.left.type.size]).toEqual([vector.mask, vector.changedBits, vector.ratio, 128])
+      const source = comparison.checkpoints.find(({ path }) => path === `${compare.sources![0]}.value`)
+      if (!source?.complete) throw new Error('Expected original data checkpoint')
+      expect([hex(source.mask), source.changedBits, source.ratio]).toEqual(['0x80000000000000000000000000000000', 1, 0.0078125])
+      for (const [id, binding] of Object.entries(compare.bindings).filter(([id]) => id !== compare.sources![0])) {
+        expect(binding.baseline).toEqual({ step: 'schedule', output: `${id}.value` })
+        expect(binding.changed).toEqual({ step: 'equal-schedule', output: `${id}.value` })
+        const key = comparison.checkpoints.find(({ path }) => path === `${id}.value`)
+        if (!key?.complete) throw new Error('Expected retained independent key')
+        const expected = outputHex(entered.value.snapshots.schedule, `${id}.value`)
+        expect([hex(key.left), hex(key.right), key.changedBits, key.ratio]).toEqual([expected, expected, 0, 0])
+        expect(outputHex(entered.value.snapshots['equal-schedule'], `${id}.value`)).toBe(expected)
+      }
+      const request = pairedRequests[0]
+      const incomplete = executeWorkerRequest({ ...request, payload: {
+        ...request.payload, right: { ...request.payload.right, limits: { traceEvents: 3 } },
+      } })
+      if (incomplete.kind !== 'comparison') throw new Error(JSON.stringify(incomplete))
+      expect(incomplete.comparison.truncated).toBe(true)
+      expect(incomplete.comparison.checkpoints.find(({ path }) => path === source.path)).toMatchObject({ complete: true, changedBits: 1, ratio: 0.0078125 })
+      const gap = incomplete.comparison.checkpoints.find((checkpoint) => !checkpoint.complete)
+      expect(gap).toHaveProperty('left')
+      for (const field of ['right', 'mask', 'changedBits', 'ratio']) expect(gap).not.toHaveProperty(field)
+      expect(outputHex(incomplete.comparison.executions.baseline, outputPath)).toBe(vector.baseline)
+      expect(outputHex(incomplete.comparison.executions.changed, outputPath)).toBe(vector.changed)
+    } finally { session.dispose(); vi.unstubAllGlobals() }
   })
 })

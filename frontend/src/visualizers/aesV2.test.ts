@@ -5,7 +5,7 @@ import { act, cleanup, render } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { parse, stringify } from 'yaml'
-import { executeWorkerRequest, type WorkerExecutionSnapshot } from '../crypto_graph'
+import { executeWorkerRequest, type CryptoValue, type WorkerExecutionSnapshot } from '../crypto_graph'
 import { compileLesson, type CompiledLesson } from '../lesson_runtime'
 import aes128 from '../lesson_runtime/fixture/aes128-v2.yaml?raw'
 import aes128En from '../lesson_runtime/fixture/aes128-v2-locales/en-US.yaml?raw'
@@ -17,13 +17,62 @@ import aes256 from '../lesson_runtime/fixture/aes256-v2.yaml?raw'
 import aes256En from '../lesson_runtime/fixture/aes256-v2-locales/en-US.yaml?raw'
 import aes256Zh from '../lesson_runtime/fixture/aes256-v2-locales/zh-CN.yaml?raw'
 import { executionTracePresentation } from './ExecutionTrace'
-import { RenderHost } from './index'
+import { RenderHost, visualizerCatalog } from './index'
+import { dataAvalancheLesson } from '../lesson_runtime/fixture/aes-avalanche-v2'
 import { relatedBitIds } from '../ui/learning'
 
 const fixtures = [
   { variant: 192, lesson: aes192, locales: { 'en-US': aes192En, 'zh-CN': aes192Zh }, finalBatch: 7, finalRound: 12, finalKey: '0xa4970a331a78dc09c418c271e3a41d5d', ciphertext: '0xdda97ca4864cdfe06eaf70a0ec0d7191' },
   { variant: 256, lesson: aes256, locales: { 'en-US': aes256En, 'zh-CN': aes256Zh }, finalBatch: 6, finalRound: 14, finalKey: '0x24fc79ccbf0979e9371ac23c6d68de36', ciphertext: '0x8ea2b7ca516745bfeafc49904b496089' },
 ] as const
+
+it('renders real AES avalanche measurements over all 128 bits beside a retained trace gap (#142)', async () => {
+  const documents = dataAvalancheLesson({ lesson: aes128, locales: { 'en-US': aes128En, 'zh-CN': aes128Zh } }, 128, 'encrypt')
+  const compiled = compileLesson(documents, visualizerCatalog)
+  if (!compiled.ok) throw new Error(JSON.stringify(compiled.diagnostics))
+  const lesson = compiled.value
+  const expanded = executeWorkerRequest({ requestId: 'avalanche-schedule', kind: 'execute', payload: {
+    graph: lesson.graphs.schedule.graph, inputs: { 'key.value': lesson.inputs.key.default },
+  } })
+  if (expanded.kind !== 'snapshot') throw new Error(JSON.stringify(expanded))
+  const step = lesson.steps[2]
+  const compare = step.visualizer!.compare!
+  const graph = lesson.graphs[compare.graph]
+  const inputs = (side: 'baseline' | 'changed'): Record<string, CryptoValue> => Object.fromEntries(Object.entries(compare.bindings).map(([node, binding]) => {
+    const reference = binding[side]
+    const value = 'input' in reference ? lesson.inputs[reference.input].default
+      : 'step' in reference ? expanded.snapshot.outputs[reference.output] : lesson.constants[reference.constant]
+    return [`${node}.value`, value]
+  }))
+  const paired = executeWorkerRequest({ requestId: 'retained-avalanche', kind: 'compare', payload: {
+    left: { graph: graph.graph, inputs: inputs('baseline'), limits: { traceEvents: 4 } },
+    right: { graph: graph.graph, inputs: inputs('changed'), limits: { traceEvents: 3 } },
+  } })
+  if (paired.kind !== 'comparison') throw new Error(JSON.stringify(paired))
+  const view = render(React.createElement(I18nextProvider, { i18n: i18n.cloneInstance({ lng: 'en-US' }) }, React.createElement(RenderHost, {
+    comparison: paired.comparison, invocation: step.visualizer, compiledGraph: graph, presentation: step.presentation,
+    executionIdentity: 'aes-data-avalanche', dimensions: { width: 390, height: 844 }, reducedMotion: true,
+  })))
+  try {
+    expect(view.queryByRole('alert')).toBeNull()
+    const source = view.container.querySelector('[data-row-id="plaintext.value"]') as HTMLElement
+    expect(source.querySelector('button[aria-pressed="true"]')).not.toBeNull()
+    const summary = view.getByRole('table', { name: 'Comparison summary' })
+    const measurement = summary.querySelector('[data-row-id="plaintext.value"]') as HTMLElement
+    expect(measurement.textContent).toContain('0x80000000000000000000000000000000')
+    expect(measurement.textContent).toContain('0.0078125')
+    const gap = view.container.querySelector('[data-row-id="sub-bytes-1.value"]') as HTMLElement
+    expect(gap).toHaveTextContent('0x63cab7040953d051cd60e0e7ba70e18c | —; Trace gap')
+    expect(gap.querySelector('button')).toBeNull()
+    const gapSummary = summary.querySelector('[data-row-id="sub-bytes-1.value"]') as HTMLElement
+    expect(gapSummary.textContent).toContain('Trace gap')
+    const before = measurement.textContent
+    await userEvent.setup().selectOptions(view.getByRole('combobox'), '8')
+    expect(measurement.textContent).toBe(before)
+    expect(source.querySelectorAll('button')).toHaveLength(16)
+    expect(source.querySelector('button')).toHaveTextContent('0x00|0x80')
+  } finally { cleanup() }
+})
 
 describe.each(fixtures)('Authored AES-$variant v2 shared trace rendering (#105)', (fixture) => {
   let lesson: CompiledLesson

@@ -79,6 +79,7 @@
         "overlay-without-schedule-binding": "Overlay requires a cross-Step round-key binding.",
         "execution-cancelled": "Lesson execution was cancelled.",
         "invalid-input": "Input does not match its declared type and encoding.",
+        "invalid-avalanche": "Change exactly one bit of a declared data source and keep every other independent input equal.",
         "invalid-step-reference": "Invalid Lesson Step reference.",
         "comparison-input-unavailable": "Comparison input is unavailable.",
         "missing-step-result": "Referenced Step result is unavailable.",

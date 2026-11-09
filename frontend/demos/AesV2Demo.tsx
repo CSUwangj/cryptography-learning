@@ -9,6 +9,7 @@ import { Shell, i18n } from '../src/app'
 import { LearningPage } from '../src/learning'
 import type { LessonDocuments } from '../src/lesson_runtime'
 import { genericComparisonDocuments } from './genericComparisonLesson'
+import { dataAvalancheDocuments } from './dataAvalancheLesson'
 import aes128 from '../src/lesson_runtime/fixture/aes128-v2.yaml?raw'
 import aes128En from '../src/lesson_runtime/fixture/aes128-v2-locales/en-US.yaml?raw'
 import aes128Zh from '../src/lesson_runtime/fixture/aes128-v2-locales/zh-CN.yaml?raw'
@@ -26,6 +27,11 @@ const lessons: Readonly<Record<string, LessonDocuments>> = {
   'aes256-v2-kat': { lesson: aes256, locales: { 'en-US': aes256En, 'zh-CN': aes256Zh } },
 }
 
+const comparisonLessons: Readonly<Record<string, LessonDocuments>> = {
+  'generic-comparison': genericComparisonDocuments,
+  'data-avalanche': dataAvalancheDocuments,
+}
+
 export const AesV2Demo: React.FC = () => {
   const [client] = useState(() => new ApolloClient({
     cache: new InMemoryCache(),
@@ -39,10 +45,10 @@ export const AesV2Demo: React.FC = () => {
       }, {
         id: 'comparison',
         name: ['en-US', 'zh-CN'].map((lang) => ({ lang, text: i18n.t('nav.learning', { lng: lang }) })),
-        lessons: [{ id: 'generic-comparison', title: parse(genericComparisonDocuments.locales[language]).title }],
+        lessons: Object.entries(comparisonLessons).map(([id, documents]) => ({ id, title: parse(documents.locales[language]).title })),
       }] } } })
       if (operation.operationName === 'LessonDocuments') {
-        const documents = operation.variables.lessonId === 'generic-comparison' ? genericComparisonDocuments : lessons[operation.variables.lessonId]
+        const documents = comparisonLessons[operation.variables.lessonId] ?? lessons[operation.variables.lessonId]
         return of({ data: { lessonDocuments: documents ? { lesson: documents.lesson, locale: documents.locales[language] } : null } })
       }
       if (operation.operationName === 'Practices') return of({ data: { practice: { labCategories: [] } } })

@@ -63,19 +63,16 @@ describe('Public Lesson coexistence (#113)', () => {
     ['substitution', substitutionCipherDemoDocuments, 1],
     ['Vigenere', vigenereCipherDemoDocuments, 1],
   ] as const)(
-    'rejects v2 dedicated %s declarations', (_name, documents, step) => {
+    'rejects unsupported or undeclared v2 dedicated %s declarations', (_name, documents, step) => {
       const lesson = parse(documents.lesson)
       lesson.version = 2
       for (const graph of Object.values(lesson.graphs) as Record<string, unknown>[]) delete graph.traceLevel
       const result = compileLesson({ ...documents, lesson: stringify(lesson) }, visualizerCatalog)
       expect(result).toMatchObject({ ok: false, diagnostics: expect.arrayContaining([
-        expect.objectContaining({ code: 'lesson.v2-unsupported', path: `steps.${step}.visualizer.id` }),
+        expect.objectContaining(documents === aes128CipherComparisonDocuments
+          ? { code: 'lesson.invalid-input', path: `steps.${step}.visualizer.compare.sources` }
+          : { code: 'lesson.v2-unsupported', path: `steps.${step}.visualizer.id` }),
       ]) })
-      if (documents === aes128CipherComparisonDocuments) expect(result).toMatchObject({
-        ok: false, diagnostics: expect.arrayContaining([
-          expect.objectContaining({ code: 'lesson.v2-unsupported', path: 'steps.0.visualizer.compare' }),
-        ]),
-      })
     },
   )
 

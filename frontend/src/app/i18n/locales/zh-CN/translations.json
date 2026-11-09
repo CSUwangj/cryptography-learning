@@ -79,6 +79,7 @@
         "overlay-without-schedule-binding": "覆盖层需要跨步骤的轮密钥绑定。",
         "execution-cancelled": "课程执行已取消。",
         "invalid-input": "输入不符合声明的类型和编码。",
+        "invalid-avalanche": "只能改变已声明数据源中的一个位，其余独立输入必须保持相同。",
         "invalid-step-reference": "课程步骤引用无效。",
         "comparison-input-unavailable": "比较输入不可用。",
         "missing-step-result": "引用的步骤结果不可用。",
