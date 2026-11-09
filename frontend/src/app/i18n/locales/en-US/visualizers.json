@@ -23,8 +23,7 @@
     "gap": "Trace gap"
   },
   "comparison": {
-    "title": "Execution comparison",
-    "mask": "XOR mask"
+    "title": "Execution comparison"
   },
   "avalanche": {
     "title": "Continuous avalanche comparison",
@@ -33,8 +32,8 @@
     "summary": "Comparison summary",
     "raw": "Retained raw execution values",
     "stage": "Stage",
-    "baseline": "Baseline",
-    "changed": "Changed",
+    "baseline": "Baseline result",
+    "changed": "Changed result",
     "changedBits": "Changed bits",
     "ratio": "Ratio",
     "keys": "Round keys",

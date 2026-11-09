@@ -38,7 +38,7 @@ test('inspects a real standalone original-key schedule in both locales and theme
   await inspect().press(' ')
   await expect(inspect()).toHaveAttribute('aria-pressed', 'true')
   await expect(inspect()).toBeFocused()
-  await expect(inspect()).toHaveAccessibleName(/Baseline: 0x02; Changed: 0x02; Deliberately selected/)
+  await expect(inspect()).toHaveAccessibleName(/Baseline result: 0x02; Changed result: 0x02; Deliberately selected/)
   await expect(inspect().locator('u')).toHaveCount(0)
   const difference = () => row('round-key-1').getByRole('button').nth(4)
   await expect(difference()).toHaveAttribute('data-state', 'changed')
@@ -49,7 +49,7 @@ test('inspects a real standalone original-key schedule in both locales and theme
       await page.getByRole('button', { name: 'Language', exact: true }).click()
       await page.getByRole('option', { name: /zh-CN/ }).click()
       await expect(page.getByRole('table', { name: '比较摘要', exact: true })).toBeVisible()
-      await expect(inspect()).toHaveAccessibleName(/基准执行: 0x02; 改变后执行: 0x02/)
+      await expect(inspect()).toHaveAccessibleName(/基准结果: 0x02; 改变后结果: 0x02/)
     }
     for (const width of [1280, 390]) {
       await page.setViewportSize({ width, height: 844 })

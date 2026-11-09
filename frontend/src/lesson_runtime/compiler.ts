@@ -73,6 +73,8 @@ export type LessonComparisonBinding = {
 
 export type LessonComparison = {
   readonly kind: 'avalanche' | 'generic'
+  /** Earlier paired schedule whose original-key experiment supplies this cipher. */
+  readonly keyChange?: string
   readonly sources?: readonly string[]
   readonly graph: string
   readonly bindings: Readonly<Record<string, LessonComparisonBinding>>
@@ -890,6 +892,7 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
   const steps: CompiledStep[] = []
   const stepIds = new Set<string>()
   const executionSteps = new Map<string, GraphInfo>()
+  const comparisonSteps = new Map<string, GraphInfo>()
   for (const [index, raw] of (Array.isArray(root.steps) ? root.steps : []).entries()) {
     const path = `steps.${index}`
     const step = requireMap(raw, path, lesson.spans, diagnostics)
@@ -1031,36 +1034,7 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
             ...(direction === 'encrypt' || direction === 'decrypt' ? { direction } : {}),
             ...(labels ? { labels: labels as Record<string, string> } : {}),
           }
-          if (presentation.overlay === true && compiled.execute) {
-            const graph = graphInfo[compiled.execute.graph].graph
-            const keys = graph.graph.nodes.filter((node) => node.role === 'round-key')
-              .sort((left, right) => rows?.ok ? rows.value.indexOf(`${left.id}.value`) - rows.value.indexOf(`${right.id}.value`) : 0)
-            const bindings = keys.flatMap((node) => {
-              const reference = compiled.execute!.bindings[`${node.id}.value`]
-              return reference && 'step' in reference ? [{ node, reference, scheduleRow: executionSteps.get(reference.step)?.graph.outputAliases?.[reference.output] ?? reference.output }] : []
-            })
-            if (!bindings.length) diagnostics.push(diagnostic('lesson.overlay-without-schedule-binding', 'Overlay requires a cross-Step round-key binding.', `${path}.presentation.overlay`, lesson.spans.get(`${path}.presentation.overlay`)))
-            if (bindings.length !== keys.length) diagnostics.push(diagnostic('overlay.unbound-round-key', 'Every cipher round key must bind to the schedule.', `${path}.execute.bindings`, lesson.spans.get(`${path}.execute.bindings`)))
-            if (new Set(bindings.map(({ reference }) => reference.step)).size > 1) diagnostics.push(diagnostic('overlay.multiple-schedule-steps', 'Overlay round keys must come from one schedule Step.', `${path}.execute.bindings`, lesson.spans.get(`${path}.execute.bindings`)))
-            if (new Set(bindings.map(({ reference, scheduleRow }) => `${reference.step}:${scheduleRow}`)).size !== bindings.length) diagnostics.push(diagnostic('overlay.duplicate-anchor', 'A schedule anchor cannot bind to multiple cipher keys.', `${path}.execute.bindings`, lesson.spans.get(`${path}.execute.bindings`)))
-            for (const { node, reference, scheduleRow } of bindings) {
-              const schedule = executionSteps.get(reference.step)
-              const nodeId = scheduleRow.slice(0, scheduleRow.lastIndexOf('.'))
-              if (schedule && (!schedule.outputTypes[reference.output] || schedule.graph.graph.nodes.find((node) => node.id === nodeId)?.role !== 'round-key')) diagnostics.push(diagnostic('overlay.not-round-key', 'A schedule anchor must be an exported round-key output.', `${path}.execute.bindings`, lesson.spans.get(`${path}.execute.bindings`)))
-              const source = schedule?.outputTypes[reference.output]
-              const target = graph.outputTypes?.[`${node.id}.value`]
-              if (source && target && !equalTypes(source, target)) diagnostics.push(diagnostic('overlay.width-mismatch', 'Overlay anchors must have equal bit widths.', `${path}.execute.bindings`, lesson.spans.get(`${path}.execute.bindings`)))
-            }
-            const scheduleKeys = executionSteps.get(bindings[0]?.reference.step)?.graph.graph.nodes.filter((node) => node.role === 'round-key')
-              .sort((left, right) => (left.round ?? 0) - (right.round ?? 0)) ?? []
-            const positions = bindings.map(({ scheduleRow }) => scheduleKeys.findIndex((node) => `${node.id}.value` === scheduleRow))
-            const differences = positions.slice(1).map((position, index) => position - positions[index])
-            if (differences.some((difference) => difference > 0) && differences.some((difference) => difference < 0)) diagnostics.push(diagnostic('overlay.schedule-order-inconsistent', 'Schedule anchors must follow forward or reversed generation order.', `${path}.execute.bindings`, lesson.spans.get(`${path}.execute.bindings`)))
-            if (bindings.length) compiled.overlay = {
-              step: bindings[0].reference.step,
-              anchors: bindings.map(({ node, scheduleRow }) => ({ cipherRow: `${node.id}.value`, scheduleRow, round: node.round! })),
-            }
-          }
+
         } else {
           diagnostics.push(diagnostic('lesson.invalid-input', 'Presentation metadata is invalid.', `${path}.presentation`, lesson.spans.get(`${path}.presentation`)))
         }
@@ -1133,7 +1107,7 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
             const comparePath = `${path}.visualizer.compare`
             const compare = requireMap(visualizer.compare, comparePath, lesson.spans, diagnostics)
             if (compare) {
-              checkFields(compare, ['kind', 'graph', 'bindings', 'traceLevel', ...(isV2 && compare.kind === 'avalanche' ? ['sources'] : [])], comparePath, lesson.spans, diagnostics)
+              checkFields(compare, ['kind', 'graph', 'bindings', 'traceLevel', ...(isV2 && compare.kind === 'avalanche' ? ['sources', 'keyChange'] : [])], comparePath, lesson.spans, diagnostics)
               const graph = typeof compare.graph === 'string' ? graphInfo[compare.graph] : undefined
               const compareBindings = requireMap(compare.bindings, `${comparePath}.bindings`, lesson.spans, diagnostics) ?? {}
               const resolvedBindings: Record<string, LessonComparisonBinding> = {}
@@ -1141,7 +1115,7 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
               const referenceType = (reference: LessonValueReference): PortType | undefined =>
                 'input' in reference ? inputs[reference.input]?.type
                   : 'constant' in reference ? constants[reference.constant]?.type
-                    : executionSteps.get(reference.step)?.outputTypes[reference.output]
+                    : (executionSteps.get(reference.step) ?? comparisonSteps.get(reference.step))?.outputTypes[reference.output]
               for (const [target, rawBinding] of Object.entries(compareBindings)) {
                 const bindingPath = `${comparePath}.bindings.${target}`
                 const binding = comparisonBindingAt(rawBinding, bindingPath, lesson.spans, diagnostics)
@@ -1163,10 +1137,19 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
                 || (!isV2 && compare.kind === 'avalanche' && (changedInputs.length !== 1 || changedInputs[0] !== 'plaintext'))) {
                 diagnostics.push(diagnostic('lesson.invalid-input', 'Avalanche comparisons must vary only the plaintext binding.', comparePath, lesson.spans.get(comparePath)))
               }
-              if (isV2 && compare.kind === 'avalanche' && (!Array.isArray(compare.sources) || compare.sources.length === 0
+              if (isV2 && compare.kind === 'avalanche' && compare.keyChange === undefined && (!Array.isArray(compare.sources) || compare.sources.length === 0
                 || new Set(compare.sources).size !== compare.sources.length
                 || compare.sources.some((source) => typeof source !== 'string' || graph?.sourceTypes[source]?.family !== 'bits'))) {
                 diagnostics.push(diagnostic('lesson.invalid-input', 'Avalanche requires declared bit-valued graph sources.', `${comparePath}.sources`, lesson.spans.get(`${comparePath}.sources`)))
+              }
+              if (isV2 && compare.keyChange !== undefined) {
+                const original = steps.find((candidate) => candidate.id === compare.keyChange)?.visualizer?.compare
+                if (typeof compare.keyChange !== 'string' || !comparisonSteps.has(compare.keyChange)
+                  || original?.kind !== 'avalanche' || original.keyChange || original.sources?.length !== 1
+                  || compiled.presentation?.kind !== 'spn-cipher' || compiled.presentation.mode === 'key-expansion'
+                  || compare.sources !== undefined) {
+                  diagnostics.push(diagnostic('lesson.invalid-step-reference', 'Key-change cipher requires an earlier original-source avalanche comparison.', `${comparePath}.keyChange`, lesson.spans.get(`${comparePath}.keyChange`)))
+                }
               }
               if (!graph || (!isV2 && graph.traceLevel !== 'detail') || compare.traceLevel !== 'detail'
                 || descriptor.trace?.family !== 'comparison' || descriptor.trace.level !== 'detail') {
@@ -1176,17 +1159,64 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
                   id: visualizer.id as string,
                   compare: {
                     kind: compare.kind as LessonComparison['kind'],
-                    ...(isV2 && compare.kind === 'avalanche' ? { sources: compare.sources as string[] } : {}),
+                    ...(isV2 && compare.kind === 'avalanche' && compare.sources !== undefined ? { sources: compare.sources as string[] } : {}),
+                    ...(isV2 && typeof compare.keyChange === 'string' ? { keyChange: compare.keyChange } : {}),
                     graph: compare.graph as string,
                     bindings: resolvedBindings,
                     traceLevel: 'detail',
                   },
                   options,
                 }
+                if (isV2) comparisonSteps.set(step.id, graph)
               }
             }
           }
         }
+      }
+    }
+    const comparison = compiled.visualizer?.compare
+    const overlayRequested = fields(step.presentation)?.overlay === true
+    if ((overlayRequested || comparison?.keyChange) && compiled.presentation?.kind === 'spn-cipher' && compiled.presentation.mode !== 'key-expansion' && (compiled.execute || comparison)) {
+      const graph = graphInfo[comparison?.graph ?? compiled.execute!.graph].graph
+      const scheduleInfo = (id: string) => comparison ? comparisonSteps.get(id) : executionSteps.get(id)
+      const rows = compiled.presentation.rowOrder
+      if (comparison && !comparison.keyChange) diagnostics.push(diagnostic('lesson.overlay-without-schedule-binding', 'Comparison overlay requires an explicit original-key experiment.', `${path}.presentation.overlay`, lesson.spans.get(`${path}.presentation.overlay`)))
+      const keys = graph.graph.nodes.filter((node) => node.role === 'round-key')
+        .sort((left, right) => rows ? rows.indexOf(`${left.id}.value`) - rows.indexOf(`${right.id}.value`) : 0)
+      const bindings = keys.flatMap((node) => {
+        const pair = comparison?.bindings[node.id]
+        const reference = comparison
+          ? pair && 'step' in pair.baseline && 'step' in pair.changed && pair.baseline.step === comparison.keyChange && pair.changed.step === comparison.keyChange
+            && pair.baseline.output === pair.changed.output ? pair.baseline : undefined
+          : compiled.execute!.bindings[`${node.id}.value`]
+        return reference && 'step' in reference ? [{ node, reference, scheduleRow: scheduleInfo(reference.step)?.graph.outputAliases?.[reference.output] ?? reference.output }] : []
+      })
+      if (!bindings.length) diagnostics.push(diagnostic('lesson.overlay-without-schedule-binding', 'Overlay requires a cross-Step round-key binding.', `${path}.presentation.overlay`, lesson.spans.get(`${path}.presentation.overlay`)))
+      if (bindings.length !== keys.length) diagnostics.push(diagnostic('overlay.unbound-round-key', 'Every cipher round key must bind to the schedule.', `${path}.${comparison ? 'visualizer.compare' : 'execute'}.bindings`, lesson.spans.get(`${path}.${comparison ? 'visualizer.compare' : 'execute'}.bindings`)))
+      if (new Set(bindings.map(({ reference }) => reference.step)).size > 1) diagnostics.push(diagnostic('overlay.multiple-schedule-steps', 'Overlay round keys must come from one schedule Step.', `${path}.${comparison ? 'visualizer.compare' : 'execute'}.bindings`, lesson.spans.get(`${path}.${comparison ? 'visualizer.compare' : 'execute'}.bindings`)))
+      if (new Set(bindings.map(({ reference, scheduleRow }) => `${reference.step}:${scheduleRow}`)).size !== bindings.length) diagnostics.push(diagnostic('overlay.duplicate-anchor', 'A schedule anchor cannot bind to multiple cipher keys.', `${path}.${comparison ? 'visualizer.compare' : 'execute'}.bindings`, lesson.spans.get(`${path}.${comparison ? 'visualizer.compare' : 'execute'}.bindings`)))
+      for (const { node, reference, scheduleRow } of bindings) {
+        const schedule = scheduleInfo(reference.step)
+        const nodeId = scheduleRow.slice(0, scheduleRow.lastIndexOf('.'))
+        if (schedule && (!schedule.outputTypes[reference.output] || schedule.graph.graph.nodes.find((node) => node.id === nodeId)?.role !== 'round-key')) diagnostics.push(diagnostic('overlay.not-round-key', 'A schedule anchor must be an exported round-key output.', `${path}.${comparison ? 'visualizer.compare' : 'execute'}.bindings`, lesson.spans.get(`${path}.${comparison ? 'visualizer.compare' : 'execute'}.bindings`)))
+        const source = schedule?.outputTypes[reference.output]
+        const target = graph.outputTypes?.[`${node.id}.value`]
+        if (source && target && !equalTypes(source, target)) diagnostics.push(diagnostic('overlay.width-mismatch', 'Overlay anchors must have equal bit widths.', `${path}.${comparison ? 'visualizer.compare' : 'execute'}.bindings`, lesson.spans.get(`${path}.${comparison ? 'visualizer.compare' : 'execute'}.bindings`)))
+      }
+      const scheduleKeys = scheduleInfo(bindings[0]?.reference.step)?.graph.graph.nodes.filter((node) => node.role === 'round-key')
+        .sort((left, right) => (left.round ?? 0) - (right.round ?? 0)) ?? []
+      const positions = bindings.map(({ scheduleRow }) => scheduleKeys.findIndex((node) => `${node.id}.value` === scheduleRow))
+      const differences = positions.slice(1).map((position, index) => position - positions[index])
+      if (differences.some((difference) => difference > 0) && differences.some((difference) => difference < 0)) diagnostics.push(diagnostic('overlay.schedule-order-inconsistent', 'Schedule anchors must follow forward or reversed generation order.', `${path}.${comparison ? 'visualizer.compare' : 'execute'}.bindings`, lesson.spans.get(`${path}.${comparison ? 'visualizer.compare' : 'execute'}.bindings`)))
+      if (comparison?.keyChange) {
+        const originalSources = steps.find((candidate) => candidate.id === comparison.keyChange)?.visualizer?.compare?.sources ?? []
+        compiled.visualizer = { ...compiled.visualizer!, compare: { ...comparison,
+          sources: bindings.filter(({ scheduleRow }) => originalSources.some((source) => scheduleRow === `${source}.value`)).map(({ node }) => node.id),
+        } }
+      }
+      if (overlayRequested && bindings.length) compiled.overlay = {
+        step: bindings[0].reference.step,
+        anchors: bindings.map(({ node, scheduleRow }) => ({ cipherRow: `${node.id}.value`, scheduleRow, round: node.round! })),
       }
     }
     if (step.accepted_error_codes !== undefined) {

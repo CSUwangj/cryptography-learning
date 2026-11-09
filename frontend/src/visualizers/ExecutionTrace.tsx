@@ -17,6 +17,8 @@ export type ExecutionTraceRendererProps = {
   readonly overlay?: {
     readonly anchors: readonly { readonly cipherRow: string, readonly scheduleRow: string, readonly round: number }[]
     readonly execution: WorkerExecutionSnapshot
+    readonly comparison?: AvalancheComparison
+    readonly avalancheSources?: readonly string[]
     readonly graph: CompiledGraph
     readonly presentation?: LessonPresentation
   }
@@ -221,11 +223,11 @@ const spnPresentation = (execution: WorkerExecutionSnapshot, t: TFunction<'visua
       }),
     }, ...(comparison ? [{
       kind: 'comparison' as const, caption: t('avalanche.summary'),
-      headers: [t('avalanche.stage'), t('avalanche.baseline'), t('avalanche.changed'), t('comparison.mask'), t('avalanche.changedBits'), t('avalanche.ratio')],
+      headers: [t('avalanche.stage'), t('avalanche.baseline'), t('avalanche.changed'), t('avalanche.changedBits'), t('avalanche.ratio')],
       rows: comparison.checkpoints.map((pair) => ({
         id: pair.path, label: pair.path,
         ...(!pair.complete ? { state: 'incomplete' as const } : {}),
-        cells: [valueText(pair.left), valueText(pair.right), ...(pair.complete ? [hex(pair.mask), pair.changedBits, pair.ratio] : [t('avalanche.gap'), '—', '—'])].map((value) => ({ value })),
+        cells: [valueText(pair.left), valueText(pair.right), ...(pair.complete ? [pair.changedBits, pair.ratio] : [t('avalanche.gap'), '—'])].map((value) => ({ value })),
       })),
     }] : [])],
   }
@@ -233,7 +235,7 @@ const spnPresentation = (execution: WorkerExecutionSnapshot, t: TFunction<'visua
 
 const overlayPresentation = (base: LearningPresentation, overlay: NonNullable<ExecutionTraceRendererProps['overlay']>, spn: NonNullable<ExecutionTraceRendererProps['spn']>, t: TFunction<'visualizers'>): LearningPresentation => {
   const presentation = overlay.presentation?.kind === 'spn-cipher' ? overlay.presentation : { kind: 'spn-cipher' as const, mode: 'key-expansion' as const }
-  const schedule = spnPresentation(overlay.execution, t, base.executionIdentity!, { graph: overlay.graph, presentation: { ...presentation, mode: 'key-expansion' } }, presentation.labels)
+  const schedule = spnPresentation(overlay.execution, t, base.executionIdentity!, { graph: overlay.graph, presentation: { ...presentation, mode: 'key-expansion' } }, presentation.labels, overlay.comparison, overlay.avalancheSources)
   const rows = schedule.sections[0].rows
   const byId = new Map(rows.map((row) => [row.id, row]))
   const { keys, blocks: paths, remaining: tail } = scheduleBlocks(overlay.graph)
@@ -253,7 +255,7 @@ const overlayPresentation = (base: LearningPresentation, overlay: NonNullable<Ex
   }))
   return {
     ...base,
-    bitCorrespondence: overlay.anchors.flatMap((anchor) => {
+    bitCorrespondence: base.comparison ? undefined : overlay.anchors.flatMap((anchor) => {
       const type = spn.graph.outputTypes?.[anchor.cipherRow]
       const width = type?.family === 'bits' ? type.size : undefined
       return typeof width === 'number' ? Array.from({ length: width }, (_, bit) => ({ from: `${anchor.cipherRow}#${bit}`, to: `schedule:${anchor.scheduleRow}#${bit}` })) : []
@@ -262,12 +264,16 @@ const overlayPresentation = (base: LearningPresentation, overlay: NonNullable<Ex
       caption: t('overlay.title'), closeLabel: t('overlay.close'), rows: laneRows,
       headers: [t('keyExpansion.stage'), t('overlay.source'), t('keyExpansion.round'), t('keyExpansion.value'), t('keyExpansion.bits')],
       sharedSelection: { toggleLabel: t('overlay.toggle'), clearLabel: t('overlay.clear') },
-      originalOrder: { kind: 'raw', caption: t('overlay.originalOrder'), headers: schedule.sections[0].headers.slice(0, 3), rows: generation },
+      originalOrder: { kind: 'raw', caption: t('overlay.originalOrder'),
+        headers: [...schedule.sections[0].headers.slice(0, 3), ...(overlay.comparison ? [t('avalanche.changedBits'), t('avalanche.ratio')] : [])],
+        rows: generation.map((row) => ({ ...row, cells: [...row.cells, ...(overlay.comparison
+          ? schedule.sections[1].rows.find((pair) => pair.id === row.id)!.cells.slice(2) : [])] })),
+      },
     },
     selectionStatus: (selected) => selected ? `${t(selected.id.startsWith('schedule:') ? 'overlay.schedule' : 'overlay.cipher')}: ${selected.ariaLabel}` : t('keyExpansion.none'),
     sections: base.sections.map((section) => ({ ...section, rows: section.rows.map((row) => ({
       ...row,
-      ...(overlay.anchors.some((anchor) => anchor.cipherRow === row.id) ? { selectableKey: { id: `opener:${row.id}`, value: t('overlay.toggle'), ariaLabel: t('overlay.toggle') } } : {}),
+      ...(section.kind === 'trace' && overlay.anchors.some((anchor) => anchor.cipherRow === row.id) ? { selectableKey: { id: `opener:${row.id}`, value: t('overlay.toggle'), ariaLabel: t('overlay.toggle') } } : {}),
     })) })),
   }
 }
@@ -277,8 +283,8 @@ export const ExecutionTraceRenderer: React.FC<ExecutionTraceRendererProps> = ({ 
   const presentation = useMemo(() => {
     const structure = spn ?? (comparison && graph ? { graph, presentation: { kind: 'spn-cipher' as const } } : undefined)
     const base = structure ? spnPresentation(execution, t, executionIdentity, structure, primitiveLabels, comparison, avalancheSources) : executionTracePresentation(execution, t, executionIdentity, primitiveLabels)
-    if (comparison) return { ...base, title: t('comparison.title') }
-    return overlay && spn ? overlayPresentation(base, overlay, spn, t) : base
+    const titled = comparison ? { ...base, title: t('comparison.title') } : base
+    return overlay && spn ? overlayPresentation(titled, overlay, spn, t) : titled
   }, [execution, t, executionIdentity, primitiveLabels, spn, overlay, comparison, avalancheSources, graph])
   return <LearningPresentationView presentation={presentation} />
 }

@@ -37,9 +37,9 @@ implementation is separate work; no automatic converter is approved. Lesson
 schema versions and Visualizer descriptor major versions are independent.
 
 The same decision assigns the new classical presentation to Lesson v2 only.
-Generic comparison, controlled data-change avalanche and standalone original-key
-avalanche schedules now use the v2 runtime. Key-change cipher overlays and
-dedicated classical presentation remain separate work.
+Generic comparison, controlled data-change avalanche, standalone original-key
+avalanche schedules and key-change cipher overlays now use the v2 runtime.
+Dedicated classical presentation remains separate work.
 The supported presentation table below describes the implemented path. The
 [public version audit](lesson-version-audit.md) records public roots at its stated
 historical snapshot; the complete examples below extend that inventory. Private
@@ -225,7 +225,8 @@ label and its ID.
 | Generic comparison | `visualizer.id: avalanche@1` with `compare.kind: generic`, a graph, detail trace level and typed baseline/changed bindings for every graph source. Several inputs may differ. |
 | Data-change avalanche | The same comparison declaration with `kind: avalanche` and a nonempty `sources` list of permitted original data source IDs. Exactly one bit of one listed source changes; all other independent input values stay equal. |
 | Standalone original-key avalanche | `presentation: {kind: spn-cipher, mode: key-expansion}` with `avalanche@1`, `compare.kind: avalanche`, and `sources: [key]` naming the original-key graph source. No cipher is required. |
-| Key-change cipher overlays or dedicated classical teaching | Separate work. Dedicated `classical-cipher@1` remains unsupported in v2 (`lesson.v2-unsupported`); registered classical operations may still execute in a raw v2 graph. |
+| Key-change cipher overlay | A cipher avalanche comparison declares `keyChange` naming an earlier original-key avalanche Step. Bind each key source to that Step's exported schedule output and request `presentation.overlay: true`. |
+| Dedicated classical teaching | Separate work. Dedicated `classical-cipher@1` remains unsupported in v2 (`lesson.v2-unsupported`); registered classical operations may still execute in a raw v2 graph. |
 
 Legacy `block-cipher`, `key-expansion` presentations and `teaching-spn@1` are v1
 declarations, not v2 aliases. Standalone schedule comparison reuses the existing
@@ -287,7 +288,34 @@ actual bits, and differences remain underlined independently of selection.
 Data-change and key-change Steps keep separate results; edits invalidate only
 affected v2 comparisons. Selection belongs to the displayed execution and never
 transfers from another Step. This does not promise durable navigation history.
-Cipher comparison overlays are follow-up work.
+
+A cipher comparison joins that experiment with `compare.keyChange: compare-key`
+instead of `compare.sources`. Every cipher round-key source uses an ordinary
+reference such as `{step: compare-key, output: round-key-1.value}`. The session
+resolves it to the baseline schedule for the baseline cipher and the changed
+schedule for the changed cipher. Both sides must reference the same exported
+anchor. The cipher's other sources retain equal values, including plaintext for
+encryption and ciphertext for decryption. Multiple derived round keys may differ.
+The [paired AES fixture](../frontend/demos/keyChangeLesson.ts)
+builds runnable encryption/decryption Lessons from the real AES graphs.
+
+`presentation.overlay: true` enables the existing complete schedule controls.
+It requires the explicit `keyChange` declaration on a comparison; ordinary
+data-change comparisons do not discover an overlay automatically. Missing or
+incompatible bindings receive the existing binding/overlay diagnostics. The
+earlier experiment still enforces exactly one original-key bit change. Editing
+its inputs invalidates its dependent cipher comparison as well.
+
+New and replacement cipher comparisons start closed with both sizes 1. Their
+initial selection names the original-key bit only if that exact source is also
+retained and visible in a cipher row. No derived key replaces an absent source.
+This initialization also applies when `presentation.overlay` is false or omitted.
+Toolbar and bound-row toggles clear selection and preserve both independent
+sizes. Actual size changes also clear selection; active-size reselect, locale
+and resize preserve it. Only the active comparison view draws its own lineage.
+Actual differences and paired values remain visible independently of selection.
+Missing schedule checkpoints remain inspectable gaps without invented values,
+measurements or lineage through missing rows.
 
 The cipher teaching order is structural:
 
@@ -321,7 +349,8 @@ dry-run validation still apply.
 
 The compiler derives anchor pairs from ordinary cross-Step bindings, for example
 `key1.value: {step: schedule, output: rk1.value}`. The source must be an earlier
-executing Step, all keys must bind to that one schedule, every anchor must be an
+executing Step, or the paired schedule named by a comparison's `keyChange`.
+All keys must bind to that one schedule, every anchor must be an
 exported `round-key` output of equal bit width, and no anchor may be reused by
 two cipher keys. Source/output/concat nodes may all supply anchors. Names do not
 identify them. Consumption must be monotonic forward or reversed relative to
@@ -341,7 +370,8 @@ The current confirmed behavior is:
 - The complete schedule starts closed, without persisted open state. A stateful
   toolbar toggle and generic show/close buttons on bound cipher rows open/close
   the same complete covering lane. Every control shows it while closed and closes
-  it while open, preserving origin and sizes. A different bound row does not
+  it while open, preserving sizes. Single-execution overlays preserve origin;
+  comparison overlays clear it. A different bound row does not
   select or filter a key. There is no automatic whole-key selection or scrolling.
 - The lane covers cipher bit controls and aligns schedule keys to their cipher
   AddRoundKey operation rows. Cipher labels and values remain; outside content
@@ -362,7 +392,8 @@ The current confirmed behavior is:
 - Deliberately clicking a unit replaces the origin with all its bits. Exact
   underlying dependencies determine related groups; touching a group never adds
   its other bits to traversal or visits an ancestor's unrelated descendants.
-  Anchor bits correspond one-to-one in both directions, without cross-view edges.
+  In single-execution overlays, anchor bits correspond one-to-one in both
+  directions, without cross-view edges. Comparison selection stays view-local.
   Deliberate and related groups have distinct states. Accessible status retains
   source view, row and selected group/range even when the source is covered.
 - Group values use full-width hexadecimal from four bits, preserving leading
@@ -372,8 +403,9 @@ The current confirmed behavior is:
   `8/32`, related-position lists or bit-detail panels appear. Row spacing remains
   readable through grouping and selection. Numeric byte separators preserve the
   full accessible value.
-- Opening/closing from either control, locale/resize, or reselecting an active size
-  preserves origin and both unit sizes. An actual size change clears origin and
+- Opening/closing from either control preserves both unit sizes and preserves
+  origin for single executions; comparisons clear origin. Locale/resize or
+  reselecting an active size preserves origin and sizes. An actual size change clears origin and
   preserves overlay visibility. Locale/resize and active-size re-click also
   preserve visibility. An actual direction change, replacement execution
   or Lesson re-entry clears origin, closes the lane and resets both sizes to 1.

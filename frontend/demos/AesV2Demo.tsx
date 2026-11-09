@@ -11,6 +11,7 @@ import type { LessonDocuments } from '../src/lesson_runtime'
 import { genericComparisonDocuments } from './genericComparisonLesson'
 import { dataAvalancheDocuments } from './dataAvalancheLesson'
 import { keyAvalancheLesson } from './keyAvalancheLesson'
+import { aesKeyChangeLesson } from './keyChangeLesson'
 import aes128 from '../src/lesson_runtime/fixture/aes128-v2.yaml?raw'
 import aes128En from '../src/lesson_runtime/fixture/aes128-v2-locales/en-US.yaml?raw'
 import aes128Zh from '../src/lesson_runtime/fixture/aes128-v2-locales/zh-CN.yaml?raw'
@@ -54,6 +55,8 @@ const comparisonLessons: Readonly<Record<string, LessonDocuments>> = {
   'generic-comparison': genericComparisonDocuments,
   'data-avalanche': dataAvalancheDocuments,
   'key-avalanche': standaloneKeyDocuments,
+  'aes128-key-change-encrypt': aesKeyChangeLesson(lessons['aes128-v2-kat'], 128, 'encrypt'),
+  'aes128-key-change-decrypt': aesKeyChangeLesson(lessons['aes128-v2-kat'], 128, 'decrypt'),
 }
 
 export const AesV2Demo: React.FC = () => {

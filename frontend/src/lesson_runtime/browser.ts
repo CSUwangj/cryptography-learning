@@ -283,43 +283,36 @@ export class BrowserLessonSession {
   private invalidateSnapshots(input: string): void {
     const affected = new Set<string>()
     for (const step of this.lesson.steps) {
-      if (!step.execute) continue
-      if (Object.values(step.execute.bindings).some((binding) =>
-        ('input' in binding && binding.input === input) || ('step' in binding && affected.has(binding.step))
-      )) affected.add(step.id)
-    }
-    for (const step of affected) {
-      this.snapshots.delete(step)
-      this.executionIdentities.delete(step)
-      this.checkResults.delete(step)
-      this.acceptedDiagnostics.delete(step)
-      this.executionDiagnostics.delete(step)
-    }
-    for (const step of this.lesson.steps) if (step.visualizer?.compare) {
-      const compare = step.visualizer.compare
-      if (this.lesson.graphs[compare.graph].graph.schema !== 2 || Object.values(compare.bindings).some((binding) =>
-        [binding.baseline, binding.changed].some((reference) =>
-          ('input' in reference && reference.input === input) || ('step' in reference && affected.has(reference.step))
-        )
-      )) {
+      const compare = step.visualizer?.compare
+      const references = compare ? Object.values(compare.bindings).flatMap((binding) => [binding.baseline, binding.changed])
+        : Object.values(step.execute?.bindings ?? {})
+      if (compare && this.lesson.graphs[compare.graph].graph.schema !== 2
+        || compare?.keyChange && affected.has(compare.keyChange)
+        || references.some((binding) => ('input' in binding && binding.input === input) || ('step' in binding && affected.has(binding.step)))) {
+        affected.add(step.id)
+        this.snapshots.delete(step.id)
         this.comparisons.delete(step.id)
         this.executionIdentities.delete(step.id)
+        this.checkResults.delete(step.id)
+        this.acceptedDiagnostics.delete(step.id)
+        this.executionDiagnostics.delete(step.id)
       }
     }
     this.checkResults.clear()
   }
 
-  private referenceValue(reference: LessonValueReference): CryptoValue | undefined {
+  private referenceValue(reference: LessonValueReference, side?: 'baseline' | 'changed'): CryptoValue | undefined {
     if ('input' in reference && this.invalidBitFlipInputs.has(reference.input)) return undefined
     const value = 'input' in reference
       ? this.inputs[reference.input]
       : 'constant' in reference
         ? this.lesson.constants[reference.constant]
         : (() => {
-          const snapshot = this.snapshots.get(reference.step)
-          const graph = this.lesson.steps.find((step) => step.id === reference.step)?.execute
-            ? this.lesson.graphs[this.lesson.steps.find((step) => step.id === reference.step)!.execute!.graph]
-            : undefined
+          const step = this.lesson.steps.find((step) => step.id === reference.step)
+          const snapshot = side && step?.visualizer?.compare
+            ? this.comparisons.get(reference.step)?.executions[side] : this.snapshots.get(reference.step)
+          const graphId = step?.visualizer?.compare?.graph ?? step?.execute?.graph
+          const graph = graphId ? this.lesson.graphs[graphId] : undefined
           return snapshot?.outputs[graph?.outputAliases?.[reference.output] ?? reference.output]
         })()
     return value && typeof value !== 'string' ? value : undefined
@@ -334,15 +327,20 @@ export class BrowserLessonSession {
     const baseline: Record<string, CryptoValue> = {}
     const changed: Record<string, CryptoValue> = {}
     for (const [source, binding] of Object.entries(compare.bindings)) {
-      const left = this.referenceValue(binding.baseline)
-      const right = this.referenceValue(binding.changed)
+      const left = this.referenceValue(binding.baseline, 'baseline')
+      const right = this.referenceValue(binding.changed, 'changed')
       if (!left || !right) {
         return { ok: false, diagnostics: [diagnostic('lesson.comparison-input-unavailable', this.t('learning.runtime.lesson.comparison-input-unavailable', { lng: 'en-US' }), `steps.${stepId}.visualizer.compare.bindings.${source}`)] }
       }
       baseline[`${source}.value`] = cloneValue(left)
       changed[`${source}.value`] = cloneValue(right)
     }
-    if (compare.kind === 'avalanche' && graph.graph.schema === 2) {
+    if (compare.keyChange) {
+      const independent = Object.keys(baseline).filter((source) => graph.graph.nodes.find((node) => `${node.id}.value` === source)?.role !== 'round-key')
+      if (!this.comparisons.has(compare.keyChange) || independent.some((source) => !equalCryptoValues(baseline[source], changed[source]))) {
+        return { ok: false, diagnostics: [diagnostic('lesson.invalid-avalanche', this.t('learning.runtime.lesson.invalid-avalanche', { lng: 'en-US' }), `steps.${stepId}.visualizer.compare`)] }
+      }
+    } else if (compare.kind === 'avalanche' && graph.graph.schema === 2) {
       const differences = Object.keys(baseline).filter((source) => !equalCryptoValues(baseline[source], changed[source]))
       const source = differences[0]
       const left = baseline[source]

@@ -222,7 +222,7 @@ describe('Avalanche presentation adapter', () => {
     const incomplete = 'Trace is incomplete. Raw retained values remain visible; paired differences and lineage stop at the gap.'
     expect(screen.getAllByRole('status').map((status) => status.textContent)).toContain(incomplete)
     const raw = screen.getByRole('table', { name: incomplete })
-    expect(within(raw).getAllByRole('rowheader', { name: 'Baseline' }).length).toBeGreaterThan(0)
+    expect(within(raw).getAllByRole('rowheader', { name: 'Baseline result' }).length).toBeGreaterThan(0)
     expect(within(raw).getByRole('rowheader', { name: 'Trace gap' }).closest('tr')).toHaveAttribute('data-state', 'incomplete')
     expect(screen.getByRole('table', { name: 'Comparison summary' })).toHaveTextContent('Trace gap')
   })

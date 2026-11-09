@@ -98,7 +98,7 @@ export const RenderHost: React.FC<RenderHostProps> = (props) => {
   const overlay = useMemo(() => props.overlay && { ...props.overlay, presentation: props.overlay.presentation && {
     ...props.overlay.presentation,
     ...(props.overlay.presentation.labels && props.lessonTexts ? { labels: Object.fromEntries(Object.entries(props.overlay.presentation.labels).map(([identity, textId]) => [identity, props.lessonTexts![textId] ?? textId])) } : {}),
-  } }, [props.overlay?.anchors, props.overlay?.execution, props.overlay?.graph, props.overlay?.presentation, props.lessonTexts])
+  } }, [props.overlay?.anchors, props.overlay?.execution, props.overlay?.comparison, props.overlay?.avalancheSources, props.overlay?.graph, props.overlay?.presentation, props.lessonTexts])
   return <IsolatedRenderer comparison={props.comparison} execution={props.execution} key={props.executionIdentity}>
     {props.comparison && props.compiledGraph?.graph.schema === 2
       ? <ExecutionTraceRenderer
@@ -109,6 +109,7 @@ export const RenderHost: React.FC<RenderHostProps> = (props) => {
         executionIdentity={props.executionIdentity}
         primitiveLabels={presentation?.labels}
         spn={spn}
+        overlay={overlay}
       />
       : presentation?.kind === 'block-cipher' && props.execution
         ? <BlockCipherRenderer

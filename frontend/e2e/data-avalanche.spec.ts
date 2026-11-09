@@ -48,7 +48,10 @@ test('constructs and executes a v2 data avalanche by keyboard in both locales (#
     await expect(comparison.getByRole('combobox')).toHaveValue('1')
     await expect(row(copy.origin).getByRole('button').nth(copy.position)).toHaveAttribute('aria-pressed', 'true')
     const summary = page.getByRole('table', { name: copy.summary, exact: true })
-    await expect(summary.getByRole('row', { name: new RegExp(`${copy.origin}.value`) })).toContainText(index === 0 ? '0x40' : '0x20')
+    await expect(summary.getByRole('row', { name: new RegExp(`${copy.origin}.value`) }).getByRole('cell')).toHaveText([
+      index === 0 ? '0x00' : '0x01', index === 0 ? '0x40' : '0x21', '1', '0.125',
+    ])
+    await expect(summary.getByRole('row', { name: /key.value/ }).getByRole('cell').nth(2)).toHaveText('0')
     await expect(summary.getByRole('row', { name: /key.value/ }).getByRole('cell').nth(3)).toHaveText('0')
     const inspect = row(index === 0 ? 'data' : 'other').getByRole('button').nth(7)
     await inspect.focus()

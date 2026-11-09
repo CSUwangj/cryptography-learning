@@ -277,7 +277,9 @@ const LessonView: React.FC = () => {
   const state = load.state
   const step = current.lesson.steps[state.stepIndex]
   const scheduleStep = step.overlay && current.lesson.steps.find((candidate) => candidate.id === step.overlay!.step)
-  const scheduleExecution = step.overlay && state.snapshots[step.overlay.step]
+  const scheduleComparison = step.overlay && state.comparisons[step.overlay.step]
+  const scheduleExecution = step.overlay && (state.snapshots[step.overlay.step] ?? scheduleComparison?.executions.baseline)
+  const scheduleGraph = scheduleStep?.visualizer?.compare?.graph ?? scheduleStep?.execute?.graph
   const locale = current.lesson.locales[state.locale]
   const refresh = () => setLoad({ status: 'ready', state: current.state() })
   const checkResult = state.checkResults[step.id]
@@ -385,11 +387,13 @@ const LessonView: React.FC = () => {
         invocation={step.visualizer}
         presentation={step.presentation}
         compiledGraph={step.visualizer?.compare ? current.lesson.graphs[step.visualizer.compare.graph] : step.execute ? current.lesson.graphs[step.execute.graph] : undefined}
-        overlay={step.overlay && scheduleStep?.execute && scheduleExecution ? {
+        overlay={step.overlay && scheduleGraph && scheduleExecution ? {
           anchors: step.overlay.anchors,
           execution: scheduleExecution,
-          graph: current.lesson.graphs[scheduleStep.execute.graph],
-          presentation: scheduleStep.presentation,
+          graph: current.lesson.graphs[scheduleGraph],
+          presentation: scheduleStep?.presentation,
+          comparison: scheduleComparison || undefined,
+          avalancheSources: scheduleStep?.visualizer?.compare?.sources,
         } : undefined}
         lessonTexts={locale.texts}
         reducedMotion={reducedMotion}

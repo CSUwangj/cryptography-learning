@@ -59,8 +59,9 @@ it('renders real AES avalanche measurements over all 128 bits beside a retained 
     expect(source.querySelector('button[aria-pressed="true"]')).not.toBeNull()
     const summary = view.getByRole('table', { name: 'Comparison summary' })
     const measurement = summary.querySelector('[data-row-id="plaintext.value"]') as HTMLElement
-    expect(measurement.textContent).toContain('0x80000000000000000000000000000000')
-    expect(measurement.textContent).toContain('0.0078125')
+    expect([...measurement.querySelectorAll('td')].map((cell) => cell.textContent)).toEqual([
+      '0x00112233445566778899aabbccddeeff', '0x80112233445566778899aabbccddeeff', '1', '0.0078125',
+    ])
     const gap = view.container.querySelector('[data-row-id="sub-bytes-1.value"]') as HTMLElement
     expect(gap).toHaveTextContent('0x63cab7040953d051cd60e0e7ba70e18c | —; Trace gap')
     expect(gap.querySelector('button')).toBeNull()
