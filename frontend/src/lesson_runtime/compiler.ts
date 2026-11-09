@@ -1073,7 +1073,7 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
         const v2Comparison = isV2 && visualizer.id === 'avalanche@1' && ['generic', 'avalanche'].includes(fields(visualizer.compare)?.kind as string)
         const v2VisualizerCode = isV2 && (visualizer.id === 'teaching-spn@1' || visualizer.id === 'avalanche@1' && !v2Comparison || visualizer.id === 'classical-cipher@1')
         const unsupportedV2Visualizer = isV2 && (visualizer.id === 'avalanche@1' && !v2Comparison || visualizer.id === 'classical-cipher@1')
-        if (isV2 && visualizer.compare !== undefined && !v2Comparison) diagnostics.push(diagnostic('lesson.v2-unsupported', 'Only generic and data avalanche comparisons are supported by version: 2.', `${path}.visualizer.compare`, lesson.spans.get(`${path}.visualizer.compare`)))
+        if (isV2 && visualizer.compare !== undefined && !v2Comparison) diagnostics.push(diagnostic('lesson.v2-unsupported', 'Only generic and avalanche comparisons are supported by version: 2.', `${path}.visualizer.compare`, lesson.spans.get(`${path}.visualizer.compare`)))
         if (v2VisualizerCode) diagnostics.push(diagnostic(
           visualizer.id === 'teaching-spn@1' ? 'lesson.v1-feature-in-v2' : 'lesson.v2-unsupported',
           visualizer.id === 'teaching-spn@1' ? 'This visualizer is only supported by version: 1.' : 'This visualizer is not supported by version: 2.',
@@ -1166,7 +1166,7 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
               if (isV2 && compare.kind === 'avalanche' && (!Array.isArray(compare.sources) || compare.sources.length === 0
                 || new Set(compare.sources).size !== compare.sources.length
                 || compare.sources.some((source) => typeof source !== 'string' || graph?.sourceTypes[source]?.family !== 'bits'))) {
-                diagnostics.push(diagnostic('lesson.invalid-input', 'Data avalanche requires declared bit-valued graph sources.', `${comparePath}.sources`, lesson.spans.get(`${comparePath}.sources`)))
+                diagnostics.push(diagnostic('lesson.invalid-input', 'Avalanche requires declared bit-valued graph sources.', `${comparePath}.sources`, lesson.spans.get(`${comparePath}.sources`)))
               }
               if (!graph || (!isV2 && graph.traceLevel !== 'detail') || compare.traceLevel !== 'detail'
                 || descriptor.trace?.family !== 'comparison' || descriptor.trace.level !== 'detail') {

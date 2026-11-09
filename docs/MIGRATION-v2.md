@@ -37,8 +37,9 @@ implementation is separate work; no automatic converter is approved. Lesson
 schema versions and Visualizer descriptor major versions are independent.
 
 The same decision assigns the new classical presentation to Lesson v2 only.
-Generic comparison and controlled data-change avalanche now use the v2 runtime;
-key-change comparison and dedicated classical presentation remain separate work.
+Generic comparison, controlled data-change avalanche and standalone original-key
+avalanche schedules now use the v2 runtime. Key-change cipher overlays and
+dedicated classical presentation remain separate work.
 The supported presentation table below describes the implemented path. The
 [public version audit](lesson-version-audit.md) records public roots at its stated
 historical snapshot; the complete examples below extend that inventory. Private
@@ -219,15 +220,16 @@ label and its ID.
 | --- | --- |
 | Raw execution | Omit `presentation` and use the default trace. Roles/rounds are not required just to execute. |
 | Generic SPN cipher | `presentation: {kind: spn-cipher}` with optional `algorithm`, `variant`, `direction` and `labels`. These supply labels, not algorithm-specific dispatch. |
-| Standalone schedule | `presentation: {kind: spn-cipher, mode: key-expansion}` on an executing Step. It shows complete state rows, grouping, selection and lineage without an open cipher or descriptor. |
+| Standalone schedule | `presentation: {kind: spn-cipher, mode: key-expansion}` on an executing or comparison Step. It shows complete state rows, grouping, selection and lineage without an open cipher or descriptor. |
 | Cipher/schedule overlay | Add `overlay: true` to a cipher's `spn-cipher` presentation and bind every cipher key source to exported schedule values. |
 | Generic comparison | `visualizer.id: avalanche@1` with `compare.kind: generic`, a graph, detail trace level and typed baseline/changed bindings for every graph source. Several inputs may differ. |
 | Data-change avalanche | The same comparison declaration with `kind: avalanche` and a nonempty `sources` list of permitted original data source IDs. Exactly one bit of one listed source changes; all other independent input values stay equal. |
-| Key-change comparison or dedicated classical teaching | Separate work. Dedicated `classical-cipher@1` remains unsupported in v2 (`lesson.v2-unsupported`); registered classical operations may still execute in a raw v2 graph. |
+| Standalone original-key avalanche | `presentation: {kind: spn-cipher, mode: key-expansion}` with `avalanche@1`, `compare.kind: avalanche`, and `sources: [key]` naming the original-key graph source. No cipher is required. |
+| Key-change cipher overlays or dedicated classical teaching | Separate work. Dedicated `classical-cipher@1` remains unsupported in v2 (`lesson.v2-unsupported`); registered classical operations may still execute in a raw v2 graph. |
 
 Legacy `block-cipher`, `key-expansion` presentations and `teaching-spn@1` are v1
-declarations, not v2 aliases. No additional structural family or #67 key-change
-comparison behavior is supplied by this migration.
+declarations, not v2 aliases. Standalone schedule comparison reuses the existing
+structural renderer and comparison contract; no new descriptor is required.
 
 The complete bilingual [data avalanche Lesson](../frontend/demos/dataAvalancheLesson.ts)
 declares `sources: [data, other]` and reuses the existing `bit_flip` controls.
@@ -245,6 +247,47 @@ selection inspects lineage without changing inputs or executing cryptography;
 locale and resize preserve inspection, while a replacement execution starts a
 new selection. Full-width measurements and explicit trace gaps are independent
 of display grouping. Lesson v1 comparison semantics remain unchanged.
+
+A standalone original-key experiment uses the same declaration on its schedule
+graph. For a graph whose original-key source is `key`, with equal-width Lesson
+inputs `key` and `changed-key`, the comparison Step is:
+
+```yaml
+- id: compare-key
+  presentation: {kind: spn-cipher, mode: key-expansion}
+  visualizer:
+    id: avalanche@1
+    compare:
+      kind: avalanche
+      sources: [key]
+      graph: schedule
+      traceLevel: detail
+      bindings:
+        key: {baseline: {input: key}, changed: {input: changed-key}}
+```
+
+Every other independent graph source also needs baseline/changed bindings with
+identical values. Only one original-key bit may differ; derived round keys may
+have many differences. `sources` names original graph inputs, not derived
+round-key checkpoints. Existing typed bindings reject unequal key widths with
+`lesson.invalid-step-reference`; invalid source declarations use
+`lesson.invalid-input`. Invalid source changes use `lesson.invalid-avalanche`.
+Missing stable checkpoint identities use `comparison.incompatible-structure`;
+one-sided trace retention instead produces inspectable gaps.
+
+The bilingual [standalone AES demo](../frontend/demos/keyAvalancheLesson.ts)
+reuses a real AES schedule without its cipher. It offers the existing optional
+`inputs` and `bit_flip` controls. Fixed valid examples may omit that input Step.
+New and replacement standalone executions start at size 1 and select the changed
+original-key bit only when both source values are retained. An absent or
+incomplete source leaves selection empty, even when derived keys remain visible.
+Changing size clears selection; reselecting the active size, changing locale or
+resizing preserves it. Grouped selection seeds lineage only from that group's
+actual bits, and differences remain underlined independently of selection.
+Data-change and key-change Steps keep separate results; edits invalidate only
+affected v2 comparisons. Selection belongs to the displayed execution and never
+transfers from another Step. This does not promise durable navigation history.
+Cipher comparison overlays are follow-up work.
 
 The cipher teaching order is structural:
 

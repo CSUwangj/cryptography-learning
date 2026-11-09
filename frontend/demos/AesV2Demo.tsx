@@ -4,12 +4,13 @@ import { ApolloProvider } from '@apollo/client/react'
 import { OverlaysProvider } from '@blueprintjs/core'
 import { BrowserRouter } from 'react-router-dom'
 import { of } from 'rxjs'
-import { parse } from 'yaml'
+import { parse, stringify } from 'yaml'
 import { Shell, i18n } from '../src/app'
 import { LearningPage } from '../src/learning'
 import type { LessonDocuments } from '../src/lesson_runtime'
 import { genericComparisonDocuments } from './genericComparisonLesson'
 import { dataAvalancheDocuments } from './dataAvalancheLesson'
+import { keyAvalancheLesson } from './keyAvalancheLesson'
 import aes128 from '../src/lesson_runtime/fixture/aes128-v2.yaml?raw'
 import aes128En from '../src/lesson_runtime/fixture/aes128-v2-locales/en-US.yaml?raw'
 import aes128Zh from '../src/lesson_runtime/fixture/aes128-v2-locales/zh-CN.yaml?raw'
@@ -27,9 +28,32 @@ const lessons: Readonly<Record<string, LessonDocuments>> = {
   'aes256-v2-kat': { lesson: aes256, locales: { 'en-US': aes256En, 'zh-CN': aes256Zh } },
 }
 
+// Keep this interaction fixture to the first real AES-128 generation; runtime tests cover full schedules.
+const keyExample = parse(aes128)
+keyExample.graphs.schedule.nodes = keyExample.graphs.schedule.nodes.slice(0, 7)
+keyExample.graphs.schedule.outputs = keyExample.graphs.schedule.outputs.slice(0, 2)
+const standaloneKeyDocuments: LessonDocuments = {
+  ...keyAvalancheLesson({ lesson: stringify(keyExample), locales: {} }),
+  locales: {
+    'en-US': `title: Inspect one original-key bit
+summary: Inspect the first real AES-128 key-schedule generation after changing one original-key bit.
+texts:
+  introduction: Edit the original key and choose one MSB-first bit. Continue to inspect the paired schedule. Choosing another bit replaces the previous flip.
+  key: Original key
+`,
+    'zh-CN': `title: 检查一个原始密钥位
+summary: 改变一个原始密钥位，检查真实 AES-128 密钥编排的首轮生成。
+texts:
+  introduction: 编辑原始密钥并选择一个从最高有效位开始编号的位。继续下一步查看成对编排。更换位会替换之前的翻转。
+  key: 原始密钥
+`,
+  },
+}
+
 const comparisonLessons: Readonly<Record<string, LessonDocuments>> = {
   'generic-comparison': genericComparisonDocuments,
   'data-avalanche': dataAvalancheDocuments,
+  'key-avalanche': standaloneKeyDocuments,
 }
 
 export const AesV2Demo: React.FC = () => {

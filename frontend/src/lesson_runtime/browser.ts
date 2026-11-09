@@ -260,6 +260,7 @@ export class BrowserLessonSession {
   }
 
   private refreshBitFlips(): void {
+    const v2 = Object.values(this.lesson.graphs).some(({ graph }) => graph.schema === 2)
     for (const step of this.lesson.steps) {
       const selection = this.bitFlips[step.id]
       if (!selection) continue
@@ -270,8 +271,11 @@ export class BrowserLessonSession {
           const packedBit = changed.bytes.length * 8 - changed.type.size + selection.bit
           changed.bytes[Math.floor(packedBit / 8)] ^= 1 << (7 - packedBit % 8)
         }
+        const previous = this.inputs[option.changed]
         this.inputs[option.changed] = changed
-        this.invalidateSnapshots(option.changed)
+        if (!v2 || typeof previous === 'string' || typeof changed === 'string' || !equalCryptoValues(previous, changed)) {
+          this.invalidateSnapshots(option.changed)
+        }
       }
     }
   }
@@ -292,8 +296,15 @@ export class BrowserLessonSession {
       this.executionDiagnostics.delete(step)
     }
     for (const step of this.lesson.steps) if (step.visualizer?.compare) {
-      this.comparisons.delete(step.id)
-      this.executionIdentities.delete(step.id)
+      const compare = step.visualizer.compare
+      if (this.lesson.graphs[compare.graph].graph.schema !== 2 || Object.values(compare.bindings).some((binding) =>
+        [binding.baseline, binding.changed].some((reference) =>
+          ('input' in reference && reference.input === input) || ('step' in reference && affected.has(reference.step))
+        )
+      )) {
+        this.comparisons.delete(step.id)
+        this.executionIdentities.delete(step.id)
+      }
     }
     this.checkResults.clear()
   }
