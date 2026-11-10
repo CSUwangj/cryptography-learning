@@ -1,0 +1,18 @@
+{
+  "titles": {
+    "vigenere": "维吉尼亚密码 v2",
+    "affine": "仿射密码 v2",
+    "substitution": "替换密码 v2",
+    "transposition": "列置换密码 v2"
+  },
+  "summary": "通过自定义示例探索现有古典密码运算。",
+  "texts": {
+    "message": "消息",
+    "key": "密钥",
+    "a": "乘数",
+    "b": "偏移量",
+    "rows": "行数",
+    "policy": "策略",
+    "direction": "方向"
+  }
+}

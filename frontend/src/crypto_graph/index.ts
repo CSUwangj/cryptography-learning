@@ -1210,12 +1210,33 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
           const roundStage = /^(.*)\.(\d+)\/(key-mix|substitute|permute)$/.exec(id)
           const roundKey = /^(.*)\.(\d+)\/key$/.exec(id)
           const cipherStage = /^cipher-(\d+)-(add-round-key|sub-bytes|shift-rows|mix-columns|inv-shift-rows|inv-sub-bytes|inv-mix-columns)$/.exec(id)
+          let gridOperation: TraceOperation | undefined
+          if ((compiledGraph.schema === 2 || compiledGraph.traceLevel === 'detail') && node.operation === 'classical.transposition@1') {
+            const source = inputs.text as TextValue
+            const rows = (inputs.rows as IntegerValue).value
+            const direction = (inputs.direction as AlphabetDirectionValue).value
+            const grid = direction === 'encrypt'
+              ? Array.from({ length: rows }, (_, row) => source.symbols.filter((_, index) => index % rows === row))
+              : (() => { const width = Math.floor(source.symbols.length / rows); const remainder = source.symbols.length % rows; let offset = 0; return Array.from({ length: rows }, (_, row) => { const length = width + (row < remainder ? 1 : 0); const part = source.symbols.slice(offset, offset + length); offset += length; return part }) })()
+            const readOrder = direction === 'encrypt'
+              ? grid.flatMap((row, rowIndex) => row.map((_, index) => index * rows + rowIndex))
+              : (() => {
+                let offset = 0
+                const ciphertextPositions = grid.map((row) => { const positions = row.map(() => offset++); return positions })
+                return Array.from({ length: grid[0]?.length ?? 0 }, (_, column) => grid.flatMap((row, rowIndex) => row[column] === undefined ? [] : [ciphertextPositions[rowIndex][column]])).flat()
+              })()
+            let inputOffset = 0
+            const inputPositions = grid.map((row, rowIndex) => Array.from({ length: Math.ceil(source.symbols.length / rows) }, (_, column) =>
+              row[column] === undefined ? null : direction === 'encrypt' ? column * rows + rowIndex : inputOffset++))
+            gridOperation = { grid: { inputPositions, rows: grid.map((row) => Array.from({ length: Math.ceil(source.symbols.length / rows) }, (_, index) => row[index] ?? null)), writeOrder: source.symbols.map((_, index) => index), readOrder } }
+          }
           if (compiledGraph.schema === 2) {
             const port = operation.manifest.outputs[0].name
             appendTrace({
               path: `${id}.${port}`,
               level: 'detail',
               primitive: node.operation,
+              ...(gridOperation ? { operation: gridOperation } : {}),
               parameters: structuredClone(bound.get(id)!.traceParameters),
               ...(node.role ? { role: node.role } : {}),
               ...(node.round === undefined ? {} : { round: node.round }),
@@ -1249,23 +1270,7 @@ export const compile = (graph: AuthoredGraph): Result<CompiledGraph> => {
               appendTrace({ path: `${instance}.${round}/output`, level: 'round', round, stage: 'output', value })
             }
           } else if (compiledGraph.traceLevel === 'detail' && node.operation === 'classical.transposition@1') {
-            const source = inputs.text as TextValue
-            const rows = (inputs.rows as IntegerValue).value
-            const direction = (inputs.direction as AlphabetDirectionValue).value
-            const grid = direction === 'encrypt'
-              ? Array.from({ length: rows }, (_, row) => source.symbols.filter((_, index) => index % rows === row))
-              : (() => { const width = Math.floor(source.symbols.length / rows); const remainder = source.symbols.length % rows; let offset = 0; return Array.from({ length: rows }, (_, row) => { const length = width + (row < remainder ? 1 : 0); const part = source.symbols.slice(offset, offset + length); offset += length; return part }) })()
-            const readOrder = direction === 'encrypt'
-              ? grid.flatMap((row, rowIndex) => row.map((_, index) => index * rows + rowIndex))
-              : (() => {
-                let offset = 0
-                const ciphertextPositions = grid.map((row) => { const positions = row.map(() => offset++); return positions })
-                return Array.from({ length: grid[0]?.length ?? 0 }, (_, column) => grid.flatMap((row, rowIndex) => row[column] === undefined ? [] : [ciphertextPositions[rowIndex][column]])).flat()
-              })()
-            let inputOffset = 0
-            const inputPositions = grid.map((row, rowIndex) => Array.from({ length: Math.ceil(source.symbols.length / rows) }, (_, column) =>
-              row[column] === undefined ? null : direction === 'encrypt' ? column * rows + rowIndex : inputOffset++))
-            appendTrace({ path: id, level: 'detail', stage: 'transposition', operation: { grid: { inputPositions, rows: grid.map((row) => Array.from({ length: Math.ceil(source.symbols.length / rows) }, (_, index) => row[index] ?? null)), writeOrder: source.symbols.map((_, index) => index), readOrder } }, value: cloneValue(result.text) })
+            appendTrace({ path: id, level: 'detail', stage: 'transposition', operation: gridOperation, value: cloneValue(result.text) })
           } else if (compiledGraph.traceLevel === 'detail' && node.operation === 'aes.key-word@1' && /^word-\d+$/.test(id)) {
             const wordIndex = Number(/^word-(\d+)$/.exec(id)![1])
             appendTrace({ path: id, level: 'detail', round: Math.floor(wordIndex / 4), stage: 'input', word: wordIndex, value: cloneValue(result.value) })

@@ -181,6 +181,10 @@
     "gap": "Incomplete trace gap"
   },
   "classicalCipher": {
+    "mapping": "{{input}} at {{source}} maps to {{output}} at {{target}}",
+    "keySymbol": "Key: {{symbol}}",
+    "noKey": "No key consumed",
+    "affineFormula": "Affine formula",
     "shift": "Caesar shift",
     "committedShift": "Committed shift: {{value}}",
     "previewShift": "Preview shift: {{value}}",

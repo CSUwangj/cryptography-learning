@@ -103,7 +103,7 @@ const diagnosticText = (value: Diagnostic, t: TFunction<'translations'>): string
   `${value.code}: ${lessonDiagnosticCodes.has(value.code) ? t(`learning.runtime.${value.code}`, { defaultValue: value.message }) : value.message}${value.path ? ` (${value.path})` : ''}${value.span ? ` ${t('learning.diagnosticLocation', { file: value.span.file, line: value.span.line, column: value.span.column })}` : ''}`
 
 const classicalCipherData = (
-  step: { readonly execute?: { readonly graph: string, readonly bindings: Readonly<Record<string, LessonValueReference>> }, readonly visualizer?: { readonly id: string, readonly bindings?: Readonly<Record<string, unknown>> } },
+  step: { readonly id: string, readonly execute?: { readonly graph: string, readonly bindings: Readonly<Record<string, LessonValueReference>> }, readonly visualizer?: { readonly id: string, readonly bindings?: Readonly<Record<string, unknown>> } },
   lesson: BrowserLessonSession['lesson'],
   state: LessonSessionState,
 ) => {
@@ -129,7 +129,16 @@ const classicalCipherData = (
   const graph = lesson.graphs[step.execute.graph]?.graph
   const mapping = graph?.alphabetMappings?.find((item) => item.id === input.type.mapping)
   const outputBinding = step.visualizer.bindings?.ciphertext as { output?: string } | undefined
-  const node = graph?.nodes.find((candidate) => `${candidate.id}.text` === outputBinding?.output)
+  const outputPath = outputBinding?.output && (lesson.graphs[step.execute.graph]?.outputAliases?.[outputBinding.output] ?? outputBinding.output)
+  const node = graph?.nodes.find((candidate) => `${candidate.id}.text` === outputPath)
+  const operand = (name: string): CryptoValue | undefined => {
+    const port = node?.inputs?.[name]
+    const event = port && state.snapshots[step.id]?.trace.find((item) => item.path === `${port.node}.${port.port}`)
+    return event && 'value' in event ? event.value : undefined
+  }
+  const key = node?.operation === 'classical.vigenere@1' ? operand('key') : undefined
+  const a = node?.operation === 'classical.affine@1' ? operand('a') : undefined
+  const b = node?.operation === 'classical.affine@1' ? operand('b') : undefined
   const directionPort = node?.operation === 'classical.caesar@1' ? node.inputs?.shift
     : node?.operation === 'classical.vigenere@1' ? node.inputs?.direction : undefined
   const directionBinding = directionPort && step.execute.bindings[`${directionPort.node}.${directionPort.port}`]
@@ -139,6 +148,10 @@ const classicalCipherData = (
     : undefined
   return mapping && input.type.mapping === output.type.mapping
     ? { input, output, mapping, policy: policy as AlphabetPolicyValue, motionDirection,
+      direct: graph?.schema === 2 && node?.operation !== 'classical.caesar@1',
+      vigenereKey: key?.type.family === 'alphabet-text' ? key as AlphabetTextValue : undefined,
+      affine: a && 'value' in a && typeof a.value === 'number' && b && 'value' in b && typeof b.value === 'number'
+        ? { a: a.value, b: b.value } : undefined,
       caesar: graph?.schema === 2 && node?.operation === 'classical.caesar@1'
         && directionValue && 'value' in directionValue && typeof directionValue.value === 'number'
         ? { shift: directionValue.value, input: directionBinding && 'input' in directionBinding ? directionBinding.input : undefined }
@@ -420,6 +433,9 @@ const LessonView: React.FC = () => {
           output: cipher.output,
           mapping: cipher.mapping,
           motionDirection: cipher.motionDirection,
+          direct: cipher.direct,
+          vigenereKey: cipher.vigenereKey,
+          affine: cipher.affine,
           caesar: cipher.caesar && {
             shift: cipher.caesar.shift,
             onCommit: caesarInput ? async (shift) => {

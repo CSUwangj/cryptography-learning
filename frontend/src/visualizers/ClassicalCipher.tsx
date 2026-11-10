@@ -35,20 +35,34 @@ export const ClassicalCipherRenderer: React.FC<{
   readonly positions: readonly ClassicalCipherPosition[]
   readonly reducedMotion: boolean
   readonly motionDirection?: 1 | -1
+  readonly direct?: boolean
+  readonly vigenereKey?: AlphabetTextValue
+  readonly affine?: { readonly a: number, readonly b: number }
   readonly caesar?: { readonly shift: number, readonly onCommit?: (shift: number) => void }
-}> = ({ mapping, policy, policyLabel, positions, reducedMotion, motionDirection, caesar }) => {
+}> = ({ mapping, policy, policyLabel, positions, reducedMotion, motionDirection, caesar, direct, vigenereKey, affine }) => {
   const [settled, setSettled] = useState(reducedMotion)
   const [preview, setPreview] = useState<number>()
   const { t } = useTranslation('visualizers', { keyPrefix: 'classicalCipher' })
   const symbolText = (symbol: string) => symbol === ' ' ? t('space') : symbol || '∅'
   useEffect(() => {
     setSettled(reducedMotion)
-    if (!reducedMotion) {
+    if (!reducedMotion && !direct) {
       const frame = requestAnimationFrame(() => setSettled(true))
       return () => cancelAnimationFrame(frame)
     }
-  }, [positions, reducedMotion, motionDirection])
+  }, [positions, reducedMotion, motionDirection, direct])
+  let keyIndex = 0
   const characters = positions.map((position, index) => {
+    if (direct) {
+      const keySymbol = position.mapped && vigenereKey ? vigenereKey.symbols[keyIndex++ % vigenereKey.symbols.length] : undefined
+      return <div key={`${index}-${position.input}`} data-mapped={position.mapped} role="group"
+        aria-label={position.mapped ? t('mapping', { input: symbolText(position.input), output: symbolText(position.output), source: position.sourcePosition, target: position.targetPosition }) : undefined}
+        style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem', border: `1px solid ${learningColors.border}`, borderRadius: '0.25rem', padding: '0.5rem', background: learningColors.canvas, color: learningColors.text }}>
+        {vigenereKey && <span>{keySymbol === undefined ? t('noKey') : t('keySymbol', { symbol: symbolText(keySymbol) })}</span>}
+        <span>{symbolText(position.input)} → {symbolText(position.output)}</span>
+        {!position.mapped && <span>{t('unmapped')}</span>}
+      </div>
+    }
     const source = position.sourcePosition ?? 0
     const shift = preview ?? caesar?.shift
     const target = caesar && preview !== undefined && position.mapped
@@ -80,6 +94,7 @@ export const ClassicalCipherRenderer: React.FC<{
   })
   return <section aria-label={t('label')} data-policy={policy.value}>
     <p>{policyLabel}</p>
+    {direct && affine && <p aria-label={t('affineFormula')}>y = (a × x + b) mod {mapping.symbols.length}, a = {affine.a}, b = {affine.b}</p>}
     {caesar ? <>
       <p>{t('committedShift', { value: caesar.shift })}</p>
       {caesar.onCommit && <p aria-live="polite">{preview !== undefined ? t('previewShift', { value: preview }) : t('previewHint')}</p>}
@@ -99,6 +114,6 @@ export const ClassicalCipherRenderer: React.FC<{
           />
         </div>}
       </div>
-    </> : characters}
+    </> : direct ? <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: '1rem', minWidth: 0 }}>{characters}</div> : characters}
   </section>
 }

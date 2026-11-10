@@ -1,0 +1,18 @@
+{
+  "titles": {
+    "vigenere": "vigenere v2",
+    "affine": "affine v2",
+    "substitution": "substitution v2",
+    "transposition": "transposition v2"
+  },
+  "summary": "Explore existing classical operations with a custom example.",
+  "texts": {
+    "message": "Message",
+    "key": "Key",
+    "a": "Multiplier",
+    "b": "Offset",
+    "rows": "Rows",
+    "policy": "Policy",
+    "direction": "Direction"
+  }
+}

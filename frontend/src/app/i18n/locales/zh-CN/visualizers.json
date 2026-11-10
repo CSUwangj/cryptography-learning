@@ -181,6 +181,10 @@
     "gap": "不完整轨迹缺口"
   },
   "classicalCipher": {
+    "mapping": "{{input}} 在位置 {{source}} 映射到位置 {{target}} 的 {{output}}",
+    "keySymbol": "密钥：{{symbol}}",
+    "noKey": "不消耗密钥",
+    "affineFormula": "仿射公式",
     "shift": "凯撒位移",
     "committedShift": "已提交位移：{{value}}",
     "previewShift": "预览位移：{{value}}",

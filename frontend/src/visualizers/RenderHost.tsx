@@ -35,6 +35,9 @@ export type RenderHostProps = {
     readonly policy: AlphabetPolicyValue
     readonly policyLabel: string
     readonly motionDirection?: 1 | -1
+    readonly direct?: boolean
+    readonly vigenereKey?: AlphabetTextValue
+    readonly affine?: { readonly a: number, readonly b: number }
     readonly caesar?: { readonly shift: number, readonly onCommit?: (shift: number) => void }
   }
 }
@@ -153,6 +156,9 @@ export const RenderHost: React.FC<RenderHostProps> = (props) => {
                     ? <ClassicalCipherRenderer
                       {...props.classicalCipher}
                       caesar={props.compiledGraph?.graph.schema === 2 ? props.classicalCipher.caesar : undefined}
+                      direct={props.compiledGraph?.graph.schema === 2 && props.classicalCipher.direct}
+                      vigenereKey={props.compiledGraph?.graph.schema === 2 ? props.classicalCipher.vigenereKey : undefined}
+                      affine={props.compiledGraph?.graph.schema === 2 ? props.classicalCipher.affine : undefined}
                       positions={classicalCipherPositions(
                         props.classicalCipher.input,
                         props.classicalCipher.output,

@@ -13,6 +13,7 @@ import { dataAvalancheDocuments } from './dataAvalancheLesson'
 import { keyAvalancheLesson } from './keyAvalancheLesson'
 import { aesKeyChangeLesson } from './keyChangeLesson'
 import { caesarV2Documents } from './caesarLesson'
+import { classicalV2Documents } from './classicalV2Lessons'
 import aes128 from '../src/lesson_runtime/fixture/aes128-v2.yaml?raw'
 import aes128En from '../src/lesson_runtime/fixture/aes128-v2-locales/en-US.yaml?raw'
 import aes128Zh from '../src/lesson_runtime/fixture/aes128-v2-locales/zh-CN.yaml?raw'
@@ -54,6 +55,10 @@ texts:
 
 const classicalLessons: Readonly<Record<string, LessonDocuments>> = {
   'caesar-v2': caesarV2Documents,
+  'vigenere-v2': classicalV2Documents('vigenere'),
+  'affine-v2': classicalV2Documents('affine'),
+  'substitution-v2': classicalV2Documents('substitution'),
+  'transposition-v2': classicalV2Documents('transposition'),
 }
 
 const comparisonLessons: Readonly<Record<string, LessonDocuments>> = {
