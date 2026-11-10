@@ -27,6 +27,10 @@ Starts the maintainer review demos at `/testspn` and `/testavalanche` from
 `npm start`, or `npm run build`. Both accept editable 16-bit hexadecimal
 plaintext values and run on submit; the Avalanche demo keeps the round key fixed.
 
+The `/learning` demo catalog also includes the v2 Caesar reels Lesson. Open
+`/learning/caesar-v2?lang=en-US` or `/learning/caesar-v2?lang=zh-CN` on the demo
+server to edit its inputs and try the real Worker-backed key control.
+
 ### `npm run gen`
 
 Regenerates GraphQL TypeScript documents from `schema/schema.gql`.

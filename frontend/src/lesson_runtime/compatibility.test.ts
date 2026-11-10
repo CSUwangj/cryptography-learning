@@ -58,23 +58,23 @@ describe('Public Lesson coexistence (#113)', () => {
     })
   })
 
-  it.each([
-    ['comparison/avalanche', aes128CipherComparisonDocuments, 0],
-    ['substitution', substitutionCipherDemoDocuments, 1],
-    ['Vigenere', vigenereCipherDemoDocuments, 1],
-  ] as const)(
-    'rejects unsupported or undeclared v2 dedicated %s declarations', (_name, documents, step) => {
-      const lesson = parse(documents.lesson)
-      lesson.version = 2
-      for (const graph of Object.values(lesson.graphs) as Record<string, unknown>[]) delete graph.traceLevel
-      const result = compileLesson({ ...documents, lesson: stringify(lesson) }, visualizerCatalog)
-      expect(result).toMatchObject({ ok: false, diagnostics: expect.arrayContaining([
-        expect.objectContaining(documents === aes128CipherComparisonDocuments
-          ? { code: 'lesson.invalid-input', path: `steps.${step}.visualizer.compare.sources` }
-          : { code: 'lesson.v2-unsupported', path: `steps.${step}.visualizer.id` }),
-      ]) })
-    },
-  )
+  it('rejects undeclared v2 avalanche sources', () => {
+    const lesson = parse(aes128CipherComparisonDocuments.lesson)
+    lesson.version = 2
+    for (const graph of Object.values(lesson.graphs) as Record<string, unknown>[]) delete graph.traceLevel
+    const result = compileLesson({ ...aes128CipherComparisonDocuments, lesson: stringify(lesson) }, visualizerCatalog)
+    expect(result).toMatchObject({ ok: false, diagnostics: expect.arrayContaining([
+      expect.objectContaining({ code: 'lesson.invalid-input', path: 'steps.0.visualizer.compare.sources' }),
+    ]) })
+  })
+
+  it.each([substitutionCipherDemoDocuments, vigenereCipherDemoDocuments])('accepts the shared classical descriptor in v2 without an algorithm-specific descriptor', (documents) => {
+    const lesson = parse(documents.lesson)
+    lesson.version = 2
+    for (const graph of Object.values(lesson.graphs) as Record<string, unknown>[]) delete graph.traceLevel
+    const compiled = compileLesson({ ...documents, lesson: stringify(lesson) }, visualizerCatalog)
+    expect(compiled.ok && compiled.value.steps[1].visualizer?.id).toBe('classical-cipher@1')
+  })
 
   it('retains raw classical primitive execution in v2 without its dedicated presentation', () => {
     const lesson = parse(substitutionCipherDemoDocuments.lesson)

@@ -16,7 +16,7 @@ const legacyImports = {
   'demos/Aes192OverlayPrototype.tsx': ['../src/ui/learning'],
   'demos/AesCipherDemo.language.test.tsx': ['../src/app/i18n'],
   'demos/AesCipherDemo.test.tsx': ['../src/app/i18n'],
-  'demos/AesV2Demo.tsx': [
+  'demos/LearningDemo.tsx': [
     '../src/lesson_runtime/fixture/aes128-v2-locales/en-US.yaml?raw',
     '../src/lesson_runtime/fixture/aes128-v2-locales/zh-CN.yaml?raw',
     '../src/lesson_runtime/fixture/aes128-v2.yaml?raw',

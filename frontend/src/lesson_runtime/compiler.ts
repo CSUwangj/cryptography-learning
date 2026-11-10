@@ -710,7 +710,7 @@ const compileGraph = (
         ? [(type as { size: number }).size]
         : []),
     ],
-    traceLevel: graph.traceLevel as GraphInfo['traceLevel'],
+    traceLevel: isV2 ? 'detail' : graph.traceLevel as GraphInfo['traceLevel'],
   }
 }
 
@@ -1045,8 +1045,8 @@ export const compileLesson = (documents: LessonDocuments, catalog?: VisualizerCa
       if (visualizer) {
         checkFields(visualizer, ['id', 'bindings', 'compare', 'options'], `${path}.visualizer`, lesson.spans, diagnostics)
         const v2Comparison = isV2 && visualizer.id === 'avalanche@1' && ['generic', 'avalanche'].includes(fields(visualizer.compare)?.kind as string)
-        const v2VisualizerCode = isV2 && (visualizer.id === 'teaching-spn@1' || visualizer.id === 'avalanche@1' && !v2Comparison || visualizer.id === 'classical-cipher@1')
-        const unsupportedV2Visualizer = isV2 && (visualizer.id === 'avalanche@1' && !v2Comparison || visualizer.id === 'classical-cipher@1')
+        const v2VisualizerCode = isV2 && (visualizer.id === 'teaching-spn@1' || visualizer.id === 'avalanche@1' && !v2Comparison)
+        const unsupportedV2Visualizer = isV2 && visualizer.id === 'avalanche@1' && !v2Comparison
         if (isV2 && visualizer.compare !== undefined && !v2Comparison) diagnostics.push(diagnostic('lesson.v2-unsupported', 'Only generic and avalanche comparisons are supported by version: 2.', `${path}.visualizer.compare`, lesson.spans.get(`${path}.visualizer.compare`)))
         if (v2VisualizerCode) diagnostics.push(diagnostic(
           visualizer.id === 'teaching-spn@1' ? 'lesson.v1-feature-in-v2' : 'lesson.v2-unsupported',

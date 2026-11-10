@@ -2,9 +2,13 @@
   "spnV2": {
     "title": "教学型 SPN v2"
   },
-  "aesV2": {
-    "link": "AES v2 课程",
-    "category": "AES v2"
+  "learning": {
+    "link": "学习演示",
+    "categories": {
+      "aes": "AES",
+      "classical": "古典密码",
+      "comparison": "比较演示"
+    }
   },
   "spn": {
     "title": "教学 SPN 演示",

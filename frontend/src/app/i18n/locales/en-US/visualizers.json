@@ -181,6 +181,11 @@
     "gap": "Incomplete trace gap"
   },
   "classicalCipher": {
+    "shift": "Caesar shift",
+    "committedShift": "Committed shift: {{value}}",
+    "previewShift": "Preview shift: {{value}}",
+    "previewHint": "Drag to preview; release to apply. Arrow keys apply on key release.",
+    "preview": "Preview",
     "label": "Classical cipher position mapping",
     "unmapped": "Unmapped",
     "moves": "moves",

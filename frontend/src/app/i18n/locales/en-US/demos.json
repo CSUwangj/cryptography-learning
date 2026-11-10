@@ -2,9 +2,13 @@
   "spnV2": {
     "title": "Teaching SPN v2"
   },
-  "aesV2": {
-    "link": "AES v2 Lessons",
-    "category": "AES v2"
+  "learning": {
+    "link": "Learning demos",
+    "categories": {
+      "aes": "AES",
+      "classical": "Classical ciphers",
+      "comparison": "Comparisons"
+    }
   },
   "spn": {
     "title": "Teaching SPN demo",

@@ -14,7 +14,7 @@ const SpnV2Demo = lazy(() => import('./SpnV2Demo').then((module) => ({ default: 
 const Aes192OverlayPrototype = lazy(() => import('./Aes192OverlayPrototype').then((module) => ({ default: module.Aes192OverlayPrototype })))
 const LearningShellPrototype = lazy(() => import('./LearningShellPrototype').then((module) => ({ default: module.LearningShellPrototype })))
 const UiOptimizationPrototype = lazy(() => import('./UiOptimizationPrototype').then((module) => ({ default: module.UiOptimizationPrototype })))
-const AesV2Demo = lazy(() => import('./AesV2Demo').then((module) => ({ default: module.AesV2Demo })))
+const LearningDemo = lazy(() => import('./LearningDemo').then((module) => ({ default: module.LearningDemo })))
 const HorizontalClassicalCipherPrototype = lazy(() => import('./HorizontalClassicalCipherPrototype').then((module) => ({ default: module.HorizontalClassicalCipherPrototype })))
 const ComparisonPrototype = lazy(() => import('./ComparisonPrototype').then((module) => ({ default: module.ComparisonPrototype })))
 
@@ -36,7 +36,7 @@ const Demos: React.FC = () => {
     return <Suspense fallback={<div role="status" aria-busy="true" />}><SpnV2Demo /></Suspense>
   }
   if (window.location.pathname === '/learning' || window.location.pathname.startsWith('/learning/')) {
-    return <Suspense fallback={<div role="status" aria-busy="true" />}><AesV2Demo /></Suspense>
+    return <Suspense fallback={<div role="status" aria-busy="true" />}><LearningDemo /></Suspense>
   }
   const Demo = {
     '/testspn': SpnDemo,
@@ -47,7 +47,7 @@ const Demos: React.FC = () => {
   }[window.location.pathname]
   return <>
     <nav>
-      <a href="/testspn">/testspn</a> · <a href="/testspnv2">{t('spnV2.title', { ns: 'demos' })}</a> · <a href="/testavalanche">/testavalanche</a> · <a href="/testkeyexpansion">/testkeyexpansion</a> · <a href="/testaescipher">/testaescipher</a> · <a href="/testaesavalanche">/testaesavalanche</a> · <a href="/learning">{t('aesV2.link', { ns: 'demos' })}</a> · <a href="/horizontal-classical-cipher">Classical Cipher Prototype</a> ·{' '}
+      <a href="/testspn">/testspn</a> · <a href="/testspnv2">{t('spnV2.title', { ns: 'demos' })}</a> · <a href="/testavalanche">/testavalanche</a> · <a href="/testkeyexpansion">/testkeyexpansion</a> · <a href="/testaescipher">/testaescipher</a> · <a href="/testaesavalanche">/testaesavalanche</a> · <a href="/learning">{t('learning.link', { ns: 'demos' })}</a> · <a href="/horizontal-classical-cipher">Classical Cipher Prototype</a> ·{' '}
       <label>{t('nav.language')} <select value={i18n.resolvedLanguage ?? 'en-US'} onChange={(event) => { void i18n.changeLanguage(event.target.value) }}>
         <option value="en-US">{t('i18n.en-US')}</option>
         <option value="zh-CN">{t('i18n.zh-CN')}</option>

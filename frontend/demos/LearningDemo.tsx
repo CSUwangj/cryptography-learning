@@ -12,6 +12,7 @@ import { genericComparisonDocuments } from './genericComparisonLesson'
 import { dataAvalancheDocuments } from './dataAvalancheLesson'
 import { keyAvalancheLesson } from './keyAvalancheLesson'
 import { aesKeyChangeLesson } from './keyChangeLesson'
+import { caesarV2Documents } from './caesarLesson'
 import aes128 from '../src/lesson_runtime/fixture/aes128-v2.yaml?raw'
 import aes128En from '../src/lesson_runtime/fixture/aes128-v2-locales/en-US.yaml?raw'
 import aes128Zh from '../src/lesson_runtime/fixture/aes128-v2-locales/zh-CN.yaml?raw'
@@ -51,6 +52,10 @@ texts:
   },
 }
 
+const classicalLessons: Readonly<Record<string, LessonDocuments>> = {
+  'caesar-v2': caesarV2Documents,
+}
+
 const comparisonLessons: Readonly<Record<string, LessonDocuments>> = {
   'generic-comparison': genericComparisonDocuments,
   'data-avalanche': dataAvalancheDocuments,
@@ -59,7 +64,7 @@ const comparisonLessons: Readonly<Record<string, LessonDocuments>> = {
   'aes128-key-change-decrypt': aesKeyChangeLesson(lessons['aes128-v2-kat'], 128, 'decrypt'),
 }
 
-export const AesV2Demo: React.FC = () => {
+export const LearningDemo: React.FC = () => {
   const [client] = useState(() => new ApolloClient({
     cache: new InMemoryCache(),
     // Only the document service is local; Learning owns compilation, execution and presentation.
@@ -67,15 +72,19 @@ export const AesV2Demo: React.FC = () => {
       const language = operation.variables.language === 'zh-CN' ? 'zh-CN' : 'en-US'
       if (operation.operationName === 'LearningCatalog') return of({ data: { learning: { lessonCategories: [{
         id: 'aes-v2',
-        name: ['en-US', 'zh-CN'].map((lang) => ({ lang, text: i18n.getFixedT(lang, 'demos')('aesV2.category') })),
+        name: ['en-US', 'zh-CN'].map((lang) => ({ lang, text: i18n.getFixedT(lang, 'demos')('learning.categories.aes') })),
         lessons: Object.entries(lessons).map(([id, documents]) => ({ id, title: parse(documents.locales[language]).title })),
       }, {
+        id: 'classical',
+        name: ['en-US', 'zh-CN'].map((lang) => ({ lang, text: i18n.getFixedT(lang, 'demos')('learning.categories.classical') })),
+        lessons: Object.entries(classicalLessons).map(([id, documents]) => ({ id, title: parse(documents.locales[language]).title })),
+      }, {
         id: 'comparison',
-        name: ['en-US', 'zh-CN'].map((lang) => ({ lang, text: i18n.t('nav.learning', { lng: lang }) })),
+        name: ['en-US', 'zh-CN'].map((lang) => ({ lang, text: i18n.getFixedT(lang, 'demos')('learning.categories.comparison') })),
         lessons: Object.entries(comparisonLessons).map(([id, documents]) => ({ id, title: parse(documents.locales[language]).title })),
       }] } } })
       if (operation.operationName === 'LessonDocuments') {
-        const documents = comparisonLessons[operation.variables.lessonId] ?? lessons[operation.variables.lessonId]
+        const documents = comparisonLessons[operation.variables.lessonId] ?? classicalLessons[operation.variables.lessonId] ?? lessons[operation.variables.lessonId]
         return of({ data: { lessonDocuments: documents ? { lesson: documents.lesson, locale: documents.locales[language] } : null } })
       }
       if (operation.operationName === 'Practices') return of({ data: { practice: { labCategories: [] } } })

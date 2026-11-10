@@ -181,6 +181,11 @@
     "gap": "不完整轨迹缺口"
   },
   "classicalCipher": {
+    "shift": "凯撒位移",
+    "committedShift": "已提交位移：{{value}}",
+    "previewShift": "预览位移：{{value}}",
+    "previewHint": "拖动预览，松开后应用。方向键松开时应用。",
+    "preview": "预览",
     "label": "古典密码位置映射",
     "unmapped": "未映射",
     "moves": "移动",

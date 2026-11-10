@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import React, { useEffect, useState } from 'react'
+import { Slider } from '@blueprintjs/core'
 import { learningColors } from '../ui/learning'
 import type { AlphabetMapping, AlphabetPolicyValue, AlphabetTextValue } from '../crypto_graph'
 
@@ -34,8 +35,10 @@ export const ClassicalCipherRenderer: React.FC<{
   readonly positions: readonly ClassicalCipherPosition[]
   readonly reducedMotion: boolean
   readonly motionDirection?: 1 | -1
-}> = ({ mapping, policy, policyLabel, positions, reducedMotion, motionDirection }) => {
+  readonly caesar?: { readonly shift: number, readonly onCommit?: (shift: number) => void }
+}> = ({ mapping, policy, policyLabel, positions, reducedMotion, motionDirection, caesar }) => {
   const [settled, setSettled] = useState(reducedMotion)
+  const [preview, setPreview] = useState<number>()
   const { t } = useTranslation('visualizers', { keyPrefix: 'classicalCipher' })
   const symbolText = (symbol: string) => symbol === ' ' ? t('space') : symbol || '∅'
   useEffect(() => {
@@ -45,33 +48,57 @@ export const ClassicalCipherRenderer: React.FC<{
       return () => cancelAnimationFrame(frame)
     }
   }, [positions, reducedMotion, motionDirection])
+  const characters = positions.map((position, index) => {
+    const source = position.sourcePosition ?? 0
+    const shift = preview ?? caesar?.shift
+    const target = caesar && preview !== undefined && position.mapped
+      ? ((source + preview % mapping.symbols.length) % mapping.symbols.length + mapping.symbols.length) % mapping.symbols.length
+      : position.targetPosition ?? 0
+    const direction = caesar && shift !== undefined ? shift < 0 ? -1 : 1 : motionDirection ?? (target < source ? -1 : 1)
+    const distance = ((target - source) * direction + mapping.symbols.length) % mapping.symbols.length
+    const path = position.mapped ? caesar
+      ? Array.from({ length: 2 * mapping.symbols.length + 1 }, (_, offset) => mapping.symbols[(source + offset) % mapping.symbols.length])
+      : Array.from({ length: distance + 1 }, (_, offset) => mapping.symbols[(source + direction * offset + mapping.symbols.length) % mapping.symbols.length]) : []
+    const startOffset = caesar ? mapping.symbols.length : direction === -1 ? distance : 0
+    const endOffset = caesar ? mapping.symbols.length + direction * distance : direction === -1 ? 0 : distance
+    return <div key={`${index}-${position.input}`} data-mapped={position.mapped} style={caesar ? { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' } : undefined}>
+      <span>{symbolText(position.input)} → {symbolText(position.output)}</span>
+      {position.mapped
+        ? <div aria-label={`${preview !== undefined ? `${t('preview')} ` : ''}${symbolText(position.input)} ${t('moves')} ${position.sourcePosition} ${target}`} style={{ overflow: 'hidden', boxSizing: 'content-box', height: '2rem', width: '3rem', border: `1px solid ${learningColors.border}`, borderRadius: '0.25rem', background: learningColors.selected, color: caesar ? learningColors.text : undefined }}>
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            transform: `translateY(${-2 * (settled || preview !== undefined ? endOffset : startOffset)}rem)`,
+            transition: reducedMotion ? 'none' : 'transform 600ms ease-out',
+            textAlign: 'center',
+          }}>
+            {(!caesar && direction === -1 ? path.reverse() : path).map((symbol, pathPosition) => <span key={pathPosition} style={{ height: '2rem', lineHeight: '2rem', flexShrink: 0 }} aria-current={pathPosition === endOffset ? 'true' : undefined}>{symbolText(symbol)}</span>)}
+          </div>
+        </div>
+        : <span> {t('unmapped')}</span>}
+    </div>
+  })
   return <section aria-label={t('label')} data-policy={policy.value}>
     <p>{policyLabel}</p>
-    {positions.map((position, index) => {
-      const source = position.sourcePosition ?? 0
-      const target = position.targetPosition ?? 0
-      const direction = motionDirection ?? (target < source ? -1 : 1)
-      const distance = ((target - source) * direction + mapping.symbols.length) % mapping.symbols.length
-      const path = position.mapped ? Array.from({ length: distance + 1 }, (_, offset) =>
-        mapping.symbols[(source + direction * offset + mapping.symbols.length) % mapping.symbols.length]) : []
-      const startOffset = direction === -1 ? distance : 0
-      const endOffset = direction === -1 ? 0 : distance
-      return <div key={`${index}-${position.input}`} data-mapped={position.mapped}>
-        <span>{symbolText(position.input)} → {symbolText(position.output)}</span>
-        {position.mapped
-          ? <div aria-label={`${symbolText(position.input)} ${t('moves')} ${position.sourcePosition} ${position.targetPosition}`} style={{ overflow: 'hidden', boxSizing: 'content-box', height: '2rem', width: '3rem', border: `1px solid ${learningColors.border}`, borderRadius: '0.25rem', background: learningColors.selected }}>
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              transform: `translateY(${-2 * (settled ? endOffset : startOffset)}rem)`,
-              transition: reducedMotion ? 'none' : 'transform 600ms ease-out',
-              textAlign: 'center',
-            }}>
-              {(direction === -1 ? path.reverse() : path).map((symbol, pathPosition) => <span key={pathPosition} style={{ height: '2rem', lineHeight: '2rem', flexShrink: 0 }} aria-current={pathPosition === endOffset ? 'true' : undefined}>{symbolText(symbol)}</span>)}
-            </div>
-          </div>
-          : <span> {t('unmapped')}</span>}
+    {caesar ? <>
+      <p>{t('committedShift', { value: caesar.shift })}</p>
+      {caesar.onCommit && <p aria-live="polite">{preview !== undefined ? t('previewShift', { value: preview }) : t('previewHint')}</p>}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem', minWidth: 0 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', flex: 1, minWidth: 0 }}>{characters}</div>
+        {caesar.onCommit && <div data-caesar-control style={{ flexShrink: 0 }}>
+          <Slider
+            vertical
+            min={-Math.max(mapping.symbols.length - 1, Math.abs(caesar.shift))}
+            max={Math.max(mapping.symbols.length - 1, Math.abs(caesar.shift))}
+            stepSize={1}
+            labelRenderer={false}
+            handleHtmlProps={{ 'aria-label': t('shift') }}
+            value={preview ?? caesar.shift}
+            onChange={setPreview}
+            onRelease={(shift) => { setPreview(undefined); caesar.onCommit?.(shift) }}
+          />
+        </div>}
       </div>
-    })}
+    </> : characters}
   </section>
 }

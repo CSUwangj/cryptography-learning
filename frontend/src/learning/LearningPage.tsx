@@ -112,8 +112,10 @@ const classicalCipherData = (
     if (typeof binding !== 'object' || binding === null) return undefined
     const reference = binding as { input?: unknown, step?: unknown, output?: unknown, constant?: unknown }
     const input = typeof reference.input === 'string' ? state.inputs[reference.input] : undefined
+    const sourceStep = lesson.steps.find((candidate) => candidate.id === reference.step)
+    const sourceGraph = sourceStep?.execute && lesson.graphs[sourceStep.execute.graph]
     const output = typeof reference.step === 'string' && typeof reference.output === 'string'
-      ? state.snapshots[reference.step]?.outputs[reference.output]
+      ? state.snapshots[reference.step]?.outputs[sourceGraph?.outputAliases?.[reference.output] ?? reference.output]
       : undefined
     const resolved = input ?? output ?? (typeof reference.constant === 'string' ? lesson.constants[reference.constant] : undefined)
     return typeof resolved === 'string' ? undefined : resolved
@@ -130,12 +132,17 @@ const classicalCipherData = (
   const node = graph?.nodes.find((candidate) => `${candidate.id}.text` === outputBinding?.output)
   const directionPort = node?.operation === 'classical.caesar@1' ? node.inputs?.shift
     : node?.operation === 'classical.vigenere@1' ? node.inputs?.direction : undefined
-  const directionValue = directionPort && value(step.execute.bindings[`${directionPort.node}.${directionPort.port}`])
+  const directionBinding = directionPort && step.execute.bindings[`${directionPort.node}.${directionPort.port}`]
+  const directionValue = directionBinding && value(directionBinding)
   const motionDirection = directionValue && 'value' in directionValue
     ? directionValue.value === 'decrypt' || (typeof directionValue.value === 'number' && directionValue.value < 0) ? -1 as const : 1 as const
     : undefined
   return mapping && input.type.mapping === output.type.mapping
-    ? { input, output, mapping, policy: policy as AlphabetPolicyValue, motionDirection }
+    ? { input, output, mapping, policy: policy as AlphabetPolicyValue, motionDirection,
+      caesar: graph?.schema === 2 && node?.operation === 'classical.caesar@1'
+        && directionValue && 'value' in directionValue && typeof directionValue.value === 'number'
+        ? { shift: directionValue.value, input: directionBinding && 'input' in directionBinding ? directionBinding.input : undefined }
+        : undefined }
     : undefined
 }
 
@@ -171,6 +178,16 @@ const LessonView: React.FC = () => {
   const [visualizerSurface, setVisualizerSurface] = useState<HTMLDivElement | null>(null)
   const [visualizerDimensions, setVisualizerDimensions] = useState({ width: 0, height: 0 })
   const [reducedMotion, setReducedMotion] = useState(false)
+  const restoreCaesarFocus = useRef(false)
+
+  useEffect(() => {
+    if (load.status !== 'ready' || !restoreCaesarFocus.current) return
+    const control = visualizerSurface?.querySelector<HTMLElement>('[data-caesar-control] [role="slider"]')
+    if (control) {
+      control.focus()
+      restoreCaesarFocus.current = false
+    }
+  }, [load, visualizerSurface])
 
   useEffect(() => {
     if (!visualizerSurface || typeof ResizeObserver === 'undefined') return
@@ -286,6 +303,7 @@ const LessonView: React.FC = () => {
   const acceptedDiagnostic = state.acceptedDiagnostics[step.id]
   const executionDiagnostic = state.executionDiagnostics[step.id]
   const cipher = classicalCipherData(step, current.lesson, state)
+  const caesarInput = cipher?.caesar?.input
   const next = async () => {
     const result = await current.next()
     if (!result.ok) setLoad({ status: 'error', diagnostics: result.diagnostics })
@@ -402,6 +420,19 @@ const LessonView: React.FC = () => {
           output: cipher.output,
           mapping: cipher.mapping,
           motionDirection: cipher.motionDirection,
+          caesar: cipher.caesar && {
+            shift: cipher.caesar.shift,
+            onCommit: caesarInput ? async (shift) => {
+              restoreCaesarFocus.current = visualizerSurface?.contains(document.activeElement) ?? false
+              const changed = current.setInput(caesarInput, String(shift))
+              if (!changed.ok) { refresh(); return }
+              const result = await current.enter()
+              if (result.ok) setLoad({ status: 'ready', state: result.value })
+              else if (!result.diagnostics.every(({ code }) => code === 'lesson.execution-cancelled')) {
+                setLoad({ status: 'error', diagnostics: result.diagnostics })
+              }
+            } : undefined,
+          },
           policy: cipher.policy,
           policyLabel: t(`learning.policy.${cipher.policy.value}`),
         }}
