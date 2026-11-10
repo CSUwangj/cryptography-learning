@@ -9,6 +9,7 @@ import { parse, stringify } from 'yaml'
 import { i18n } from '../app'
 import { executeWorkerRequest, type WorkerRequest } from '../crypto_graph'
 import type { LessonDocuments } from '../lesson_runtime'
+import { caesarV2Documents } from '../../demos/caesarLesson'
 import { classicalV2Documents } from '../../demos/classicalV2Lessons'
 import { LearningPage } from './index'
 
@@ -131,6 +132,88 @@ it('aligns the executed Vigenere key when its binding differs from the editable 
   const cells = screen.getByRole('region', { name: 'Classical cipher position mapping' }).querySelectorAll('[data-mapped]')
   expect(within(cells[0] as HTMLElement).getByText('Key: γ')).toBeVisible()
   expect(within(cells[2] as HTMLElement).getByText('Key: β')).toBeVisible()
+})
+
+it('keeps Vigenere key labels with the earlier ciphertext when another Step executes the same graph', async () => {
+  const documents = classicalV2Documents('vigenere')
+  const lesson = parse(documents.lesson)
+  lesson.inputs.message.default = 'α?β'
+  lesson.constants['second-key'] = { type: lesson.inputs.key.type, encoding: 'text', value: 'γβ' }
+  lesson.steps[2] = {
+    id: 'inspect-earlier',
+    execute: { graph: 'cipher', bindings: {
+      ...lesson.steps[1].execute.bindings, 'key.value': { constant: 'second-key' },
+    } },
+    visualizer: lesson.steps[1].visualizer,
+  }
+  await openLesson({ ...documents, lesson: stringify(lesson, { aliasDuplicateObjects: false }) })
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+  await screen.findByText('β?δ (alphabet-text<custom>)')
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+  await screen.findByText('γ?γ (alphabet-text<custom>)')
+  const region = screen.getByRole('region', { name: 'Classical cipher position mapping' })
+  expect(within(region).getByText('α → β')).toBeVisible()
+  expect(within(region).getByText('β → δ')).toBeVisible()
+  const cells = [...region.querySelectorAll('[data-mapped]')]
+  expect(cells.map((cell) => within(cell as HTMLElement).getByText(/Key:|No key consumed/).textContent)).toEqual([
+    'Key: β', 'No key consumed', 'Key: γ',
+  ])
+})
+
+it('keeps affine parameters with the earlier ciphertext from a different graph and output node', async () => {
+  const documents = classicalV2Documents('affine')
+  const lesson = parse(documents.lesson)
+  lesson.inputs.message.default = 'α?β'
+  lesson.graphs.earlier = structuredClone(lesson.graphs.cipher)
+  lesson.graphs.earlier.nodes.at(-1).id = 'earlier-cipher'
+  lesson.graphs.earlier.outputs[0].node = 'earlier-cipher'
+  lesson.steps[1].execute.graph = 'earlier'
+  lesson.steps[1].visualizer.bindings.ciphertext.output = 'earlier-cipher.text'
+  lesson.constants['second-a'] = { type: lesson.inputs.a.type, encoding: 'integer', value: -2 }
+  lesson.constants['second-b'] = { type: lesson.inputs.b.type, encoding: 'integer', value: 1 }
+  lesson.steps.push({
+    id: 'inspect-earlier',
+    execute: { graph: 'cipher', bindings: {
+      ...lesson.steps[1].execute.bindings,
+      'a.value': { constant: 'second-a' }, 'b.value': { constant: 'second-b' },
+    } },
+    visualizer: lesson.steps[1].visualizer,
+  })
+  await openLesson({ ...documents, lesson: stringify(lesson, { aliasDuplicateObjects: false }) })
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+  await screen.findByText('😀?β (alphabet-text<custom>)')
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+  await screen.findByText('β?😀 (alphabet-text<custom>)')
+  const region = screen.getByRole('region', { name: 'Classical cipher position mapping' })
+  expect(within(region).getByText('α → 😀')).toBeVisible()
+  expect(within(region).getByText('β → β')).toBeVisible()
+  expect(within(region).getByLabelText('Affine formula')).toHaveTextContent('y = (a × x + b) mod 5, a = 2, b = -1')
+})
+
+it('keeps an earlier-bound Caesar result read-only while the current execution retains its slider', async () => {
+  const lesson = parse(caesarV2Documents.lesson)
+  lesson.inputs.message.default = 'α?β'
+  lesson.constants['later-shift'] = { type: lesson.inputs.rotation.type, encoding: 'integer', value: -1 }
+  lesson.steps.push({
+    id: 'inspect-earlier',
+    execute: { graph: 'cipher', bindings: {
+      ...lesson.steps[1].execute.bindings, 'rotation.value': { constant: 'later-shift' },
+    } },
+    visualizer: structuredClone(lesson.steps[1].visualizer),
+  })
+  await openLesson({ ...caesarV2Documents, lesson: stringify(lesson, { aliasDuplicateObjects: false }) })
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+  await screen.findByText('β?γ (alphabet-text<custom>)')
+  const current = screen.getByRole('region', { name: 'Classical cipher position mapping' })
+  expect(within(current).getByRole('slider', { name: 'Caesar shift' })).toBeVisible()
+  expect(within(current).getByText('Committed shift: 1')).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+  await screen.findByText('😀?α (alphabet-text<custom>)')
+  const earlier = screen.getByRole('region', { name: 'Classical cipher position mapping' })
+  expect(within(earlier).getByText('α → β')).toBeVisible()
+  expect(within(earlier).getByText('β → γ')).toBeVisible()
+  expect(within(earlier).getByText('Committed shift: 1')).toBeVisible()
+  expect(within(earlier).queryByRole('slider')).not.toBeInTheDocument()
 })
 
 it.each([

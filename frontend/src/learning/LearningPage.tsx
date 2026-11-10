@@ -126,14 +126,18 @@ const classicalCipherData = (
   if (plaintext?.type.family !== 'alphabet-text' || ciphertext?.type.family !== 'alphabet-text' || policy?.type.family !== 'alphabet-policy') return undefined
   const input = plaintext as AlphabetTextValue
   const output = ciphertext as AlphabetTextValue
-  const graph = lesson.graphs[step.execute.graph]?.graph
+  const outputBinding = step.visualizer.bindings?.ciphertext as { step?: string, output?: string } | undefined
+  const outputStep = lesson.graphs[step.execute.graph]?.graph.schema === 2
+    ? lesson.steps.find((candidate) => candidate.id === outputBinding?.step) ?? step : step
+  const execution = outputStep.execute
+  const compiledGraph = execution && lesson.graphs[execution.graph]
+  const graph = compiledGraph?.graph
   const mapping = graph?.alphabetMappings?.find((item) => item.id === input.type.mapping)
-  const outputBinding = step.visualizer.bindings?.ciphertext as { output?: string } | undefined
-  const outputPath = outputBinding?.output && (lesson.graphs[step.execute.graph]?.outputAliases?.[outputBinding.output] ?? outputBinding.output)
+  const outputPath = outputBinding?.output && (compiledGraph?.outputAliases?.[outputBinding.output] ?? outputBinding.output)
   const node = graph?.nodes.find((candidate) => `${candidate.id}.text` === outputPath)
   const operand = (name: string): CryptoValue | undefined => {
     const port = node?.inputs?.[name]
-    const event = port && state.snapshots[step.id]?.trace.find((item) => item.path === `${port.node}.${port.port}`)
+    const event = port && state.snapshots[outputStep.id]?.trace.find((item) => item.path === `${port.node}.${port.port}`)
     return event && 'value' in event ? event.value : undefined
   }
   const key = node?.operation === 'classical.vigenere@1' ? operand('key') : undefined
@@ -141,7 +145,7 @@ const classicalCipherData = (
   const b = node?.operation === 'classical.affine@1' ? operand('b') : undefined
   const directionPort = node?.operation === 'classical.caesar@1' ? node.inputs?.shift
     : node?.operation === 'classical.vigenere@1' ? node.inputs?.direction : undefined
-  const directionBinding = directionPort && step.execute.bindings[`${directionPort.node}.${directionPort.port}`]
+  const directionBinding = directionPort && execution?.bindings[`${directionPort.node}.${directionPort.port}`]
   const directionValue = directionBinding && value(directionBinding)
   const motionDirection = directionValue && 'value' in directionValue
     ? directionValue.value === 'decrypt' || (typeof directionValue.value === 'number' && directionValue.value < 0) ? -1 as const : 1 as const
@@ -154,7 +158,7 @@ const classicalCipherData = (
         ? { a: a.value, b: b.value } : undefined,
       caesar: graph?.schema === 2 && node?.operation === 'classical.caesar@1'
         && directionValue && 'value' in directionValue && typeof directionValue.value === 'number'
-        ? { shift: directionValue.value, input: directionBinding && 'input' in directionBinding ? directionBinding.input : undefined }
+        ? { shift: directionValue.value, input: outputStep.id === step.id && directionBinding && 'input' in directionBinding ? directionBinding.input : undefined }
         : undefined }
     : undefined
 }
