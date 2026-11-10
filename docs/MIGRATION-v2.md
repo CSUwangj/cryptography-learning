@@ -1,12 +1,13 @@
 # Lesson schema v2 migration guide
 
-This guide covers the implemented public v1.2 path: typed primitive composition,
-per-node traces, generic SPN teaching, standalone schedules and binding-derived
-overlays. It retains the `docs/MIGRATION-v2.md` URL introduced by
+This guide covers the implemented public v1.3 path: typed primitive composition,
+generic comparison, controlled data/key avalanche, classical teaching, standalone
+schedules and binding-derived overlays. It retains the `docs/MIGRATION-v2.md` URL introduced by
 [#96](https://github.com/CSUWangj/cryptography-learning/issues/96), which v1
 compilation notices reference. [ADR 0008](adr/0008-generic-rendering-by-structural-family.md)
-records the architecture; the [delivery map](v1.2-delivery-evidence.md) links
-requirements to source, tests and historical evidence limits.
+records the architecture; the [v1.3 delivery map](v1.3-delivery-evidence.md) links
+requirements to integration evidence and its limits. The [v1.2 map](v1.2-delivery-evidence.md)
+retains its original snapshot and verification limits.
 
 The maintainer approved the first real AES-192 Learning page on October 31, 2026
 in [#109](https://github.com/CSUWangj/cryptography-learning/issues/109#issuecomment-6547518614).
@@ -39,7 +40,8 @@ schema versions and Visualizer descriptor major versions are independent.
 The same decision assigns the new classical presentation to Lesson v2 only.
 Generic comparison, controlled data-change avalanche, standalone original-key
 avalanche schedules and key-change cipher overlays now use the v2 runtime.
-Dedicated classical presentation remains separate work.
+Dedicated classical teaching also uses the existing `classical-cipher@1` descriptor
+in v2; columnar transposition retains its existing grid without that descriptor.
 The supported presentation table below describes the implemented path. The
 [public version audit](lesson-version-audit.md) records public roots at its stated
 historical snapshot; the complete examples below extend that inventory. Private
@@ -226,11 +228,65 @@ label and its ID.
 | Data-change avalanche | The same comparison declaration with `kind: avalanche` and a nonempty `sources` list of permitted original data source IDs. Exactly one bit of one listed source changes; all other independent input values stay equal. |
 | Standalone original-key avalanche | `presentation: {kind: spn-cipher, mode: key-expansion}` with `avalanche@1`, `compare.kind: avalanche`, and `sources: [key]` naming the original-key graph source. No cipher is required. |
 | Key-change cipher overlay | A cipher avalanche comparison declares `keyChange` naming an earlier original-key avalanche Step. Bind each key source to that Step's exported schedule output and request `presentation.overlay: true`. |
-| Dedicated classical teaching | Separate work. Dedicated `classical-cipher@1` remains unsupported in v2 (`lesson.v2-unsupported`); registered classical operations may still execute in a raw v2 graph. |
+| Dedicated classical teaching | `visualizer.id: classical-cipher@1` with typed `plaintext`, `ciphertext`, `policy` and `trace` bindings. V2 Caesar uses reels; Vigenere, affine and substitution use direct mappings. Columnar transposition uses its existing descriptor-free grid. |
 
 Legacy `block-cipher`, `key-expansion` presentations and `teaching-spn@1` are v1
 declarations, not v2 aliases. Standalone schedule comparison reuses the existing
 structural renderer and comparison contract; no new descriptor is required.
+
+## Public v1.3 authoring examples
+
+The existing [Learning demo catalog](../frontend/demos/LearningDemo.tsx) supplies
+public synthetic documents to the real Learning page, session, Worker and
+RenderHost. Start it from the repository root with the pinned Node environment:
+
+```sh
+fish -lc 'cd frontend; and nvm use; and python3 ../scripts/local_check.py -- npm run demos -- --host 127.0.0.1'
+```
+
+Open `/learning` on the local URL printed by Vite. The routes below are relative
+to that demo server, not the application started by `npm run dev`. Append
+`?lang=en-US` or `?lang=zh-CN` for either language. Keep each constructor's
+`lesson` and both `locales` together when adapting its `LessonDocuments` bundle.
+These TypeScript bundles are not directory arguments for `validate-lessons`;
+the complete YAML roots above are. No private content service is required.
+
+| Capability and source | Demo route and actions | Observable result |
+| --- | --- | --- |
+| [Generic comparison](../frontend/demos/genericComparisonLesson.ts) | `/learning/generic-comparison`. Keep defaults and choose Next. Both data and key may change independently. | The `data.value` summary shows `0x0f0f`, `0x00ff`, 8 changed bits and ratio 0.5. Grouping does not change these measurements. |
+| [Controlled data avalanche](../frontend/demos/dataAvalancheLesson.ts) | `/learning/data-avalanche`. Choose one source and MSB-first bit, then Next. | Defaults produce `result.value` values `0xf6` and `0x96`. For baseline `0x00`, choosing bit 0 then bit 1 derives `0x80` then `0x40`, without accumulating flips. |
+| [Standalone original-key schedule](../frontend/demos/keyAvalancheLesson.ts) | `/learning/key-avalanche`. Choose a key bit, then Next. | The catalog deliberately retains the first real AES-128 generation. Original keys differ at bit 0 by default; `round-key-1.value` has ratio 0.03125. No cipher is required. The constructor also accepts complete AES-128/192/256 roots. |
+| [Key-change encryption](../frontend/demos/keyChangeLesson.ts) | `/learning/aes128-key-change-encrypt`. Next compares schedules; the next Next compares ciphers. Choose Show key schedule in the toolbar or on a bound row. | The complete overlay has 11 round keys. Both plaintexts remain `0x00112233445566778899aabbccddeeff`; final results are `0x69c4e0d86a7b0430d8cdb78070b4c55a` and `0xae175e68d1e005092e0bf7a4d354c485`. |
+| [Key-change decryption](../frontend/demos/keyChangeLesson.ts) | `/learning/aes128-key-change-decrypt`. Use the same controls. | Both ciphertexts remain `0x69c4e0d86a7b0430d8cdb78070b4c55a`; final results are `0x00112233445566778899aabbccddeeff` and `0x60b007735cc26f1cb38807c28ff08acd`. Overlay keys run from rk10 to rk0, preserving generation identities. |
+| [Caesar](../frontend/demos/caesarLesson.ts) | `/learning/caesar-v2`. Next executes the default signed shift +1. Focus the right-hand control and press ArrowDown to commit 0. Dragging previews; release commits and executes. | Default `αβδ ?` becomes `βγ😀 ?`; shift 0 restores `αβδ ?`. Preview does not publish intermediate execution results. |
+| [Vigenere](../frontend/demos/classicalV2Lessons.ts), `classicalV2Documents('vigenere')` | `/learning/vigenere-v2`. Enter `α?β`, keep key `βγ`, then Next. A further Next decrypts. | `β?δ`, then `α?β`. The preserved `?` consumes no key character. Labels follow the actual cyclic key; there is no reel or global shift. |
+| [Affine](../frontend/demos/classicalV2Lessons.ts), `classicalV2Documents('affine')` | `/learning/affine-v2`. Enter `α?β`, keep `a = 2`, `b = -1`, then Next. | `😀?β`, with one formula `y = (a × x + b) mod 5`. This operation retains its transform interface and has no direction input or authored decrypt Step. |
+| [Substitution](../frontend/demos/classicalV2Lessons.ts), `classicalV2Documents('substitution')` | `/learning/substitution-v2`. Enter `α?β`, keep the default permutation key, then Next. A further Next decrypts. | `😀?γ`, then `α?β`, with direct symbol mappings and no shift control. |
+| [Columnar transposition](../frontend/demos/classicalV2Lessons.ts), `classicalV2Documents('transposition')` | `/learning/transposition-v2`. Enter `ABCDE`, keep rows 3, then Next. A further Next decrypts. | `ADBEC`, then `ABCDE`. The existing grid retains the incomplete empty cell. |
+
+These Steps describe the examples, not a required Lesson sequence. A Lesson may
+omit comparison or use fixed valid avalanche inputs without an editable Step.
+Caesar uses a signed shift for either direction; Vigenere, substitution and
+transposition retain their existing encrypt/decrypt direction inputs. Alphabet
+operations retain custom mappings and Preserve/Strict diagnostics. Supply the
+existing typed source bindings, not an invented direction field for affine.
+
+For classical views, bind `ciphertext` to the output that the view describes and
+`trace` to its execution. V2 metadata follows that output's producing Step and
+retained operands, including output aliases and earlier-Step bindings. An
+earlier-bound Caesar result stays read-only; only the current producing Step
+offers a control that commits through the existing session. Fixed keys and
+prior-Step keys remain valid.
+
+The summary has exactly Stage, Baseline result, Changed result, Changed bits and
+Ratio, or 阶段, 基准结果, 改变后结果, 改变位数 and 比例. There is no visible
+XOR-mask column. Runtime masks remain available for arithmetic and difference
+marks under [P13-SUMMARY-2](https://github.com/CSUWangj/cryptography-learning/issues/140#issuecomment-6752140614).
+Inline pairs, persistent underlines and explicit gaps remain independent of
+lineage selection. See the [evidence map](v1.3-delivery-evidence.md) for runnable
+integration checks and the limits of complete-schedule browser evidence.
+
+## Avalanche declarations
 
 The complete bilingual [data avalanche Lesson](../frontend/demos/dataAvalancheLesson.ts)
 declares `sources: [data, other]` and reuses the existing `bit_flip` controls.
@@ -334,7 +390,7 @@ Diagnostics are `presentation.spn-role-required`, `presentation.spn-round-requir
 Correct the graph or use a raw trace. The standalone schedule instead follows
 generation dependencies and source round-key identities; it does not require
 the cipher's single state chain. See the runnable
-[AES demos](../frontend/demos/AES_V2_DEMOS.md) and
+[AES Lessons in the Learning demo catalog](../frontend/demos/LearningDemo.tsx) and
 [sliding-window schedule](../frontend/demos/slidingWindowLesson.ts).
 
 V2 retains one immutable event per operation, including sources, with primitive
@@ -425,7 +481,8 @@ per-key mode. The source implements each visible Close action as a close.
 ## Manual author checklist
 
 1. Audit the authored root and all locale documents. Keep `version: 1` for
-   comparison/classical presentations or any content not yet manually converted.
+   content not yet manually converted. V2 supports the comparison and classical
+   declarations above; changing only the version is still not a conversion.
 2. Copy the Lesson before editing; declare `version: 2` explicitly. Preserve IDs
    and public destinations unless a separate content change authorizes a move.
 3. Convert operations and ports deliberately, with explicit tables and ranges.

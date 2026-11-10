@@ -7,6 +7,17 @@ and [#94 Q5](https://github.com/CSUWangj/cryptography-learning/issues/94#issueco
 The [October 31 first-real-page acceptance](https://github.com/CSUWangj/cryptography-learning/issues/109#issuecomment-6547518614)
 satisfies the product checkpoint. It does not supply current automated evidence.
 
+## Historical scope and current guidance
+
+The inventory and unsupported-capability statements below describe the November 2,
+2026 snapshot. They are retained as historical evidence, not current authoring
+restrictions. By November 10, 2026, #141-#146 added v2 generic comparison,
+data/key avalanche and dedicated classical teaching through the existing
+descriptors. Use the [migration guide](MIGRATION-v2.md) and
+[v1.3 evidence map](v1.3-delivery-evidence.md) for current examples, integration
+checks and remaining limits. This clarification does not rerun or expand the
+original audit, convert its roots, or change its recorded results.
+
 ## Version contract
 
 Explicit `version: 1` uses legacy compilation and exposes

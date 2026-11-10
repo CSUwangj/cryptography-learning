@@ -2,13 +2,17 @@
 
 ## Status
 
-Accepted; implemented for the public v1.2 SPN path. Scope is governed by
+Accepted; implemented for the public v1.2 SPN path and extended by
+[public v1.3](https://github.com/CSUWangj/cryptography-learning/issues/140)
+with generic comparison, data/key avalanche and the existing classical family.
+The original SPN scope is governed by
 [#95](https://github.com/CSUWangj/cryptography-learning/issues/95), its corrections
 to immutable draft `96631d8ac347fa5ec83a621d32359a1821becb88`, and the
 [October 31, 2026 first-real-page approval](https://github.com/CSUWangj/cryptography-learning/issues/109#issuecomment-6547518614).
 The [migration guide](../MIGRATION-v2.md) describes authoring; the
-[delivery map](../v1.2-delivery-evidence.md) separates source/test coverage,
-historical runs and outstanding verification. This status records the architectural
+[v1.2 delivery map](../v1.2-delivery-evidence.md) retains its historical evidence;
+the [v1.3 map](../v1.3-delivery-evidence.md) records integration evidence and limits.
+This status records the architectural
 and product decisions, not a claim that every historical or current check passed.
 
 ## Context
@@ -22,7 +26,7 @@ presentation contract; this decision does not retire or rewrite it.
 ## Decision
 
 Lesson schema v2 composes registered Cryptographic Primitives and presents their
-execution by structural family. The implemented family is `spn-cipher`; an
+execution by structural family. The structural SPN family is `spn-cipher`; an
 algorithm or variant supplies labels, not renderer dispatch. Node roles, rounds,
 schedule iterations and authored grouping describe the trace without encoding
 an algorithm in node names. Cipher teaching rows follow a supported dependency
@@ -66,7 +70,7 @@ source identities, avoids shared-batch duplication, and retains an expandable
 original-order value table. Selection crosses corresponding anchor bits without
 cross-view edge drawing. Padding exists only while open.
 
-Opening/closing through the toolbar or a bound row preserves the shared exact
+For a single execution, opening/closing through the toolbar or a bound row preserves the shared exact
 origin and both unit sizes. An actual granularity change clears origin while
 retaining visibility.
 Direction changes, replacement execution and Lesson re-entry clear origin, close
@@ -107,19 +111,51 @@ layout and lineage. Reuse the existing compiler, Lesson session/worker,
 RenderHost and shared Learning components. No new engine or dynamic operation
 loader follows from this decision.
 
-V2 comparison, avalanche and dedicated classical presentations remain unsupported;
-existing v1 consumers continue under ADR 0006/0007, including the classical
-symbol-mapping exception. Registered classical operations can execute in raw v2
-graphs. Additional structural families, themes, private migration and infrastructure
-are outside this decision. [#67](https://github.com/CSUWangj/cryptography-learning/issues/67)
-owns key-change comparison: its view-local selection differs from this
-single-execution overlay's cross-anchor tracing. This work does not implement or
-close it. Manual recovery remains correcting authored documents and reloading or
-rerunning under existing execution limits.
+Public v1.3 reuses `avalanche@1` for generic same-graph comparison and explicit
+single-original-bit avalanche. The compiler validates declarations and typed
+bindings; the session and Worker own paired execution, invalidation and stale
+responses. RenderHost consumes immutable identity-paired checkpoints and compiled
+lineage without rerunning cryptography. Complete pairs retain full-width masks,
+counts and ratios; incomplete pairs retain available values and explicit gaps.
+[P13-SUMMARY-2](https://github.com/CSUWangj/cryptography-learning/issues/140#issuecomment-6752140614)
+keeps the visible summary to five result-based columns, without an XOR-mask column.
+Grouping changes inspection, not measurements. One selected group's actual bits
+seed lineage; related groups do not become extra origins, and unrelated value
+differences remain visible.
+
+The [#67](https://github.com/CSUWangj/cryptography-learning/issues/67) key-change
+contract is implemented by #143/#144 through optional standalone schedule and
+explicitly bound cipher comparison Steps. One changed original-key bit may
+produce many derived-key differences. Key-change lineage stays inside the active
+view; overlay toggles clear selection and preserve independent sizes. Replacement
+results reset sizes to 1 and select the original changed bit only if its source
+is retained and visible. A missing original source never selects a derived bit.
+Locale/resize preserves state. These comparison rules leave the single-execution
+cross-anchor selection contract above intact.
+
+V2 classical teaching reuses ADR 0006's existing `classical-cipher@1` exception.
+Caesar reels preview locally and commit through the Lesson session on release;
+Vigenere aligns its cyclic string key to consumed symbols; affine has one formula;
+substitution uses direct mappings. Columnar transposition retains its existing
+grid. Custom alphabets, Preserve/Strict diagnostics and the operations' existing
+directions remain supported. Metadata describes the retained ciphertext's
+producer; an earlier-bound Caesar result is read-only. No descriptor-major change
+or algorithm-specific comparison renderer is needed. V1 consumers retain their
+existing path under ADR 0006/0007.
+
+Lessons choose these capabilities independently and may use fixed valid examples
+without editable input Steps. Additional structural families, private migration
+and infrastructure remain outside this decision. The
+[Markdown retention resolution](https://github.com/CSUWangj/cryptography-learning/issues/125#issuecomment-6642360104)
+keeps the current stack under maintainer-authored content, with its assessed
+dependency and maintenance limits. It does not claim repairs or make the separate
+rendering exploration a v1.3 release prerequisite. Manual recovery remains
+correcting authored documents and reloading or rerunning under existing execution
+limits.
 
 ## Implementation and evidence
 
-The original Tickets 1-9 are reconciled in the delivery map. #96/#97 deliver the
+The original Tickets 1-9 are reconciled in the v1.2 delivery map. #96/#97 deliver the
 versioned executable path; #98/#99/#105 the composable calculations;
 #106-#109 standalone/cipher/overlay integration and human acceptance; #110-#113
 remaining public demos and coexistence; #114 finalizes documentation and the
@@ -127,3 +163,9 @@ acceptance map. P0 records product/prototype decisions, not production architect
 or proof. P1's independent title/navigation path is mapped there too. Historical
 failures and current verification gaps remain visible; ticket closure alone is
 not a test result or a replacement for the #109 human decision.
+
+The v1.3 map covers #141-#146 and the #147 authoring/verification handoff. It
+separates current integration checks, applicable reused slice evidence and
+historical prototype evidence. Full-schedule browser visibility, dense overlays,
+historical timeouts and the #146 metadata/read-only repair boundaries remain
+explicit; this ADR is not release acceptance or deployment evidence.
