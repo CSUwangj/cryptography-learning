@@ -24,6 +24,11 @@ import aes256 from '../src/lesson_runtime/fixture/aes256-v2.yaml?raw'
 import aes256En from '../src/lesson_runtime/fixture/aes256-v2-locales/en-US.yaml?raw'
 import aes256Zh from '../src/lesson_runtime/fixture/aes256-v2-locales/zh-CN.yaml?raw'
 import '../src/index.css'
+import { serializeLessonLocales } from './serializeLessonLocales'
+import enUS from './locales/en-US/standaloneKey.json' with { type: 'json' }
+import zhCN from './locales/zh-CN/standaloneKey.json' with { type: 'json' }
+
+const locales = { 'en-US': enUS, 'zh-CN': zhCN }
 
 const lessons: Readonly<Record<string, LessonDocuments>> = {
   'aes128-v2-kat': { lesson: aes128, locales: { 'en-US': aes128En, 'zh-CN': aes128Zh } },
@@ -37,20 +42,7 @@ keyExample.graphs.schedule.nodes = keyExample.graphs.schedule.nodes.slice(0, 7)
 keyExample.graphs.schedule.outputs = keyExample.graphs.schedule.outputs.slice(0, 2)
 const standaloneKeyDocuments: LessonDocuments = {
   ...keyAvalancheLesson({ lesson: stringify(keyExample), locales: {} }),
-  locales: {
-    'en-US': `title: Inspect one original-key bit
-summary: Inspect the first real AES-128 key-schedule generation after changing one original-key bit.
-texts:
-  introduction: Edit the original key and choose one MSB-first bit. Continue to inspect the paired schedule. Choosing another bit replaces the previous flip.
-  key: Original key
-`,
-    'zh-CN': `title: 检查一个原始密钥位
-summary: 改变一个原始密钥位，检查真实 AES-128 密钥编排的首轮生成。
-texts:
-  introduction: 编辑原始密钥并选择一个从最高有效位开始编号的位。继续下一步查看成对编排。更换位会替换之前的翻转。
-  key: 原始密钥
-`,
-  },
+  locales: serializeLessonLocales(locales),
 }
 
 const classicalLessons: Readonly<Record<string, LessonDocuments>> = {

@@ -1,0 +1,22 @@
+{
+  "substitution": {
+    "title": "Substitution cipher",
+    "summary": "Run a substitution cipher through the shared classical cipher presentation.",
+    "texts": {
+      "plaintext": "Plaintext",
+      "key": "Key",
+      "policy": "Policy",
+      "direction": "Direction"
+    }
+  },
+  "vigenere": {
+    "title": "Vigenere cipher",
+    "summary": "Run a vigenere cipher through the shared classical cipher presentation.",
+    "texts": {
+      "plaintext": "Plaintext",
+      "key": "Key",
+      "policy": "Policy",
+      "direction": "Direction"
+    }
+  }
+}

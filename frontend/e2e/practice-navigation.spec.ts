@@ -1,16 +1,16 @@
 import { expect, test, type Page } from '@playwright/test'
 import { readFileSync, writeFileSync } from 'node:fs'
+import { serializeLessonLocales } from '../demos/serializeLessonLocales'
 
 const lesson = readFileSync(new URL('../src/lesson_runtime/fixture/lesson.yaml', import.meta.url), 'utf8')
 const learningNames = {
   'en-US': { category: 'Modern / Block Ciphers', lesson: 'Explore XOR and bit relationships' },
   'zh-CN': { category: '现代密码与分组密码', lesson: '探索异或与位之间的关系' },
 }
-const lessonLocales = Object.fromEntries(Object.entries(learningNames).map(([language, names]) => [
-  language,
+const lessonLocales = serializeLessonLocales(learningNames, (names, language) =>
   readFileSync(new URL(`../src/lesson_runtime/fixture/locales/${language}.yaml`, import.meta.url), 'utf8')
     .replace(/^title:.*$/m, `title: ${names.lesson}`),
-]))
+)
 
 const catalog = {
   data: {

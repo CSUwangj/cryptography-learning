@@ -1,0 +1,8 @@
+{
+  "title": "Inspect one original-key bit",
+  "summary": "Compare real standalone AES key schedules after changing one original-key bit.",
+  "texts": {
+    "introduction": "Edit the original key and choose one MSB-first bit. Continue to inspect the paired schedule. Choosing another bit replaces the previous flip.",
+    "key": "Original key"
+  }
+}

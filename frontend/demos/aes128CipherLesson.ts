@@ -1,5 +1,11 @@
 import type { LessonDocuments } from '../src/lesson_runtime'
 import { aesCipherGraph, aesInverseCipherGraph, aesKeyExpansionGraph } from '../src/crypto_graph'
+import { stringify } from 'yaml'
+import { serializeLessonLocales } from './serializeLessonLocales'
+import enUS from './locales/en-US/aesCipher.json' with { type: 'json' }
+import zhCN from './locales/zh-CN/aesCipher.json' with { type: 'json' }
+
+const locales = { 'en-US': enUS, 'zh-CN': zhCN }
 
 // Real AES (Nk/Nr from FIPS-197) rather than a hand-authored toy schedule: the known-answer
 // vectors need the true key schedule and cipher, so this serializes the same tested
@@ -99,9 +105,6 @@ steps:
       variant: ${variant}
       direction: decrypt
 `,
-    locales: {
-      'en-US': `title: AES-${variant} cipher\nsummary: Encrypt and decrypt blocks with the same key, inspecting the shared key schedule.\ntexts: {key: Key, plaintext: Plaintext, ciphertext: Ciphertext}`,
-      'zh-CN': `title: AES-${variant} 密码\nsummary: 用同一密钥加密和解密数据块，查看共享的密钥编排。\ntexts: {key: 密钥, plaintext: 明文, ciphertext: 密文}`,
-    },
+    locales: serializeLessonLocales(locales, (copy) => stringify(copy).replaceAll('{{variant}}', String(variant))),
   }
 }

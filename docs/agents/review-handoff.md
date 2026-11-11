@@ -18,6 +18,28 @@
   interactions, rejected alternatives and reasons, and unresolved questions in
   the issue before implementing dependent work. Silence is not approval.
 
+## Teaching demos and execution owners
+
+During preparation for a new or changed teaching visualization or interaction,
+identify a discoverable, explained and usable real demo entry. Reuse an existing
+entry when it is sufficient. Internal refactors and copy-only changes do not
+require a new demo.
+
+Check discovery and use through the existing demo catalog and document service.
+For example, [LearningDemo](../../frontend/demos/LearningDemo.tsx) answers
+`LearningCatalog` and `LessonDocuments`; the
+[key-change browser check](../../frontend/e2e/key-change-demo.spec.ts) follows a
+catalog link, loads the Lesson and uses the explained interaction. Injected
+fixtures alone cannot prove registration. Select the relevant existing browser
+coverage without repeating the entire algorithm matrix.
+
+When result presentation, metadata provenance or editing bindings change, inspect
+the affected permitted compositions. The displayed result, retained parameters
+and action target must belong to their proper execution owner. Consider current
+or prior Steps, output aliases, different graphs and readonly/editable bindings
+where the change affects them. Add a narrow behavioral regression for an actual
+gap; these cases are not a mandatory cross-product for every view.
+
 ## Preview checks during development
 
 Before running development checks, and whenever a new file category is introduced,
@@ -260,12 +282,18 @@ Give the next agent these facts, with links rather than copied conversation:
    status and log paths. Record no owned processes or unknown ownership explicitly.
 
 Use the external execution note as that checkpoint and keep private execution
-configuration there. Resume from it and its current packet before reconstructing
-history. After a notes/history backend failure, recover from the checkpoint and
-linked local files instead of repeating unavailable operations. Retry the backend
-only after evidence that it is available again.
-Carry process ownership into recovery; confirm completion or clean up only known
-owned leftovers under the local-check rules before retrying interrupted work.
+configuration there. At resume, open the exact checkpoint, current packet and
+named final reports first. For a still-running owned process, use its existing
+wait/completion mechanism; read targeted changed log excerpts only for a status
+change, failure or maintainer request. Preserve meaningful progress updates.
+
+After a notes/history backend failure, continue from those local files. Do not
+retry the backend without new evidence of availability. If the checkpoint is
+missing, recover its exact path from the dispatch or request it from the sender;
+do not repeatedly call the failed backend. Confirm completion or clean up only
+known owned leftovers under the local-check rules before retrying interrupted
+work. Record the recovered stage, evidence limits and process ownership in the
+same checkpoint before continuing.
 
 Stage only intended changes. Preserve unrelated work and identify it explicitly.
 Evidence must describe the exact review snapshot; unstaged fixes cannot prove a

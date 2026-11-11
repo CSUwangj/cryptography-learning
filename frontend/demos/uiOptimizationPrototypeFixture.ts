@@ -1,4 +1,9 @@
 import { aesCipherGraph, aesKeyExpansionGraph } from 'crypto_graph'
+import { serializeLessonLocales } from './serializeLessonLocales'
+import enUS from './locales/en-US/uiOptimizationPrototype.json' with { type: 'json' }
+import zhCN from './locales/zh-CN/uiOptimizationPrototype.json' with { type: 'json' }
+
+const locales = { 'en-US': enUS, 'zh-CN': zhCN }
 
 // Throwaway layout fixture: real AES-256 graph primitives, ending after SubBytes 1.
 // Only round key 0 is needed; the remaining key schedule and rounds are outside this preview.
@@ -42,21 +47,4 @@ steps:
       direction: encrypt
 `
 
-export const aes256PrototypeLocales = {
-  'en-US': `title: AES-256 — AddRoundKey and SubBytes
-summary: Follow the complete 128-bit state through the opening two operations.
-texts:
-  introduction: |
-    AES-256 uses a 256-bit key and a 128-bit block. The initial AddRoundKey combines the plaintext with the first 128 key bits; SubBytes then substitutes each byte.
-
-    Select a bit to inspect its relationships. Scroll horizontally inside the trace to reach the final byte. This preview stops after SubBytes in round 1.
-`,
-  'zh-CN': `title: AES-256 — 轮密钥加与字节替换
-summary: 沿着前两个操作观察完整的 128 位状态。
-texts:
-  introduction: |
-    AES-256 使用 256 位密钥和 128 位分组。初始轮密钥加将明文与密钥的前 128 位进行异或，随后 SubBytes 对每个字节进行替换。
-
-    点击任意一位可以查看关联关系。在画卷内部横向滚动可以到达最后一个字节。本原型展示到第一轮 SubBytes 为止。
-`,
-}
+export const aes256PrototypeLocales = serializeLessonLocales(locales)

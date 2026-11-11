@@ -1,0 +1,22 @@
+{
+  "substitution": {
+    "title": "替换密码",
+    "summary": "使用共享的古典密码展示运行替换密码。",
+    "texts": {
+      "plaintext": "明文",
+      "key": "密钥",
+      "policy": "策略",
+      "direction": "方向"
+    }
+  },
+  "vigenere": {
+    "title": "维吉尼亚密码",
+    "summary": "使用共享的古典密码展示运行维吉尼亚密码。",
+    "texts": {
+      "plaintext": "明文",
+      "key": "密钥",
+      "policy": "策略",
+      "direction": "方向"
+    }
+  }
+}

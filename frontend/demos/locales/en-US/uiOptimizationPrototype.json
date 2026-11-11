@@ -1,0 +1,7 @@
+{
+  "title": "AES-256 — AddRoundKey and SubBytes",
+  "summary": "Follow the complete 128-bit state through the opening two operations.",
+  "texts": {
+    "introduction": "AES-256 uses a 256-bit key and a 128-bit block. The initial AddRoundKey combines the plaintext with the first 128 key bits; SubBytes then substitutes each byte.\n\nSelect a bit to inspect its relationships. Scroll horizontally inside the trace to reach the final byte. This preview stops after SubBytes in round 1.\n"
+  }
+}

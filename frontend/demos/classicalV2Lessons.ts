@@ -1,5 +1,6 @@
 import { stringify } from 'yaml'
 import type { LessonDocuments } from '../src/lesson_runtime'
+import { serializeLessonLocales } from './serializeLessonLocales'
 import enUS from './locales/en-US/classicalV2.json' with { type: 'json' }
 import zhCN from './locales/zh-CN/classicalV2.json' with { type: 'json' }
 
@@ -50,8 +51,8 @@ export const classicalV2Documents = (kind: 'vigenere' | 'affine' | 'substitution
         } }, ...visualizer('decrypt', { step: 'encrypt', output: 'cipher.text' }) }] : []),
       ],
     }, { aliasDuplicateObjects: false }),
-    locales: Object.fromEntries(Object.entries(locales).map(([language, copy]) => [language, stringify({
+    locales: serializeLessonLocales(locales, (copy) => stringify({
       title: copy.titles[kind], summary: copy.summary, texts: copy.texts,
-    })])),
+    })),
   }
 }

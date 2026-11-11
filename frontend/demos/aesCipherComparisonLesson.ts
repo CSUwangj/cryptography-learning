@@ -9,6 +9,12 @@ import {
   type AuthoredGraph,
   type BitsValue,
 } from '../src/crypto_graph'
+import { stringify } from 'yaml'
+import { serializeLessonLocales } from './serializeLessonLocales'
+import enUS from './locales/en-US/aesCipherComparison.json' with { type: 'json' }
+import zhCN from './locales/zh-CN/aesCipherComparison.json' with { type: 'json' }
+
+const locales = { 'en-US': enUS, 'zh-CN': zhCN }
 
 // Cipher-only comparison graphs (ADR 0006 / #86): round keys are Lesson constants from a
 // one-shot expansion so left+right node budgets fit platform caps and key-expansion avalanche
@@ -70,10 +76,8 @@ const roundKeyBindingsYaml = (rounds: number, changedRoundKey?: number): string 
       ? `          round-key-${round}:\n            baseline: {constant: round-key-${round}}\n            changed: {input: changed_round_key}`
       : `          round-key-${round}: {constant: round-key-${round}}`).join('\n')
 
-const localesFor = (variant: 128 | 192 | 256): LessonDocuments['locales'] => ({
-  'en-US': `title: AES-${variant} comparison and avalanche\nsummary: Compare one plaintext or round-key bit change through AES encryption and decryption.\ntexts: {plaintext: Plaintext, ciphertext: Ciphertext, changed_plaintext: Changed plaintext, changed_ciphertext: Changed ciphertext, changed_round_key: Changed round key 0}`,
-  'zh-CN': `title: AES-${variant} 比较与雪崩\nsummary: 比较明文或轮密钥单比特变化在 AES 加密与解密中的传播。\ntexts: {plaintext: 明文, ciphertext: 密文, changed_plaintext: 改变后的明文, changed_ciphertext: 改变后的密文, changed_round_key: 改变后的轮密钥 0}`,
-})
+const localesFor = (variant: 128 | 192 | 256): LessonDocuments['locales'] =>
+  serializeLessonLocales(locales, (copy) => stringify(copy).replaceAll('{{variant}}', String(variant)))
 
 const graphYaml = (id: string, graph: AuthoredGraph): string => `
   ${id}:

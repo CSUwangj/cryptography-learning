@@ -1,4 +1,10 @@
 import type { LessonDocuments } from '../src/lesson_runtime'
+import { stringify } from 'yaml'
+import { serializeLessonLocales } from './serializeLessonLocales'
+import enUS from './locales/en-US/classicalCipher.json' with { type: 'json' }
+import zhCN from './locales/zh-CN/classicalCipher.json' with { type: 'json' }
+
+const locales = { 'en-US': enUS, 'zh-CN': zhCN }
 
 const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 const keyedAlphabet = 'QWERTYUIOPASDFGHJKLZXCVBNM'
@@ -6,8 +12,6 @@ const keyedAlphabet = 'QWERTYUIOPASDFGHJKLZXCVBNM'
 const documents = (kind: 'substitution' | 'vigenere'): LessonDocuments => {
   const substitution = kind === 'substitution'
   const id = `${kind}-demo`
-  const title = substitution ? 'Substitution cipher' : 'Vigenere cipher'
-  const titleZh = substitution ? '替换密码' : '维吉尼亚密码'
   const operation = substitution ? 'classical.substitution@1' : 'classical.vigenere@1'
   const key = substitution ? keyedAlphabet : 'KEY'
   const plaintext = substitution ? 'ABC XYZ!' : 'ATTACK AT DAWN!'
@@ -105,10 +109,7 @@ steps:
         trace: {step: decrypt, trace: output}
       options: {}
 `,
-    locales: {
-      'en-US': `title: ${title}\nsummary: Run a ${kind} cipher through the shared classical cipher presentation.\ntexts: {plaintext: Plaintext, key: Key, policy: Policy, direction: Direction}`,
-      'zh-CN': `title: ${titleZh}\nsummary: 使用共享的古典密码展示运行${substitution ? '替换' : '维吉尼亚'}密码。\ntexts: {plaintext: 明文, key: 密钥, policy: 策略, direction: 方向}`,
-    },
+    locales: serializeLessonLocales(locales, (copy) => stringify(copy[kind])),
   }
 }
 

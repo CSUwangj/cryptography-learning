@@ -53,53 +53,13 @@ These are the maintainer-approved overrides within this loop:
 Pass these overrides with the skill paths to each delegated role; do not rely
 on a child or external runner inheriting the coordinator's context.
 
-Behavior-changing tickets normally use requirements review, implementation/TDD,
-pre-review, then formal review. Only tickets admitted to the
-[bounded trial](#bounded-three-ticket-review-trial) omit the separate pre-review
-stage. Requirements review is separate from the applicable code-review stages
-and does not replace them.
+Behavior-changing tickets use requirements review, implementation/TDD,
+independent two-axis pre-review, then independent two-axis formal review.
+Requirements review is separate from code review and does not replace it.
 Pure documentation, comments or formatting use relevant checks and formal review,
 without pre-review or artificial red tests. Classify by effects: configuration,
 workflow policy, data and executable examples that change behavior take the
 behavior-changing path.
-
-## Bounded three-ticket review trial
-
-[#139](https://github.com/CSUwangj/cryptography-learning/issues/139) authorizes a
-temporary exception for three explicitly identified small, clearly scoped local
-behavior-change tickets after #136, #137, #138 and delivery of these rules are
-complete. Before a ticket uses the exception, record its ID on #139 and its
-qualification and exception use in the owning ticket. Ordinary implementation
-authorization and repository constraints still apply.
-
-Exclude GraphQL or Lesson schema changes, compatibility changes, security
-boundaries, evidence tooling, verification-policy changes and changes to the
-trial's own gates. #139 itself uses the ordinary full path, including requirements
-review and independent two-axis pre-review and formal review. Its policy prose
-uses meaningful source-backed walkthroughs, never an artificial red test.
-
-Eligible tickets omit only the separate two-axis pre-review stage. Preserve
-requirements review, meaningful behavior tests, independent formal Standards and
-Spec reviews, unresolved-finding handling, required checks, snapshot evidence and
-completion gates. Formal reviewers establish expected behavior from approved
-sources before reading implementation conclusions.
-
-Record new contract ambiguity or expanded impact and return affected work to the
-ordinary full process. Resolve requirement decisions under the existing authority
-rules and retain findings, evidence and the ticket's used trial slot. Fallback
-does not permit an automatic replacement or fourth trial ticket. The trial cannot
-amend its own gates or weaken failed checks.
-
-Use existing records for each real outcome, including review rounds, confirmed
-findings first discovered in formal review, repair rounds and available execution,
-time and cost evidence. Compare relevant ordinary-flow records and state ticket
-complexity and environment differences. Unknown measurements remain unknown;
-fewer reviews do not prove unchanged quality.
-
-After the three real outcomes, stop the exception pending the maintainer's
-recorded continue, adjust or withdraw decision. There is no automatic permanent
-rollout. Rule delivery alone is partial; keep #139 open until all three results
-and that decision are recorded. Do not launch unrelated tickets to fill the sample.
 
 ## Select models before delegation
 
@@ -159,16 +119,17 @@ Other model/route changes need a new selection; the escalation mapping above doe
 
 ## Coordinate with existing tools
 
-Carry the exact external checkpoint path in each dispatch and resume prompt.
-For transfer, resumed work or an unavailable notes/history backend, follow the
-handoff guide's [checkpoint and recovery instructions](../../../docs/agents/review-handoff.md#transfer-the-work).
+Before dispatch, record each role's final result/report path in the exact external
+checkpoint and pass both paths to the role. Use existing process waits or role
+completion notifications as the normal coordination interface; read the named
+report when the role finishes. For external CLI work, wait in 30–60 second
+windows within the host's limits. Keep full logs on disk. Read only changed,
+relevant excerpts when status changes, a failure occurs or the maintainer asks;
+routine coordination does not require parsing a running log.
 
-Include final result/report paths in dispatches. Prefer completion notifications
-and read those files when the role finishes. For external CLI work, use existing
-process waits in 30–60 second windows, bounded by the host's limits. Keep full
-logs on disk; read targeted new excerpts for a changed status, failure or requested
-update instead of reparsing the full running log. During ongoing work, give a
-meaningful progress update at least every 60 seconds without replaying logs.
+Resume and transfer through the handoff guide's
+[checkpoint and recovery entry](../../../docs/agents/review-handoff.md#transfer-the-work).
+Keep meaningful progress updates at least every 60 seconds during ongoing work.
 Reuse the selected implementation/review contexts for ordinary repair and
 recheck rounds.
 Use existing tools and `review_handoff.py`; do not add a general runner, scheduler
@@ -191,6 +152,9 @@ timeout and exit evidence; any lifecycle repair still needs to be within scope.
    to its authoritative source, public entry point, expected result and check.
    For a restriction that is easy to misread, use the specification template's
    [constrained-object and example format](../../../docs/agents/spec-template.md#restrictions-that-are-easy-to-misread).
+   For teaching visualizations/interactions or result, provenance and editing
+   bindings, apply the handoff guide's
+   [demo and execution-owner checks](../../../docs/agents/review-handoff.md#teaching-demos-and-execution-owners).
    Record test interfaces/coverage limits, reuse points, likely files, non-goals,
    accepted risks, selected skill paths/model mapping and every applicable issue
    and repository check, including full suites and currently unavailable checks.
@@ -257,10 +221,9 @@ and [verification scope and stopping](../../../docs/agents/review-handoff.md#ver
 
 ## Review and converge
 
-By default, the coordinator runs `code-review` in two stages for behavior changes:
-pre-review, then formal review when no confirmed blockers remain. The
-[bounded trial](#bounded-three-ticket-review-trial) omits only pre-review. The
-escalation path below may end pre-review early for escalation diagnosis. For each
+The coordinator runs `code-review` in two stages for behavior changes:
+pre-review, then formal review when no confirmed blockers remain. The escalation
+path below may end pre-review early for escalation diagnosis. For each
 applicable initial stage, launch separate Standards and Spec agents directly with
 that stage's configuration;
 no extra review-coordinator agent or recursive review loop. Run the axes in

@@ -2,6 +2,11 @@ import { parse, stringify } from 'yaml'
 import { aesInverseCipherGraph } from '../src/crypto_graph'
 import type { LessonDocuments } from '../src/lesson_runtime'
 import { keyAvalancheLesson } from './keyAvalancheLesson'
+import { serializeLessonLocales } from './serializeLessonLocales'
+import enUS from './locales/en-US/keyChange.json' with { type: 'json' }
+import zhCN from './locales/zh-CN/keyChange.json' with { type: 'json' }
+
+const locales = { 'en-US': enUS, 'zh-CN': zhCN }
 
 // Reuse authored schedules and cipher graphs, including the registered inverse builder.
 export const aesKeyChangeLesson = (documents: LessonDocuments, variant: 128 | 192 | 256, direction: 'encrypt' | 'decrypt'): LessonDocuments => {
@@ -41,52 +46,8 @@ export const aesKeyChangeLesson = (documents: LessonDocuments, variant: 128 | 19
   })
   return {
     lesson: stringify(lesson, { aliasDuplicateObjects: false }),
-    locales: {
-      'en-US': `title: AES-${variant} key-change ${direction === 'encrypt' ? 'encryption' : 'decryption'} overlay
-summary: Follow one original-key bit through paired schedules into AES-${variant} ${direction === 'encrypt' ? 'encryption' : 'decryption'}, then open the complete schedule overlay.
-texts:
-  key: Original key
-  introduction: >-
-    The data-bit avalanche example changes the message. This key-change avalanche experiment
-    flips one bit of the original key, derives baseline and changed key schedules, and feeds
-    each schedule into its matching ${direction === 'encrypt' ? 'encryption' : 'decryption'} execution.
-    Both executions use the same ${data}: \`${lesson.inputs[data].default}\`.
-    Edit the original key or choose another MSB-first bit, then choose Next to compare the schedules.
-    Choosing another bit replaces the previous flip.
-  schedule-description: >-
-    Compare the original and changed keys and every exported round key in these two schedules.
-    Derived round keys may differ in many bits even though the original key differs by exactly one bit.
-    The standalone key-schedule example stops here. Choose Next to reach the
-    ${direction === 'encrypt' ? 'encryption' : 'decryption'} comparison and its complete schedule overlay.
-  cipher-description: >-
-    Each ${direction === 'encrypt' ? 'encryption' : 'decryption'} uses the round keys from its corresponding schedule.
-    Both ${data} inputs remain \`${lesson.inputs[data].default}\`; the paired output shows how the original-key change propagates through the cipher.
-    Choose Show key schedule in the toolbar, or on any bound round-key row, to open the complete schedule overlay.
-    Baseline and changed schedule values appear together, aligned with the cipher rows that consume each key.
-    ${direction === 'encrypt' ? 'Encryption consumes round keys in forward order.' : 'Decryption consumes round keys in reverse order while preserving each schedule block\'s internal generation order.'}
-    The overlay starts closed. Opening or closing it clears the comparison selection; each view keeps its own selection unit.
-`,
-      'zh-CN': `title: AES-${variant} 密钥变化与${direction === 'encrypt' ? '加密' : '解密'}叠加
-summary: 跟随一个原始密钥位的变化，经过成对密钥编排进入 AES-${variant} ${direction === 'encrypt' ? '加密' : '解密'}，再打开完整密钥编排叠加视图。
-texts:
-  key: 原始密钥
-  introduction: >-
-    数据位雪崩示例改变消息。本密钥变化雪崩实验翻转原始密钥的一个位，生成基准与改变后的两份密钥编排，
-    分别供对应的${direction === 'encrypt' ? '加密' : '解密'}执行使用。
-    两次执行使用相同的${direction === 'encrypt' ? '明文' : '密文'}：\`${lesson.inputs[data].default}\`。
-    编辑原始密钥或选择另一个从最高有效位开始编号的位，然后点击下一步比较编排。更换位会替换之前的翻转。
-  schedule-description: >-
-    比较两份编排中的原始密钥与每个导出的轮密钥。虽然原始密钥恰好只有一个位不同，派生轮密钥可以有多个位不同。
-    独立密钥编排示例到此结束。在这里点击下一步进入${direction === 'encrypt' ? '加密' : '解密'}比较，查看完整密钥编排叠加视图。
-  cipher-description: >-
-    两次${direction === 'encrypt' ? '加密' : '解密'}分别使用对应编排的轮密钥。
-    两份${direction === 'encrypt' ? '明文' : '密文'}输入均保持为 \`${lesson.inputs[data].default}\`，成对输出展示原始密钥变化如何经过密码运算传播。
-    点击工具栏或任意已绑定轮密钥行上的"显示密钥编排"，打开完整密钥编排叠加视图。
-    基准与改变后的编排值成对显示，并与消耗各轮密钥的密码运算行对齐。
-    ${direction === 'encrypt' ? '加密按正向顺序消耗轮密钥。' : '解密按逆序消耗轮密钥，每个编排块内部保留原始生成顺序。'}
-    叠加视图初始关闭。打开或关闭它会清空比较中的选择，每个视图保留独立的选择单位。
-`,
-    },
+    locales: serializeLessonLocales(locales, (copy) => stringify(copy[direction])
+      .replaceAll('{{variant}}', String(variant)).replaceAll('{{dataDefault}}', lesson.inputs[data].default)),
   }
 }
 

@@ -1,5 +1,10 @@
 import { parse, stringify } from 'yaml'
 import type { LessonDocuments } from '../src/lesson_runtime'
+import { serializeLessonLocales } from './serializeLessonLocales'
+import enUS from './locales/en-US/keyAvalanche.json' with { type: 'json' }
+import zhCN from './locales/zh-CN/keyAvalanche.json' with { type: 'json' }
+
+const locales = { 'en-US': enUS, 'zh-CN': zhCN }
 
 // Public synthetic content reuses the authored real AES schedule, without its cipher.
 export const keyAvalancheLesson = (documents: LessonDocuments): LessonDocuments => {
@@ -24,19 +29,6 @@ export const keyAvalancheLesson = (documents: LessonDocuments): LessonDocuments 
   }]
   return {
     lesson: stringify(lesson, { aliasDuplicateObjects: false }),
-    locales: {
-      'en-US': `title: Inspect one original-key bit
-summary: Compare real standalone AES key schedules after changing one original-key bit.
-texts:
-  introduction: Edit the original key and choose one MSB-first bit. Continue to inspect the paired schedule. Choosing another bit replaces the previous flip.
-  key: Original key
-`,
-      'zh-CN': `title: 检查一个原始密钥位
-summary: 改变原始密钥的一个位，比较真实的独立 AES 密钥编排。
-texts:
-  introduction: 编辑原始密钥并选择一个从最高有效位开始编号的位。继续下一步查看成对编排。更换位会替换之前的翻转。
-  key: 原始密钥
-`,
-    },
+    locales: serializeLessonLocales(locales),
   }
 }

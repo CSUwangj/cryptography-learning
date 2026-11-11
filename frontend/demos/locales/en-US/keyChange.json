@@ -1,0 +1,22 @@
+{
+  "encrypt": {
+    "title": "AES-{{variant}} key-change encryption overlay",
+    "summary": "Follow one original-key bit through paired schedules into AES-{{variant}} encryption, then open the complete schedule overlay.",
+    "texts": {
+      "key": "Original key",
+      "introduction": "The data-bit avalanche example changes the message. This key-change avalanche experiment flips one bit of the original key, derives baseline and changed key schedules, and feeds each schedule into its matching encryption execution. Both executions use the same plaintext: `{{dataDefault}}`. Edit the original key or choose another MSB-first bit, then choose Next to compare the schedules. Choosing another bit replaces the previous flip.",
+      "schedule-description": "Compare the original and changed keys and every exported round key in these two schedules. Derived round keys may differ in many bits even though the original key differs by exactly one bit. The standalone key-schedule example stops here. Choose Next to reach the encryption comparison and its complete schedule overlay.",
+      "cipher-description": "Each encryption uses the round keys from its corresponding schedule. Both plaintext inputs remain `{{dataDefault}}`; the paired output shows how the original-key change propagates through the cipher. Choose Show key schedule in the toolbar, or on any bound round-key row, to open the complete schedule overlay. Baseline and changed schedule values appear together, aligned with the cipher rows that consume each key. Encryption consumes round keys in forward order. The overlay starts closed. Opening or closing it clears the comparison selection; each view keeps its own selection unit."
+    }
+  },
+  "decrypt": {
+    "title": "AES-{{variant}} key-change decryption overlay",
+    "summary": "Follow one original-key bit through paired schedules into AES-{{variant}} decryption, then open the complete schedule overlay.",
+    "texts": {
+      "key": "Original key",
+      "introduction": "The data-bit avalanche example changes the message. This key-change avalanche experiment flips one bit of the original key, derives baseline and changed key schedules, and feeds each schedule into its matching decryption execution. Both executions use the same ciphertext: `{{dataDefault}}`. Edit the original key or choose another MSB-first bit, then choose Next to compare the schedules. Choosing another bit replaces the previous flip.",
+      "schedule-description": "Compare the original and changed keys and every exported round key in these two schedules. Derived round keys may differ in many bits even though the original key differs by exactly one bit. The standalone key-schedule example stops here. Choose Next to reach the decryption comparison and its complete schedule overlay.",
+      "cipher-description": "Each decryption uses the round keys from its corresponding schedule. Both ciphertext inputs remain `{{dataDefault}}`; the paired output shows how the original-key change propagates through the cipher. Choose Show key schedule in the toolbar, or on any bound round-key row, to open the complete schedule overlay. Baseline and changed schedule values appear together, aligned with the cipher rows that consume each key. Decryption consumes round keys in reverse order while preserving each schedule block's internal generation order. The overlay starts closed. Opening or closing it clears the comparison selection; each view keeps its own selection unit."
+    }
+  }
+}

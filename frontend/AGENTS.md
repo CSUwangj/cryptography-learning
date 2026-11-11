@@ -24,6 +24,15 @@
   interface removes duplication from callers.
 - Do not create catch-all `common`, `shared`, or `utils` modules.
 
+## Lesson fixtures
+
+A complete static `LessonDocuments` fixture may embed its Lesson and both locales.
+Fixed YAML fragments may be composed through static constants. A generated or
+modified Lesson keeps manually authored localized text, including phrasing
+branches, in external JSON/YAML resources. Code may construct structure and pass
+identifiers, values and interpolation parameters. Ordinary application UI keeps
+its i18next contract; independently authored Lesson content keeps its own format.
+
 ## UI prototypes
 
 Before prototyping a UI question, follow the first-pass checklist in
