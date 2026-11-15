@@ -16,7 +16,7 @@ import { compileLesson, validateLessonDocuments, type LessonDocuments } from './
 
 const frontend = fileURLToPath(new URL('../..', import.meta.url))
 const temporary = mkdtempSync(join(tmpdir(), 'validator-package-'))
-const cli = join(temporary, 'cryptography-learning-validator-web-v1.3.0', 'validator.cjs')
+const cli = join(temporary, 'cryptography-learning-validator-web-v1.3.1', 'validator.cjs')
 const readDocuments = (directory: string): LessonDocuments => ({
   lesson: readFileSync(join(directory, 'lesson.yaml'), 'utf8'),
   locales: Object.fromEntries(readdirSync(join(directory, 'locales')).map((file) => [file.slice(0, -5), readFileSync(join(directory, 'locales', file), 'utf8')])),
@@ -32,7 +32,7 @@ const invoke = (...args: string[]) => {
 
 beforeAll(() => {
   execFileSync(process.execPath, ['scripts/build_validator.mjs'], { cwd: frontend, encoding: 'utf8', timeout: 120_000 })
-  execFileSync('tar', ['-xzf', join(frontend, 'dist/validator/cryptography-learning-validator-web-v1.3.0.tar.gz'), '-C', temporary])
+  execFileSync('tar', ['-xzf', join(frontend, 'dist/validator/cryptography-learning-validator-web-v1.3.1.tar.gz'), '-C', temporary])
 }, 120_000)
 afterAll(() => rmSync(temporary, { recursive: true, force: true }))
 
@@ -43,8 +43,8 @@ it('runs the Lab command outside the checkout without an installation', () => {
 })
 
 it('identifies the public release and pinned Node runtime', () => {
-  expect(invoke('--version')).toEqual({ status: 0, report: { release: 'web-v1.3.0', node: '24.18.1' } })
-  expect(JSON.parse(readFileSync(join(temporary, 'cryptography-learning-validator-web-v1.3.0/identity.json'), 'utf8')))
+  expect(invoke('--version')).toEqual({ status: 0, report: { release: 'web-v1.3.1', node: '24.18.1' } })
+  expect(JSON.parse(readFileSync(join(temporary, 'cryptography-learning-validator-web-v1.3.1/identity.json'), 'utf8')))
     .toEqual(invoke('--version').report)
 })
 

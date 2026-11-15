@@ -160,23 +160,23 @@ jobs:
           ./acceptance/run.sh "$PUBLISHED_IMAGE" --mode smoke
 
       - uses: actions/setup-node@v5
-        if: github.ref_name == 'web-v1.3.0'
+        if: github.ref_name == 'web-v1.3.1'
         with:
           node-version-file: frontend/.nvmrc
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install validator build dependencies
-        if: github.ref_name == 'web-v1.3.0'
+        if: github.ref_name == 'web-v1.3.1'
         working-directory: frontend
         run: npm ci
 
       - name: Build and verify the standalone v1.3 validator
-        if: github.ref_name == 'web-v1.3.0'
+        if: github.ref_name == 'web-v1.3.1'
         working-directory: frontend
         run: npm test -- --maxWorkers=1 --passWithNoTests=false src/lesson_runtime/validatorPackage.test.ts
 
       - name: Create or update GitHub Release record
         run: ./scripts/publish_release_notes.sh
         env:
-          VALIDATOR_ARCHIVE: ${{ github.ref_name == 'web-v1.3.0' && 'frontend/dist/validator/cryptography-learning-validator-web-v1.3.0.tar.gz' || '' }}
+          VALIDATOR_ARCHIVE: ${{ github.ref_name == 'web-v1.3.1' && 'frontend/dist/validator/cryptography-learning-validator-web-v1.3.1.tar.gz' || '' }}

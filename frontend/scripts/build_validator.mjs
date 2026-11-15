@@ -7,7 +7,7 @@ import { build } from 'vite'
 process.env.NODE_ENV = 'production'
 
 const frontend = fileURLToPath(new URL('..', import.meta.url))
-const identity = { release: 'web-v1.3.0', node: (await readFile(join(frontend, '.nvmrc'), 'utf8')).trim() }
+const identity = { release: 'web-v1.3.1', node: (await readFile(join(frontend, '.nvmrc'), 'utf8')).trim() }
 const name = `cryptography-learning-validator-${identity.release}`
 const output = join(frontend, 'dist', 'validator')
 const directory = join(output, name)

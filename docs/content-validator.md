@@ -1,8 +1,8 @@
 # Public v1.3 content validator
 
-The `web-v1.3.0` validator checks one Lesson directory or one Lab Markdown file.
+The `web-v1.3.1` validator checks one Lesson directory or one Lab Markdown file.
 Its release attachment is
-`cryptography-learning-validator-web-v1.3.0.tar.gz`. The package includes its
+`cryptography-learning-validator-web-v1.3.1.tar.gz`. The package includes its
 JavaScript dependencies. It requires Linux and Node **24.18.1**, matching
 `frontend/.nvmrc`. Consumers do not install npm packages or need this checkout.
 Other operating systems and Node versions have not been accepted for this package.
@@ -14,10 +14,10 @@ that a release has been published.
 With the archive already present in the current directory:
 
 ```sh
-tar -xzf cryptography-learning-validator-web-v1.3.0.tar.gz
-node cryptography-learning-validator-web-v1.3.0/validator.cjs --version
-node cryptography-learning-validator-web-v1.3.0/validator.cjs lesson ./example-lesson
-node cryptography-learning-validator-web-v1.3.0/validator.cjs lab ./example-lab.md
+tar -xzf cryptography-learning-validator-web-v1.3.1.tar.gz
+node cryptography-learning-validator-web-v1.3.1/validator.cjs --version
+node cryptography-learning-validator-web-v1.3.1/validator.cjs lesson ./example-lesson
+node cryptography-learning-validator-web-v1.3.1/validator.cjs lab ./example-lab.md
 ```
 
 The Lesson directory contains `lesson.yaml` and `locales/<locale>.yaml` files.
@@ -30,7 +30,7 @@ nonzero exit means invalid arguments, unreadable input or failed validation.
 The version response is:
 
 ```json
-{"release":"web-v1.3.0","node":"24.18.1"}
+{"release":"web-v1.3.1","node":"24.18.1"}
 ```
 
 The extracted `identity.json` records the same release and required Node version.
@@ -91,7 +91,7 @@ local execution route described in `docs/agents/review-handoff.md`. The package
 test takes that route's heavyweight slot because it runs a real bundle build.
 
 The `release-web-image.yml` workflow builds and verifies this package for the
-`web-v1.3.0` tag before passing the archive to `publish_release_notes.sh` through
+`web-v1.3.1` tag before passing the archive to `publish_release_notes.sh` through
 `VALIDATOR_ARCHIVE`. The publisher attaches it to the release and replaces the
 same-named attachment on a retry. Other tags retain their existing release path.
 The package test and local archive checks do not contact GitHub or live systems.

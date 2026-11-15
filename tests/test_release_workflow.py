@@ -191,7 +191,7 @@ class ReleaseNotesTest(unittest.TestCase):
                 encoding="utf-8",
             )
             gh.chmod(0o755)
-            for exists, command, version in (("0", "edit", "1.2.3"), ("1", "create", "1.2.3"), ("0", "edit", "1.3.0")):
+            for exists, command, version in (("0", "edit", "1.2.3"), ("1", "create", "1.2.3"), ("0", "edit", "1.3.1")):
                 (workspace / "CHANGELOG.md").write_text(self.changelog.replace("1.2.3", version), encoding="utf-8")
                 log = workspace / f"{command}-{version}.log"
                 body = workspace / f"{command}-{version}.md"
@@ -206,7 +206,7 @@ class ReleaseNotesTest(unittest.TestCase):
                     "PUBLISHED_IMAGE": "ghcr.io/example/web:1.2.3@sha256:digest",
                 }
                 archive = workspace / "validator.tar.gz"
-                if version == "1.3.0":
+                if version == "1.3.1":
                     archive.write_bytes(b"synthetic release attachment")
                     environment["VALIDATOR_ARCHIVE"] = str(archive)
                 result = subprocess.run(
@@ -221,7 +221,7 @@ class ReleaseNotesTest(unittest.TestCase):
                 self.assertEqual(
                     log.read_text(encoding="utf-8").strip(),
                     f"release {command} web-v{version} --title Web image web-v{version} --notes-file release-notes.md"
-                    + (f"\nrelease upload web-v{version} {archive} --clobber" if version == "1.3.0" else ""),
+                    + (f"\nrelease upload web-v{version} {archive} --clobber" if version == "1.3.1" else ""),
                 )
                 notes = (workspace / "release-notes.md").read_text(encoding="utf-8")
                 self.assertIn("Human-written release notes.", notes)

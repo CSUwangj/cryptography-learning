@@ -1,5 +1,52 @@
 # Changelog
 
+## 1.3.1 — 2026-11-15
+
+This release adds v2 comparison and avalanche learning flows, updated classical
+cipher views, and a standalone content validator to the public web image.
+
+### Learning
+
+- Added generic v2 comparisons with paired values, exact bit differences,
+  checkpoint summaries, and shared lineage selection.
+- Added data avalanche, standalone key avalanche, and key-change cipher overlays
+  for AES encryption and decryption, with controls that derive one-bit variants
+  from the original data or key.
+- Added interactive v2 Caesar reels and updated substitution, affine, Vigenere,
+  and transposition views. Classical labels and editable controls follow the
+  execution that owns their values.
+- Updated bilingual demos and the Lesson migration guide for these capabilities.
+
+### Content validation
+
+- Added `cryptography-learning-validator-web-v1.3.1.tar.gz`, a Linux package with
+  bundled JavaScript dependencies and Lesson, Lab, and version JSON commands.
+  It requires Node 24.18.1 and runs without this checkout or an npm installation.
+- Lesson validation compiles v1/v2 documents and executes authored defaults,
+  including comparisons and avalanche variants. Lab validation uses the
+  application's Markdown and math stack, including collapsed callouts.
+- Reports preserve available source positions. Formula errors inside callouts
+  omit unreliable line and column details.
+
+### Compatibility and limits
+
+- Lesson schema v1 remains supported through public v1.3 with its deprecation
+  notice. Its planned retirement belongs to public v1.4.
+- The validator checks authored format and default execution. It does not verify
+  teaching correctness, every student input, linked assets, or deployment readiness.
+- The existing Markdown dependencies retain their documented maintenance and
+  security limitations under the maintainer-authored-content boundary.
+- Public images retain Application Manifest schema 1 and the Linux AMD64 target.
+  Private content and deployed Hosts remain operator-managed.
+
+### Verification
+
+- The v1.3 delivery map records learning coverage and its limits. The standalone
+  package checks extracted commands without access to checkout files and compares
+  reports against the shared application validation entries.
+- Publication requires Chromium, Firefox, and WebKit acceptance against one
+  immutable image, followed by anonymous-pull smoke verification.
+
 ## 1.2.0 — 2026-11-03
 
 The v1.2 public web release adds Lesson schema v2, composable cryptographic
