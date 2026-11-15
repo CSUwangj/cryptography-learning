@@ -17,6 +17,15 @@ import test_plan
 
 
 class TestPlanTest(unittest.TestCase):
+    def test_validator_scripts_select_isolated_package_acceptance(self):
+        for path in ("frontend/scripts/build_validator.mjs", "frontend/scripts/content_validator.ts"):
+            with self.subTest(path=path):
+                checks = {item["id"]: item for item in test_plan.plan_paths([path])["checks"]}
+                self.assertIn("src/lesson_runtime/validatorPackage.test.ts", checks["frontend-tests"]["argv"])
+                self.assertIn("src/app/i18n/noEmbeddedUiResources.test.ts", checks["frontend-tests"]["argv"])
+                self.assertEqual(checks["frontend_typecheck"]["argv"], ["npm", "run", "typecheck"])
+                self.assertFalse(any("unknown" in reason for item in checks.values() for reason in item["reasons"]))
+
     def test_existing_frontend_guards_run_before_browser_acceptance(self):
         cases = (
             (["frontend/src/lesson_runtime/fixture/aes192-first-round.ts"], [
@@ -212,6 +221,7 @@ class TestPlanTest(unittest.TestCase):
             ("backend/Cargo.toml", "backend_build", True),
             ("acceptance/run.sh", "image_smoke", True),
             ("frontend/src/crypto_graph/index.test.ts", "frontend-tests", False),
+            ("frontend/src/lesson_runtime/validatorPackage.test.ts", "frontend-tests", True),
             ("scripts/test_plan.py", "tooling", False),
         )
         for path, identifier, expected in cases:

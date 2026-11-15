@@ -3,7 +3,7 @@ import { genericComparisonDocuments } from '../../demos/genericComparisonLesson'
 import i18n from '../app/i18n'
 import { executeWorkerRequest, hex, type WorkerRequest } from '../crypto_graph'
 import { visualizerCatalog } from '../visualizers'
-import { compileLesson, createBrowserLessonSession } from './index'
+import { compileLesson, createBrowserLessonSession, validateLessonDocuments } from './index'
 
 class LocalWorker extends EventTarget {
   postMessage(request: WorkerRequest): void {
@@ -14,6 +14,18 @@ class LocalWorker extends EventTarget {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('Generic v2 Lesson comparison (#141)', () => {
+  it('rejects invalid authored avalanche defaults during Node validation', () => {
+    const documents = {
+      ...genericComparisonDocuments,
+      lesson: genericComparisonDocuments.lesson.replace('kind: generic', 'kind: avalanche\n        sources: [data]'),
+    }
+    expect(compileLesson(documents, visualizerCatalog).ok).toBe(true)
+    expect(validateLessonDocuments(documents, visualizerCatalog)).toMatchObject({
+      ok: false,
+      diagnostics: [{ code: 'lesson.invalid-avalanche', path: 'steps.compare.visualizer.compare' }],
+    })
+  })
+
   it('accepts independent data and key changes and executes only on entering the comparison Step', async () => {
     vi.stubGlobal('Worker', LocalWorker)
     const compiled = compileLesson(genericComparisonDocuments, visualizerCatalog)

@@ -1,5 +1,6 @@
 export { PracticePage } from './PracticePage'
 export { PracticeNavigation } from './PracticeNavigation'
 export { Markdown } from './markdown/Markdown'
+export { validateLabMarkdown } from './markdown/validate'
 export { LAB_PATTERN, labPath } from './routes'
 export type { LabRouteParams } from './routes'

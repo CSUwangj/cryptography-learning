@@ -77,7 +77,10 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ value, language }) => {
 
 type MarkdownProps = {
   source: string
+  astPlugins?: ReactMarkdown.MdastPlugin[]
 }
+
+export const labMathSettings = { throwOnError: false }
 
 const Code = styled.code`
   display: inline-block;
@@ -138,7 +141,7 @@ const InlineCode: React.FC<React.PropsWithChildren> = ({ children }) => {
 }
 
 /** support block math/inline math/admonitions */
-export const Markdown: React.FC<MarkdownProps> = ({ source }) => {
+export const Markdown: React.FC<MarkdownProps> = ({ source, astPlugins }) => {
   /**
    * use ::: (none|primary|success|warning|danger) [ICON:icon-name] title with any char
    *     content between
@@ -149,6 +152,7 @@ export const Markdown: React.FC<MarkdownProps> = ({ source }) => {
   return <MarkdownRoot data-markdown-root>
     <ReactMarkdown
       source={source}
+      astPlugins={astPlugins}
       plugins={[
         RemarkMathPlugin,
         AdmonitionsPlugin
@@ -157,8 +161,8 @@ export const Markdown: React.FC<MarkdownProps> = ({ source }) => {
         code: CodeBlock,
         link: Link,
         inlineCode: InlineCode,
-        math: ({ value }: { value: string }) => <TeX block>{value}</TeX>,
-        inlineMath: ({ value }: { value: string }) => <InlineMath data-markdown-inline-math><TeX>{value}</TeX></InlineMath>,
+        math: ({ value }: { value: string }) => <TeX block settings={labMathSettings}>{value}</TeX>,
+        inlineMath: ({ value }: { value: string }) => <InlineMath data-markdown-inline-math><TeX settings={labMathSettings}>{value}</TeX></InlineMath>,
         none: (props: AdmonitionRendererProps) => <MarkdownCallout intent='none' {...props} />,
         primary: (props: AdmonitionRendererProps) => <MarkdownCallout intent='primary' {...props} />,
         success: (props: AdmonitionRendererProps) => <MarkdownCallout intent='success' {...props} />,

@@ -40,6 +40,8 @@ def is_heavy(command, cwd):
                 for arg in unit_args
             ):
                 return True
+            if any((cwd / arg).resolve() == (cwd / "src/lesson_runtime/validatorPackage.test.ts").resolve() for arg in unit_args):
+                return True
             unit_tests = {
                 path.resolve() for root in ("src", "demos")
                 for path in (cwd / root).rglob("*.test.ts*")

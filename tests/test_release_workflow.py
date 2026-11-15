@@ -187,23 +187,28 @@ class ReleaseNotesTest(unittest.TestCase):
                 "#!/usr/bin/env bash\n"
                 "if [[ \"$1 $2\" == 'release view' ]]; then exit \"${GH_RELEASE_EXISTS:-1}\"; fi\n"
                 "printf '%s\\n' \"$*\" >> \"$GH_LOG\"\n"
-                "cat \"${!#}\" > \"$GH_BODY\"\n",
+                "if [[ \"$2\" != upload ]]; then cat \"${!#}\" > \"$GH_BODY\"; fi\n",
                 encoding="utf-8",
             )
             gh.chmod(0o755)
-            for exists, command in (("0", "edit"), ("1", "create")):
-                log = workspace / f"{command}.log"
-                body = workspace / f"{command}.md"
+            for exists, command, version in (("0", "edit", "1.2.3"), ("1", "create", "1.2.3"), ("0", "edit", "1.3.0")):
+                (workspace / "CHANGELOG.md").write_text(self.changelog.replace("1.2.3", version), encoding="utf-8")
+                log = workspace / f"{command}-{version}.log"
+                body = workspace / f"{command}-{version}.md"
                 environment = {
                     **os.environ,
                     "PATH": f"{bin_dir}:{os.environ['PATH']}",
                     "GH_LOG": str(log),
                     "GH_BODY": str(body),
                     "GH_RELEASE_EXISTS": exists,
-                    "GITHUB_REF_NAME": "web-v1.2.3",
+                    "GITHUB_REF_NAME": f"web-v{version}",
                     "GITHUB_SHA": "abc123",
                     "PUBLISHED_IMAGE": "ghcr.io/example/web:1.2.3@sha256:digest",
                 }
+                archive = workspace / "validator.tar.gz"
+                if version == "1.3.0":
+                    archive.write_bytes(b"synthetic release attachment")
+                    environment["VALIDATOR_ARCHIVE"] = str(archive)
                 result = subprocess.run(
                     ["bash", str(PUBLISH_RELEASE_NOTES)],
                     cwd=workspace,
@@ -215,7 +220,8 @@ class ReleaseNotesTest(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(
                     log.read_text(encoding="utf-8").strip(),
-                    f"release {command} web-v1.2.3 --title Web image web-v1.2.3 --notes-file release-notes.md",
+                    f"release {command} web-v{version} --title Web image web-v{version} --notes-file release-notes.md"
+                    + (f"\nrelease upload web-v{version} {archive} --clobber" if version == "1.3.0" else ""),
                 )
                 notes = (workspace / "release-notes.md").read_text(encoding="utf-8")
                 self.assertIn("Human-written release notes.", notes)

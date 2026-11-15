@@ -21,6 +21,9 @@ See the [Operation overview](docs/OPERATIONS.md#registered-public-operations) fo
 the registered core, SPN, AES and classical Operations, with descriptions and
 source links.
 
+The [public v1.3 content validator](docs/content-validator.md) checks Lesson
+directories and Lab Markdown files with a standalone Node package.
+
 ## Add an Operation
 
 See [Add an Operation](docs/OPERATIONS.md) for implementation and registration

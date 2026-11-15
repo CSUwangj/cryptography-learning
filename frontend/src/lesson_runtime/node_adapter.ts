@@ -1,5 +1,6 @@
-import { executeWorkerRequest, maxWorkerLimits, type CryptoValue, type Diagnostic, type WorkerExecutionSnapshot } from '../crypto_graph'
+import { executeWorkerRequest, maxWorkerLimits, type AvalancheComparison, type CryptoValue, type Diagnostic, type WorkerExecutionSnapshot } from '../crypto_graph'
 import { compileLesson, equalCryptoValues, type CompiledLesson, type LessonDocuments, type LessonNotice, type LessonValueReference, type VisualizerCatalog } from './compiler'
+import { deriveBitFlip, prepareLessonComparison } from './execution'
 
 export type LessonDryRunStep = {
   readonly id: string
@@ -23,25 +24,42 @@ const diagnostic = (code: string, message: string, path: string): Diagnostic => 
 
 const dryRun = (lesson: CompiledLesson): { ok: true, value: LessonDryRun } | { ok: false, diagnostics: readonly Diagnostic[] } => {
   const snapshots = new Map<string, WorkerExecutionSnapshot>()
+  const comparisons = new Map<string, AvalancheComparison>()
+  const inputs = Object.fromEntries(Object.entries(lesson.inputs).map(([id, input]) => [id, input.default]))
+  for (const step of lesson.steps) for (const [index, option] of (step.bitFlip ?? []).entries()) {
+    inputs[option.changed] = deriveBitFlip(inputs[option.input], index === 0 ? 0 : undefined)
+  }
   const steps: LessonDryRunStep[] = []
-  const snapshotValue = (stepId: string, output: string): CryptoValue | undefined => {
-    const snapshot = snapshots.get(stepId)
+  const snapshotValue = (stepId: string, output: string, side?: 'baseline' | 'changed'): CryptoValue | undefined => {
     const step = lesson.steps.find((candidate) => candidate.id === stepId)
-    const graph = step?.execute ? lesson.graphs[step.execute.graph] : undefined
+    const snapshot = side && step?.visualizer?.compare ? comparisons.get(stepId)?.executions[side] : snapshots.get(stepId)
+    const graphId = step?.visualizer?.compare?.graph ?? step?.execute?.graph
+    const graph = graphId ? lesson.graphs[graphId] : undefined
     return snapshot?.outputs[graph?.outputAliases?.[output] ?? output]
   }
-  const referenceValue = (reference: LessonValueReference): CryptoValue | undefined => {
+  const referenceValue = (reference: LessonValueReference, side?: 'baseline' | 'changed'): CryptoValue | undefined => {
     const value = 'input' in reference
-      ? lesson.inputs[reference.input]?.default
+      ? inputs[reference.input]
       : 'constant' in reference
         ? lesson.constants[reference.constant]
-        : snapshotValue(reference.step, reference.output)
+        : snapshotValue(reference.step, reference.output, side)
     return value
   }
   for (const step of lesson.steps) {
     let execution: LessonDryRunStep['execution']
     let acceptedDiagnostics: readonly Diagnostic[] | undefined
-    if (step.execute) {
+    if (step.visualizer?.compare) {
+      const prepared = prepareLessonComparison(lesson, step.id, referenceValue, (id) => comparisons.has(id))
+      if (!prepared.ok) return prepared
+      const startedAt = performance.now()
+      const response = executeWorkerRequest({ requestId: `dry-run-${step.id}`, kind: 'compare', payload: prepared.value })
+      if (performance.now() - startedAt > (lesson.limits?.timeoutMs ?? maxWorkerLimits.timeoutMs)) {
+        return { ok: false, diagnostics: [diagnostic('execution.timeout', 'Worker execution timed out.', `steps.${step.id}.visualizer.compare`)] }
+      }
+      if (response.kind === 'comparison') comparisons.set(step.id, response.comparison)
+      else if (response.kind === 'diagnostic') return { ok: false, diagnostics: response.diagnostics }
+      else return { ok: false, diagnostics: [diagnostic('lesson.invalid-input', 'Dry-run comparison was cancelled.', `steps.${step.id}.visualizer.compare`)] }
+    } else if (step.execute) {
       const inputs: Record<string, CryptoValue> = {}
       for (const [port, reference] of Object.entries(step.execute.bindings)) {
         const value = referenceValue(reference)

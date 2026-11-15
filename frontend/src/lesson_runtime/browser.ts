@@ -1,4 +1,5 @@
 import type { TFunction } from 'i18next'
+import { deriveBitFlip, prepareLessonComparison } from './execution'
 import {
   CryptoGraphWorkerClient,
   type AvalancheComparison,
@@ -266,11 +267,8 @@ export class BrowserLessonSession {
       if (!selection) continue
       for (const option of step.bitFlip ?? []) {
         const source = this.inputs[option.input]
-        const changed = typeof source === 'string' ? source : cloneValue(source)
-        if (typeof changed !== 'string' && 'bytes' in changed && changed.type.family === 'bits' && option.input === selection.input) {
-          const packedBit = changed.bytes.length * 8 - changed.type.size + selection.bit
-          changed.bytes[Math.floor(packedBit / 8)] ^= 1 << (7 - packedBit % 8)
-        }
+        const changed = typeof source === 'string' ? source
+          : deriveBitFlip(source, option.input === selection.input ? selection.bit : undefined)
         const previous = this.inputs[option.changed]
         this.inputs[option.changed] = changed
         if (!v2 || typeof previous === 'string' || typeof changed === 'string' || !equalCryptoValues(previous, changed)) {
@@ -319,49 +317,15 @@ export class BrowserLessonSession {
   }
 
   private async executeComparison(stepId: string): Promise<Result<LessonSessionState>> {
-    const compare = this.lesson.steps.find((step) => step.id === stepId)?.visualizer?.compare
-    const graph = compare && this.lesson.graphs[compare.graph]
-    if (!compare || !graph) {
-      return { ok: false, diagnostics: [diagnostic('lesson.visualizer-unavailable', this.t('learning.runtime.lesson.visualizer-unavailable', { lng: 'en-US' }), `steps.${stepId}.visualizer`)] }
-    }
-    const baseline: Record<string, CryptoValue> = {}
-    const changed: Record<string, CryptoValue> = {}
-    for (const [source, binding] of Object.entries(compare.bindings)) {
-      const left = this.referenceValue(binding.baseline, 'baseline')
-      const right = this.referenceValue(binding.changed, 'changed')
-      if (!left || !right) {
-        return { ok: false, diagnostics: [diagnostic('lesson.comparison-input-unavailable', this.t('learning.runtime.lesson.comparison-input-unavailable', { lng: 'en-US' }), `steps.${stepId}.visualizer.compare.bindings.${source}`)] }
-      }
-      baseline[`${source}.value`] = cloneValue(left)
-      changed[`${source}.value`] = cloneValue(right)
-    }
-    if (compare.keyChange) {
-      const independent = Object.keys(baseline).filter((source) => graph.graph.nodes.find((node) => `${node.id}.value` === source)?.role !== 'round-key')
-      if (!this.comparisons.has(compare.keyChange) || independent.some((source) => !equalCryptoValues(baseline[source], changed[source]))) {
-        return { ok: false, diagnostics: [diagnostic('lesson.invalid-avalanche', this.t('learning.runtime.lesson.invalid-avalanche', { lng: 'en-US' }), `steps.${stepId}.visualizer.compare`)] }
-      }
-    } else if (compare.kind === 'avalanche' && graph.graph.schema === 2) {
-      const differences = Object.keys(baseline).filter((source) => !equalCryptoValues(baseline[source], changed[source]))
-      const source = differences[0]
-      const left = baseline[source]
-      const right = changed[source]
-      const changedBits = left && right && 'bytes' in left && 'bytes' in right
-        ? [...left.bytes].reduce((count, byte, index) => count + (byte ^ right.bytes[index]).toString(2).replaceAll('0', '').length, 0)
-        : 0
-      if (differences.length !== 1 || !compare.sources?.includes(source.slice(0, -'.value'.length)) || changedBits !== 1) {
-        return { ok: false, diagnostics: [diagnostic('lesson.invalid-avalanche', this.t('learning.runtime.lesson.invalid-avalanche', { lng: 'en-US' }), `steps.${stepId}.visualizer.compare`)] }
-      }
-    }
+    const prepared = prepareLessonComparison(this.lesson, stepId,
+      (reference, side) => this.referenceValue(reference, side), (id) => this.comparisons.has(id))
+    if (!prepared.ok) return prepared
     const requestId = `${stepId}-${++this.request}`
     const generation = this.generation
     const response = await this.worker.execute({
       requestId,
       kind: 'compare',
-      payload: {
-        left: { graph: graph.graph, inputs: baseline, ...(this.lesson.limits ? { limits: this.lesson.limits } : {}) },
-        right: { graph: graph.graph, inputs: changed, ...(this.lesson.limits ? { limits: this.lesson.limits } : {}) },
-        ...(this.lesson.limits ? { limits: this.lesson.limits } : {}),
-      },
+      payload: prepared.value,
     }).result
     if (response.kind === 'comparison' && this.index === this.lesson.steps.findIndex((step) => step.id === stepId)
       && generation === this.generation && requestId === `${stepId}-${this.request}`) {

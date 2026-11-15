@@ -171,7 +171,10 @@ def plan_paths(paths, repo=ROOT):
             add("backend_tests", "backend", ["cargo", "test", "--locked", "--", "--nocapture"], "Rust workspace or toolchain changed")
             add("backend_build", "backend", ["cargo", "build", "--locked", "--release"], "Rust workspace or toolchain changed")
         elif path.startswith("frontend/"):
-            if path in {"frontend/eslint.config.mjs", "frontend/.eslintrc"}:
+            if path in {"frontend/scripts/build_validator.mjs", "frontend/scripts/content_validator.ts"}:
+                frontend(["frontend/src/lesson_runtime/validatorPackage.test.ts"], reason="standalone validator build or command changed")
+                add("frontend_typecheck", "frontend", ["npm", "run", "typecheck"], "standalone validator uses shared frontend validation")
+            elif path in {"frontend/eslint.config.mjs", "frontend/.eslintrc"}:
                 frontend(["frontend/src/lint.test.ts"], reason="lint configuration changed")
             elif path in {"frontend/playwright.config.ts", "frontend/scripts/playwright-server.mjs"}:
                 add("browser_local-run", "frontend", ["npx", "playwright", "test", "--project=chromium", "e2e/local-run.spec.ts"], "local browser server and artifact ownership changed")
